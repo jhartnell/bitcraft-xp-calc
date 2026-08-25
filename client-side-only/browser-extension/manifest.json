@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "BitCraft Online XP Calculator",
+  "version": "1.0.0",
+  "description": "Real-time BitCraft Online crafting XP, ETA, and progression calculator powered by BitJita API.",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://bitjita.com/*"
+  ],
+  "action": {
+    "default_popup": "index.html",
+    "default_title": "BitCraft XP Calculator",
+    "default_icon": {
+      "128": "icon.png"
+    }
+  },
+  "icons": {
+    "128": "icon.png"
+  }
+}

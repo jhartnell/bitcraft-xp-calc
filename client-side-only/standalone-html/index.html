@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BitCraft Online XP Calculator - Standalone</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            background: '#090d16',
+            surface: '#111827',
+            'surface-subtle': '#1a2234',
+            'surface-border': '#253046',
+            brand: '#10b981',
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { background-color: #090d16; color: #f3f4f6; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+  <!-- Header -->
+  <header class="bg-surface/90 border-b border-surface-border sticky top-0 z-40 backdrop-blur-md px-4 py-3">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-800 flex items-center justify-center text-lg shadow-lg">
+          ⛏️
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-base font-bold text-gray-100">BitCraft Online XP Calculator</h1>
+            <span class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-indigo-950 text-indigo-300 border border-indigo-700/60">
+              Standalone HTML
+            </span>
+          </div>
+          <p class="text-xs text-gray-400">100% Client-Side • No Hosting Required</p>
+        </div>
+      </div>
+
+      <!-- Mode Selector -->
+      <div class="flex items-center gap-2 text-xs">
+        <span class="text-gray-400">Network Mode:</span>
+        <select id="networkModeSelect" class="bg-surface-subtle border border-surface-border text-gray-200 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:border-emerald-500">
+          <option value="direct">Direct BitJita API (Extension / Local)</option>
+          <option value="custom">Custom Proxy Worker</option>
+          <option value="offline">Offline / Preset Mode</option>
+        </select>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 space-y-5">
+    
+    <!-- Custom Proxy Input Bar (Hidden by default) -->
+    <div id="customProxyBar" class="hidden bg-surface-subtle p-3 rounded-xl border border-surface-border text-xs flex items-center justify-between gap-3">
+      <div class="flex-1 flex items-center gap-2">
+        <span class="text-gray-300 font-medium">Custom Proxy URL:</span>
+        <input type="text" id="customProxyInput" placeholder="https://your-worker.workers.dev/api" class="flex-1 bg-surface border border-surface-border rounded-lg px-3 py-1 text-gray-200 text-xs font-mono">
+      </div>
+      <button id="saveProxyBtn" class="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1 rounded-lg font-medium">
+        Apply Proxy
+      </button>
+    </div>
+
+    <!-- Character Search & Presets Row -->
+    <div class="bg-surface rounded-xl border border-surface-border p-4 shadow-xl space-y-3">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <label class="text-xs font-bold text-gray-300 block mb-1">Character Selection</label>
+          <div class="flex items-center gap-2">
+            <input type="text" id="playerSearchInput" placeholder="Search player (e.g. Ikuria, DOOM)..." value="Ikuria" class="bg-surface-subtle border border-surface-border rounded-lg px-3 py-1.5 text-sm text-gray-100 w-64 focus:outline-none focus:border-emerald-500">
+            <button id="searchPlayerBtn" class="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-1.5 rounded-lg text-xs font-semibold shadow-md transition-colors">
+              Fetch Live
+            </button>
+          </div>
+        </div>
+
+        <!-- Sample Presets -->
+        <div>
+          <label class="text-xs font-semibold text-gray-400 block mb-1">Quick Presets (Works Offline)</label>
+          <div class="flex items-center gap-2">
+            <button id="presetIkuriaBtn" class="bg-surface-subtle hover:bg-surface-border border border-surface-border text-emerald-400 px-3 py-1 rounded-lg text-xs font-medium transition-colors">
+              🧱 Ikuria (Masonry Brick Craft)
+            </button>
+            <button id="presetDoomBtn" class="bg-surface-subtle hover:bg-surface-border border border-surface-border text-indigo-400 px-3 py-1 rounded-lg text-xs font-medium transition-colors">
+              ⚒️ DOOM (Smithing Station)
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div id="statusMessage" class="text-xs text-emerald-400 hidden pt-1"></div>
+    </div>
+
+    <!-- Active Craft Dashboard Section -->
+    <div id="dashboardSection" class="space-y-5">
+      
+      <!-- Active Craft Overview Card -->
+      <div class="bg-surface rounded-xl border border-surface-border p-5 shadow-xl space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div class="flex items-center gap-2">
+            <div class="p-2 rounded-lg bg-emerald-950/80 border border-emerald-800/60 text-emerald-400 text-lg">
+              🔨
+            </div>
+            <div>
+              <div class="flex items-center gap-2">
+                <h2 id="craftTitle" class="text-base font-bold text-gray-100">Peerless Masonry Station</h2>
+                <span class="text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                  In Progress
+                </span>
+              </div>
+              <p id="craftLocation" class="text-xs text-gray-400 mt-0.5">La Reunion (Solmere) • Recipe #489054866</p>
+            </div>
+          </div>
+
+          <div class="text-right">
+            <div class="text-xs text-gray-400 mb-1">Required Tool</div>
+            <span id="toolBadge" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border bg-emerald-950/70 border-emerald-800/60 text-emerald-300 font-mono">
+              ✓ Chisel (T4+ Equipped)
+            </span>
+          </div>
+        </div>
+
+        <!-- Crafted Item Detail Banner -->
+        <div class="bg-surface-subtle/70 rounded-lg p-4 border border-surface-border flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div class="flex items-center gap-3">
+            <div class="w-12 h-12 rounded-xl bg-surface-border/50 border border-surface-border flex items-center justify-center text-xl shadow-inner">
+              🧱
+            </div>
+            <div>
+              <div class="flex items-center gap-2">
+                <span id="itemName" class="text-base font-bold text-gray-100">Unfired Rough Brick</span>
+                <span id="itemRarity" class="text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full bg-gray-800 text-gray-300 border border-gray-700">
+                  Common
+                </span>
+              </div>
+              <div class="text-xs text-gray-400 mt-0.5 flex items-center gap-2 font-mono">
+                <span id="itemTier">Tier 1</span>
+                <span>•</span>
+                <span id="itemSkillReq" class="text-emerald-400 font-medium">Masonry Level 1 Req</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="sm:text-right font-mono text-xs text-gray-400">
+            <div>Items Finished: <strong id="itemsFinishedText" class="text-gray-200">1,236</strong> / <span id="itemsTotalText">11,873</span></div>
+            <div>Remaining: <strong id="itemsRemainingText" class="text-amber-400">10,637</strong> items left</div>
+          </div>
+        </div>
+
+        <!-- Progress Bar -->
+        <div class="space-y-2">
+          <div class="flex items-center justify-between text-xs font-mono">
+            <span class="font-semibold text-gray-300 flex items-center gap-1.5">
+              <span>Overall Effort Progress</span>
+              <span id="progressPctText" class="text-emerald-400 font-bold">10.4%</span>
+            </span>
+            <span class="text-gray-400">
+              <strong id="effortCompletedText" class="text-gray-200">123,616</strong> / <span id="effortTotalText">1,187,300</span> effort points
+            </span>
+          </div>
+
+          <div class="w-full bg-surface-subtle rounded-full h-3.5 overflow-hidden border border-surface-border p-0.5">
+            <div id="progressBar" class="bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-400 h-full rounded-full transition-all duration-500" style="width: 10.4%"></div>
+          </div>
+        </div>
+
+        <!-- Effort per click calibration bar -->
+        <div class="bg-surface-subtle/50 rounded-lg p-3 border border-surface-border/60 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div class="flex items-center gap-2">
+            <span class="text-gray-300">
+              Progress per Action (Effort/Click): 
+              <input type="number" id="progressPerActionInput" value="32" step="1" min="1" class="w-16 bg-surface border border-surface-border text-emerald-400 rounded px-2 py-0.5 text-xs text-center font-mono font-bold ml-1">
+            </span>
+            <span class="text-[10px] px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-700/60 font-sans">
+              Measured
+            </span>
+          </div>
+
+          <div class="text-gray-300 font-mono">
+            ~<strong id="actionsRemainingText" class="text-gray-100">33,542</strong> clicks / actions remaining
+          </div>
+        </div>
+      </div>
+
+      <!-- Stat Projection Cards -->
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <!-- Total XP -->
+        <div class="bg-surface rounded-xl p-4 border border-surface-border shadow-md">
+          <div class="text-xs text-gray-400 mb-1">Total Craft XP</div>
+          <div id="totalXpText" class="text-xl font-bold text-gray-100 font-mono">2,263,344</div>
+          <div id="baseXpSubtext" class="text-[11px] text-emerald-400 mt-1 font-mono">1.60 Base XP (1.19x bonus)</div>
+        </div>
+
+        <!-- XP Left -->
+        <div class="bg-surface rounded-xl p-4 border border-surface-border shadow-md">
+          <div class="text-xs text-gray-400 mb-1">XP Left to Gain</div>
+          <div id="remainingXpText" class="text-xl font-bold text-amber-400 font-mono">2,027,624</div>
+          <div id="remainingEffortSubtext" class="text-[11px] text-gray-400 mt-1 font-mono">1,063,684 effort left</div>
+        </div>
+
+        <!-- XP Earned -->
+        <div class="bg-surface rounded-xl p-4 border border-surface-border shadow-md">
+          <div class="text-xs text-gray-400 mb-1">XP Already Earned</div>
+          <div id="earnedXpText" class="text-xl font-bold text-indigo-300 font-mono">235,720</div>
+          <div id="earnedEffortSubtext" class="text-[11px] text-gray-400 mt-1 font-mono">123,616 effort done</div>
+        </div>
+
+        <!-- Time Remaining -->
+        <div class="bg-surface rounded-xl p-4 border border-surface-border shadow-md">
+          <div class="text-xs text-gray-400 mb-1">Time Remaining (In-Game)</div>
+          <div id="etaTimeText" class="text-xl font-bold text-teal-300 font-mono">13h 45m</div>
+          <div id="etaSubtext" class="text-[11px] text-gray-400 mt-1 font-mono">1.48s / action • +8.4% speed</div>
+        </div>
+      </div>
+
+      <!-- Modifiers & Buffs Panel -->
+      <div class="bg-surface rounded-xl border border-surface-border p-5 shadow-xl space-y-3">
+        <div class="flex items-center justify-between border-b border-surface-border pb-3">
+          <h3 class="text-base font-bold text-gray-100 flex items-center gap-2">
+            <span>⚡ Modifiers & Buffs</span>
+          </h3>
+          <div class="text-xs font-mono px-2.5 py-1 rounded bg-emerald-950 text-emerald-300 border border-emerald-800">
+            Net Speed: +8.4% (1.48s/action)
+          </div>
+        </div>
+
+        <div id="modifiersList" class="grid grid-cols-1 md:grid-cols-2 gap-2.5 text-xs">
+          <!-- Active Food Debuff -->
+          <div class="p-3 rounded-lg border bg-red-950/30 border-red-800/60 text-red-200 flex items-start justify-between">
+            <div>
+              <div class="font-semibold text-gray-100">🍲 High Quality EXP Pie</div>
+              <div class="text-gray-400 text-[11px]">Food Buff</div>
+              <div class="flex gap-2 pt-1 font-mono text-[11px]">
+                <span class="text-red-400 font-semibold">Crafting Speed: -20.0% Penalty</span>
+                <span class="text-emerald-400 font-semibold">XP Rate: +10.0%</span>
+              </div>
+            </div>
+            <span class="text-[10px] px-1.5 py-0.5 rounded bg-red-900 text-red-300 border border-red-700 font-mono">
+              Penalty
+            </span>
+          </div>
+
+          <!-- Equipment -->
+          <div class="p-3 rounded-lg border bg-surface-subtle border-surface-border text-gray-200 flex items-start justify-between">
+            <div>
+              <div class="font-semibold text-gray-100">🛡️ Peerless Woven Set & Ring</div>
+              <div class="text-gray-400 text-[11px]">7 Equipped Speed Items</div>
+              <div class="flex gap-2 pt-1 font-mono text-[11px]">
+                <span class="text-emerald-400 font-semibold">Crafting Speed: +28.4%</span>
+                <span class="text-indigo-400 font-semibold">XP Rate: +8.0% (Book)</span>
+              </div>
+            </div>
+            <span class="text-[10px] px-1.5 py-0.5 rounded bg-surface border border-surface-border text-gray-400 font-mono">
+              T6 Gear
+            </span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <script>
+    // BitCraft XP Level Formula
+    function calculateXpForLevel(lvl) {
+      if (lvl <= 1) return 0;
+      const base = [0, 500, 1168, 1850, 2657, 3339, 4781, 5342, 7185, 8500];
+      if (lvl <= 10) return base[lvl - 1];
+      return Math.round(4385 * Math.pow(1.1161232, lvl - 1));
+    }
+
+    function formatTime(secs) {
+      if (!secs || secs <= 0) return '0s';
+      const h = Math.floor(secs / 3600);
+      const m = Math.floor((secs % 3600) / 60);
+      const s = secs % 60;
+      if (h > 0) return `${h}h ${m}m`;
+      if (m > 0) return `${m}m ${s}s`;
+      return `${s}s`;
+    }
+
+    // State
+    let currentCraft = {
+      progress: 123616,
+      totalProgress: 1187300,
+      craftCount: 11873,
+      perItem: 100,
+      progressPerAction: 32,
+      baseXp: 1.60,
+      xpMultiplier: 1.191434,
+      speedMultiplier: 1.084,
+      baseActionDuration: 1.6
+    };
+
+    function updateDashboard() {
+      const p = currentCraft.progress;
+      const t = currentCraft.totalProgress;
+      const remProgress = Math.max(0, t - p);
+      const ppa = parseFloat(document.getElementById('progressPerActionInput').value) || 32;
+      const remActions = Math.ceil(remProgress / ppa);
+
+      const itemsFinished = Math.floor(p / currentCraft.perItem);
+      const itemsRem = Math.max(0, currentCraft.craftCount - itemsFinished);
+      const pct = (p / t) * 100;
+
+      const totalXp = Math.round(t * currentCraft.baseXp * currentCraft.xpMultiplier);
+      const earnedXp = Math.round(p * currentCraft.baseXp * currentCraft.xpMultiplier);
+      const remainingXp = Math.max(0, totalXp - earnedXp);
+
+      const secondsPerAction = currentCraft.baseActionDuration / currentCraft.speedMultiplier;
+      const totalSecondsRemaining = Math.round(remActions * secondsPerAction);
+
+      document.getElementById('itemsFinishedText').innerText = itemsFinished.toLocaleString();
+      document.getElementById('itemsTotalText').innerText = currentCraft.craftCount.toLocaleString();
+      document.getElementById('itemsRemainingText').innerText = itemsRem.toLocaleString();
+      document.getElementById('progressPctText').innerText = pct.toFixed(1) + '%';
+      document.getElementById('effortCompletedText').innerText = p.toLocaleString();
+      document.getElementById('effortTotalText').innerText = t.toLocaleString();
+      document.getElementById('progressBar').style.width = pct + '%';
+      document.getElementById('actionsRemainingText').innerText = remActions.toLocaleString();
+
+      document.getElementById('totalXpText').innerText = totalXp.toLocaleString();
+      document.getElementById('remainingXpText').innerText = remainingXp.toLocaleString();
+      document.getElementById('remainingEffortSubtext').innerText = remProgress.toLocaleString() + ' effort left';
+      document.getElementById('earnedXpText').innerText = earnedXp.toLocaleString();
+      document.getElementById('earnedEffortSubtext').innerText = p.toLocaleString() + ' effort done';
+      document.getElementById('etaTimeText').innerText = formatTime(totalSecondsRemaining);
+      document.getElementById('etaSubtext').innerText = `${secondsPerAction.toFixed(2)}s / action • +8.4% speed`;
+    }
+
+    document.getElementById('progressPerActionInput').addEventListener('input', updateDashboard);
+
+    // Preset handlers
+    document.getElementById('presetIkuriaBtn').addEventListener('click', () => {
+      currentCraft = {
+        progress: 123616,
+        totalProgress: 1187300,
+        craftCount: 11873,
+        perItem: 100,
+        progressPerAction: 32,
+        baseXp: 1.60,
+        xpMultiplier: 1.191434,
+        speedMultiplier: 1.084,
+        baseActionDuration: 1.6
+      };
+      document.getElementById('progressPerActionInput').value = 32;
+      document.getElementById('craftTitle').innerText = 'Peerless Masonry Station';
+      document.getElementById('itemName').innerText = 'Unfired Rough Brick';
+      document.getElementById('toolBadge').innerText = '✓ Chisel (T4+ Equipped)';
+      updateDashboard();
+    });
+
+    document.getElementById('presetDoomBtn').addEventListener('click', () => {
+      currentCraft = {
+        progress: 2001951,
+        totalProgress: 4476000,
+        craftCount: 44760,
+        perItem: 100,
+        progressPerAction: 35,
+        baseXp: 2.56,
+        xpMultiplier: 1.15,
+        speedMultiplier: 1.25,
+        baseActionDuration: 1.6
+      };
+      document.getElementById('progressPerActionInput').value = 35;
+      document.getElementById('craftTitle').innerText = 'Ornate Smithing Station';
+      document.getElementById('itemName').innerText = 'Astralite Ingot';
+      document.getElementById('toolBadge').innerText = '✓ Smithing Hammer (T7 Equipped)';
+      updateDashboard();
+    });
+
+    // Network Mode Switcher
+    document.getElementById('networkModeSelect').addEventListener('change', (e) => {
+      const mode = e.target.value;
+      const proxyBar = document.getElementById('customProxyBar');
+      if (mode === 'custom') {
+        proxyBar.classList.remove('hidden');
+      } else {
+        proxyBar.classList.add('hidden');
+      }
+    });
+
+    // Live Fetch Handler
+    document.getElementById('searchPlayerBtn').addEventListener('click', async () => {
+      const player = document.getElementById('playerSearchInput').value.trim();
+      const status = document.getElementById('statusMessage');
+      status.classList.remove('hidden');
+      status.innerText = `Fetching live data for ${player}...`;
+
+      try {
+        const mode = document.getElementById('networkModeSelect').value;
+        let prefix = 'https://bitjita.com/api';
+        if (mode === 'custom') {
+          prefix = document.getElementById('customProxyInput').value.trim();
+        }
+
+        const res = await fetch(`${prefix}/players?q=${encodeURIComponent(player)}`);
+        const data = await res.json();
+        if (data.players && data.players.length > 0) {
+          status.innerText = `Found ${data.players[0].username} (ID: ${data.players[0].entityId}). Loaded successfully!`;
+        } else {
+          status.innerText = `Player ${player} not found.`;
+        }
+      } catch (err) {
+        status.innerText = `Direct browser fetch blocked by CORS. Use Browser Extension or Preset mode.`;
+      }
+    });
+
+    // Initial render
+    updateDashboard();
+  </script>
+</body>
+</html>

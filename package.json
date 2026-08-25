@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:extension": "vite build --outDir client-side-only/browser-extension/dist --base ./ && cp client-side-only/browser-extension/manifest.json client-side-only/browser-extension/icon.png client-side-only/browser-extension/dist/",
     "preview": "vite preview",
     "test": "vitest",
     "test:run": "vitest run"

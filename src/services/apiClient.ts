@@ -135,7 +135,15 @@ class PoliteApiClient {
     }
 
     const requestPromise = this.enqueue(async () => {
-      const url = endpoint.startsWith('http') ? endpoint : `/api${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
+      const isExtension =
+        typeof window !== 'undefined' &&
+        ((typeof chrome !== 'undefined' && chrome.runtime && Boolean(chrome.runtime.id)) ||
+          window.location.protocol === 'chrome-extension:' ||
+          window.location.protocol === 'moz-extension:');
+
+      const apiBase = isExtension ? 'https://bitjita.com/api' : '/api';
+      const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+      const url = endpoint.startsWith('http') ? endpoint : `${apiBase}${cleanEndpoint}`;
       
       const response = await fetch(url, {
         headers: {
