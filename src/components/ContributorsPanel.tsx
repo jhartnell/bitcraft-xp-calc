@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Users,
   Zap,
@@ -32,6 +32,11 @@ export const ContributorsPanel: React.FC<ContributorsPanelProps> = ({
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(isInitiallyCollapsed);
 
+  // Sync default collapse state when switching crafts or helpers count changes
+  useEffect(() => {
+    setIsCollapsed(isInitiallyCollapsed);
+  }, [isInitiallyCollapsed]);
+
   const {
     participants,
     activeParticipantsCount,
@@ -46,7 +51,7 @@ export const ContributorsPanel: React.FC<ContributorsPanelProps> = ({
 
   const isMultiplayerActive = activeParticipantsCount > 1;
 
-  // Collapsed compact pill view
+  // Collapsed compact pill view (Consistent across solo and multiplayer)
   if (isCollapsed) {
     return (
       <div className="bg-surface rounded-xl border border-surface-border p-3.5 shadow-md flex flex-wrap items-center justify-between gap-3 text-xs">
@@ -55,10 +60,16 @@ export const ContributorsPanel: React.FC<ContributorsPanelProps> = ({
             <Users className="w-4 h-4" />
           </div>
           <div>
-            <span className="font-semibold text-gray-200">Shared Craft Contributors:</span>{' '}
-            <span className="text-gray-400">
-              {activeParticipantsCount} Active / {totalContributorsCount} Total
-            </span>
+            <span className="font-semibold text-gray-200">Craft Contributors:</span>{' '}
+            {isMultiplayerActive ? (
+              <span className="text-gray-400">
+                {activeParticipantsCount} Active / {totalContributorsCount} Total
+              </span>
+            ) : (
+              <span className="text-gray-400">
+                1 Active (Solo Craft)
+              </span>
+            )}
             {isMultiplayerActive && secondsSaved > 0 && (
               <span className="text-emerald-400 font-mono ml-2">
                 • Collaborative ETA: <strong>{projection.collaborativeEtaCompletionTime}</strong> ({formatTimeSeconds(projection.collaborativeEstimatedSecondsRemaining)})
@@ -69,7 +80,7 @@ export const ContributorsPanel: React.FC<ContributorsPanelProps> = ({
 
         <button
           onClick={() => setIsCollapsed(false)}
-          className="flex items-center gap-1.5 bg-surface-subtle hover:bg-surface-border border border-surface-border text-gray-300 hover:text-white px-3 py-1 rounded-lg transition-colors font-medium"
+          className="flex items-center gap-1.5 bg-surface-subtle hover:bg-surface-border border border-surface-border text-gray-300 hover:text-white px-3 py-1 rounded-lg transition-colors font-medium cursor-pointer"
         >
           <Eye className="w-3.5 h-3.5 text-emerald-400" />
           <span>Show Details</span>
@@ -90,14 +101,18 @@ export const ContributorsPanel: React.FC<ContributorsPanelProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <h3 className="text-base font-bold text-gray-100">
-                Shared Craft Contributors & Collaborative Projections
+                Craft Contributors & Projections
               </h3>
               <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                {activeParticipantsCount} Active / {totalContributorsCount} Total
+                {isMultiplayerActive
+                  ? `${activeParticipantsCount} Active / ${totalContributorsCount} Total`
+                  : 'Solo Craft'}
               </span>
             </div>
             <p className="text-xs text-gray-400">
-              Real-time multi-crafter speed compounding and individual expected XP shares
+              {isMultiplayerActive
+                ? 'Real-time multi-crafter speed compounding and individual expected XP shares'
+                : 'Individual effort rate, gear speed bonuses, and projected craft milestones'}
             </p>
           </div>
         </div>
@@ -105,7 +120,7 @@ export const ContributorsPanel: React.FC<ContributorsPanelProps> = ({
         {/* Header Controls: Inactivity Selector, Time Saved Pill, Collapse Toggle */}
         <div className="flex flex-wrap items-center gap-2 text-xs">
           {/* Timeout Selector */}
-          {onInactivityTimeoutChange && (
+          {onInactivityTimeoutChange && isMultiplayerActive && (
             <div className="flex items-center gap-1.5 bg-surface-subtle border border-surface-border px-2.5 py-1 rounded-lg text-gray-300">
               <Timer className="w-3.5 h-3.5 text-indigo-400" />
               <span className="text-[11px] text-gray-400">Timeout:</span>
@@ -138,8 +153,8 @@ export const ContributorsPanel: React.FC<ContributorsPanelProps> = ({
           {/* Collapse Button */}
           <button
             onClick={() => setIsCollapsed(true)}
-            className="flex items-center gap-1 text-gray-400 hover:text-gray-200 bg-surface-subtle border border-surface-border px-2.5 py-1 rounded-lg transition-colors"
-            title="Collapse shared craft section"
+            className="flex items-center gap-1 text-gray-400 hover:text-gray-200 bg-surface-subtle border border-surface-border px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
+            title="Collapse contributors section"
           >
             <EyeOff className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Hide</span>
@@ -151,28 +166,42 @@ export const ContributorsPanel: React.FC<ContributorsPanelProps> = ({
       {/* Collaborative Summary Stat Bar */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs font-mono">
         <div className="bg-surface-subtle p-3 rounded-lg border border-surface-border">
-          <div className="text-gray-400 text-[11px] mb-0.5">Combined Effort Rate</div>
+          <div className="text-gray-400 text-[11px] mb-0.5">
+            {isMultiplayerActive ? 'Combined Effort Rate' : 'Player Effort Rate'}
+          </div>
           <div className="text-base font-bold text-emerald-400">
             {projection.combinedEffortPerSecond.toFixed(1)} effort / sec
           </div>
           <div className="text-[10px] text-gray-500 font-sans mt-0.5">
-            Across {activeParticipantsCount} active crafting participants
+            {isMultiplayerActive
+              ? `Across ${activeParticipantsCount} active crafting participants`
+              : 'Solo crafting pace'}
           </div>
         </div>
 
         <div className="bg-surface-subtle p-3 rounded-lg border border-surface-border">
-          <div className="text-gray-400 text-[11px] mb-0.5">Solo vs Collaborative Time</div>
+          <div className="text-gray-400 text-[11px] mb-0.5">
+            {isMultiplayerActive ? 'Solo vs Collaborative Time' : 'Estimated Time Remaining'}
+          </div>
           <div className="text-base font-bold text-gray-200 flex items-center gap-1.5">
-            <span className="text-gray-400 line-through text-xs">
-              {formatTimeSeconds(projection.soloEstimatedSecondsRemaining)}
-            </span>
-            <ArrowRight className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="text-emerald-300 font-bold">
-              {formatTimeSeconds(projection.collaborativeEstimatedSecondsRemaining)}
-            </span>
+            {isMultiplayerActive ? (
+              <>
+                <span className="text-gray-400 line-through text-xs">
+                  {formatTimeSeconds(projection.soloEstimatedSecondsRemaining)}
+                </span>
+                <ArrowRight className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="text-emerald-300 font-bold">
+                  {formatTimeSeconds(projection.collaborativeEstimatedSecondsRemaining)}
+                </span>
+              </>
+            ) : (
+              <span className="text-emerald-300 font-bold">
+                {formatTimeSeconds(projection.soloEstimatedSecondsRemaining)}
+              </span>
+            )}
           </div>
           <div className="text-[10px] text-gray-400 font-sans mt-0.5">
-            {isMultiplayerActive ? 'Accelerated completion' : 'Only 1 active crafter'}
+            {isMultiplayerActive ? 'Accelerated with helpers' : 'Standard in-game duration'}
           </div>
         </div>
 
@@ -182,7 +211,7 @@ export const ContributorsPanel: React.FC<ContributorsPanelProps> = ({
             {secondsSaved > 0 ? formatTimeSeconds(secondsSaved) : '0s (Solo)'}
           </div>
           <div className="text-[10px] text-gray-400 font-sans mt-0.5">
-            Toggle crafters below to simulate rates
+            {isMultiplayerActive ? 'Combined output boost' : 'Waiting for helpers to join'}
           </div>
         </div>
       </div>
@@ -192,7 +221,9 @@ export const ContributorsPanel: React.FC<ContributorsPanelProps> = ({
         <div className="text-xs font-semibold text-gray-300 flex items-center justify-between">
           <span>Active & Historical Crafters ({participants.length})</span>
           <span className="text-[11px] text-gray-500 font-normal">
-            Auto-drops after {inactivityTimeoutMinutes}m of inactivity • Check/uncheck to override
+            {isMultiplayerActive
+              ? `Auto-drops after ${inactivityTimeoutMinutes}m of inactivity • Check/uncheck to override`
+              : 'Currently solo on this craft'}
           </span>
         </div>
 
