@@ -23,10 +23,19 @@ import { Hammer, Globe, AlertCircle, Info } from 'lucide-react';
 
 const RECENT_PLAYERS_KEY = 'bitcraft_xp_recent_players';
 const REFRESH_INTERVAL_KEY = 'bitcraft_xp_refresh_interval';
+const PRIMARY_PLAYER_KEY = 'bitcraft_primary_player';
 
 export const App: React.FC = () => {
   // State
   const [selectedPlayer, setSelectedPlayer] = useState<PlayerSummary | null>(null);
+  const [primaryPlayer, setPrimaryPlayer] = useState<PlayerSummary | null>(() => {
+    try {
+      const saved = localStorage.getItem(PRIMARY_PLAYER_KEY);
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
   const [playerDetails, setPlayerDetails] = useState<PlayerDetails | null>(null);
   const [crafts, setCrafts] = useState<CraftResult[]>([]);
   const [selectedCraftIndex, setSelectedCraftIndex] = useState(0);
@@ -36,6 +45,44 @@ export const App: React.FC = () => {
   const [itemMetadataMap, setItemMetadataMap] = useState<Map<number, ItemMetadata>>(new Map());
   const [contributions, setContributions] = useState<import('./types/api').CraftContribution[]>([]);
   const [customProgressPerAction, setCustomProgressPerAction] = useState<number | null>(null);
+
+  // Load primary player from chrome.storage.local on extension startup
+  useEffect(() => {
+    if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+      chrome.storage.local.get(['primaryPlayer'], (res: Record<string, any>) => {
+        if (res.primaryPlayer && res.primaryPlayer.entityId) {
+          const loaded = res.primaryPlayer as PlayerSummary;
+          setPrimaryPlayer(loaded);
+          if (!selectedPlayer) {
+            handleSelectPlayer(loaded);
+          }
+        }
+      });
+    } else if (primaryPlayer && !selectedPlayer) {
+      handleSelectPlayer(primaryPlayer);
+    }
+  }, []);
+
+  // Toggle primary player pinning
+  const togglePrimaryPlayer = (player: PlayerSummary) => {
+    const isCurrentlyPrimary = primaryPlayer?.entityId === player.entityId;
+    const newPrimary = isCurrentlyPrimary ? null : player;
+
+    setPrimaryPlayer(newPrimary);
+
+    if (newPrimary) {
+      localStorage.setItem(PRIMARY_PLAYER_KEY, JSON.stringify(newPrimary));
+    } else {
+      localStorage.removeItem(PRIMARY_PLAYER_KEY);
+    }
+
+    if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+      chrome.runtime.sendMessage({
+        type: 'SYNC_PRIMARY_PLAYER',
+        player: newPrimary,
+      });
+    }
+  };
 
   // Recent Players Storage
   const [recentPlayers, setRecentPlayers] = useState<PlayerSummary[]>(() => {
@@ -253,6 +300,8 @@ export const App: React.FC = () => {
             recentPlayers={recentPlayers}
             onRemoveRecent={removeRecentPlayer}
             isLoading={isLoading}
+            primaryPlayer={primaryPlayer}
+            onTogglePrimary={togglePrimaryPlayer}
           />
 
           {selectedPlayer && (
