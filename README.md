@@ -79,7 +79,7 @@ A high-performance, real-time web application to track active crafting progress,
 ### Installation
 ```bash
 # Clone repository
-git clone https://github.com/skippy/bitcraft-xp-calc.git
+git clone https://github.com/jhartnell/bitcraft-xp-calc.git
 cd bitcraft-xp-calc
 
 # Install dependencies
@@ -114,7 +114,7 @@ $$\text{Physical Actions Remaining} = \left\lceil \frac{\text{Remaining Effort}}
 
 ### 2. Action Timing & Speed Modifiers
 $$\text{Speed Multiplier } (M) = 1.0 + \sum \text{Equipment Bonuses} + \sum \text{Food Buffs / Debuffs}$$
-$$\text{Action Duration (Seconds)} = \frac{1.4\text{s}}{M}$$
+$$\text{Action Duration (Seconds)} = \frac{1.6\text{s}}{M}$$
 $$\text{Estimated Time Remaining} = \text{Physical Actions Remaining} \times \text{Action Duration}$$
 
 ### 3. Total XP & Progress
