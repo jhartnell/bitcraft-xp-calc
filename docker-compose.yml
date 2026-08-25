@@ -1,0 +1,11 @@
+services:
+  bitcraft-xp-calc:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bitcraft-xp-calc
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    environment:
+      - NODE_ENV=production

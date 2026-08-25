@@ -103,6 +103,17 @@ npm run build
 npm run preview
 ```
 
+### Docker Deployment (Containerized with Reverse Proxy)
+```bash
+# Build and run with Docker Compose
+docker compose up -d
+
+# Or build and run with Docker directly
+docker build -t bitcraft-xp-calc:latest .
+docker run -d -p 8080:80 --name bitcraft-xp-calc bitcraft-xp-calc:latest
+```
+Open [http://localhost:8080](http://localhost:8080) in your browser.
+
 ### Browser Extension Build (Zero-Hosting Client Distribution)
 ```bash
 npm run build:extension
