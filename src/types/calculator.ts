@@ -40,11 +40,12 @@ export interface ParticipantContributionSummary {
   entityId: string;
   username: string;
   isOnline: boolean;
-  isActive: boolean; // active recency <= 5 mins
-  isCurrentlyCrafting: boolean; // recency <= 2 mins or delta > 0
-  isIncludedInProjection: boolean; // user toggle
+  isActive: boolean; // active recency <= inactivityTimeoutMinutes
+  isCurrentlyCrafting: boolean; // recency <= 1 min
+  isIncludedInProjection: boolean; // user toggle or dynamic isActive
   lastContributedAt?: string;
   minutesSinceLastContribution: number;
+  secondsUntilInactive: number;
   totalProgressContributed: number;
   contributionCount: number;
   progressPerAction: number;
@@ -65,6 +66,7 @@ export interface ParticipantContributionSummary {
 export interface MultiUserCraftProjection {
   activeParticipantsCount: number;
   totalContributorsCount: number;
+  inactivityTimeoutMinutes: number;
   soloEstimatedSecondsRemaining: number;
   collaborativeEstimatedSecondsRemaining: number;
   secondsSaved: number;

@@ -25,6 +25,7 @@ import { Hammer, Globe, AlertCircle, Info } from 'lucide-react';
 const RECENT_PLAYERS_KEY = 'bitcraft_xp_recent_players';
 const REFRESH_INTERVAL_KEY = 'bitcraft_xp_refresh_interval';
 const PRIMARY_PLAYER_KEY = 'bitcraft_primary_player';
+const INACTIVITY_TIMEOUT_KEY = 'bitcraft_inactivity_timeout';
 
 export const App: React.FC = () => {
   // State
@@ -35,6 +36,14 @@ export const App: React.FC = () => {
       return saved ? JSON.parse(saved) : null;
     } catch {
       return null;
+    }
+  });
+  const [inactivityTimeout, setInactivityTimeout] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem(INACTIVITY_TIMEOUT_KEY);
+      return saved !== null ? Number(saved) : 2.0;
+    } catch {
+      return 2.0;
     }
   });
   const [playerDetails, setPlayerDetails] = useState<PlayerDetails | null>(null);
@@ -236,7 +245,7 @@ export const App: React.FC = () => {
       if (cb.contributorEntityId === primaryId) {
         payloads.push({
           contribution: cb,
-          isIncluded: includedContributors[cb.contributorEntityId] ?? true,
+          isIncluded: includedContributors[cb.contributorEntityId],
         });
       } else {
         try {
@@ -265,30 +274,24 @@ export const App: React.FC = () => {
     setContributorPayloads(payloads);
   };
 
+  const handleInactivityTimeoutChange = (minutes: number) => {
+    setInactivityTimeout(minutes);
+    try {
+      localStorage.setItem(INACTIVITY_TIMEOUT_KEY, String(minutes));
+    } catch {
+      // ignore
+    }
+  };
+
   // Player Selection Handler
   const handleSelectPlayer = async (player: PlayerSummary) => {
-    let targetPlayer = player;
-    if (!targetPlayer.entityId) {
-      try {
-        setIsLoading(true);
-        const searchRes = await bitjitaApi.searchPlayers(player.username);
-        const found = searchRes.players.find(
-          (p) => p.username.toLowerCase() === player.username.toLowerCase()
-        ) || searchRes.players[0];
-        if (found) {
-          targetPlayer = found;
-        }
-      } catch (err) {
-        console.error('Failed to resolve demo player:', err);
-      } finally {
-        setIsLoading(false);
-      }
-    }
+    setSelectedPlayer(player);
+    setSelectedCraftIndex(0);
+    setCustomProgressPerAction(null);
+    setIncludedContributors({});
 
-    if (targetPlayer.entityId) {
-      setSelectedPlayer(targetPlayer);
-      setSelectedCraftIndex(0);
-      loadPlayerData(targetPlayer, false);
+    if (player && player.entityId) {
+      loadPlayerData(player, false);
     }
   };
 
@@ -334,7 +337,8 @@ export const App: React.FC = () => {
             : contributions.map((cb) => ({
                 contribution: cb,
                 isIncluded: includedContributors[cb.contributorEntityId],
-              }))
+              })),
+          inactivityTimeout
         )
       : null;
 
@@ -449,6 +453,7 @@ export const App: React.FC = () => {
                     projection={multiUserProjection}
                     primaryEntityId={playerDetails?.entityId}
                     onToggleParticipant={handleToggleParticipant}
+                    onInactivityTimeoutChange={handleInactivityTimeoutChange}
                   />
                 )}
 

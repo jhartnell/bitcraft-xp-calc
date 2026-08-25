@@ -396,10 +396,13 @@ export function calculateMultiUserCraftProjection(
     }
 
     // Determine activity status
-    const isActive = minutesSinceLast <= activeWindowMinutes || isPrimary;
-    const isCurrentlyCrafting = minutesSinceLast <= 2.0;
+    const isActive = isPrimary ? true : minutesSinceLast <= activeWindowMinutes;
+    const isCurrentlyCrafting = isPrimary ? true : minutesSinceLast <= 1.0;
+    const secondsUntilInactive = isActive && !isPrimary
+      ? Math.max(0, Math.round(activeWindowMinutes * 60 - minutesSinceLast * 60))
+      : 0;
 
-    // Inclusion toggle
+    // Inclusion toggle: manual user override if set, otherwise follow dynamic activity
     const isIncludedInProjection =
       payload.isIncluded !== undefined ? payload.isIncluded : isActive;
 
@@ -490,6 +493,7 @@ export function calculateMultiUserCraftProjection(
       isIncludedInProjection,
       lastContributedAt: cb.lastContributedAt,
       minutesSinceLastContribution: minutesSinceLast,
+      secondsUntilInactive,
       totalProgressContributed: cb.totalProgressContributed,
       contributionCount: cb.contributionCount,
       progressPerAction: ppa,
@@ -558,6 +562,7 @@ export function calculateMultiUserCraftProjection(
   return {
     activeParticipantsCount: includedParticipants.length,
     totalContributorsCount: participants.length,
+    inactivityTimeoutMinutes: activeWindowMinutes,
     soloEstimatedSecondsRemaining,
     collaborativeEstimatedSecondsRemaining,
     secondsSaved,
