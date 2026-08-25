@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sparkles, Database, Activity, ShieldCheck, RefreshCw } from 'lucide-react';
+import { Sparkles, Database, Activity, ShieldCheck, RefreshCw, ExternalLink } from 'lucide-react';
 import { ApiClientStatus } from '../types/calculator';
 
 interface HeaderProps {
@@ -8,6 +8,14 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({ apiStatus, onClearCache }) => {
+  const handleOpenInNewTab = () => {
+    if (typeof chrome !== 'undefined' && chrome.tabs && chrome.runtime?.getURL) {
+      chrome.tabs.create({ url: chrome.runtime.getURL('index.html') });
+    } else {
+      window.open(window.location.href, '_blank');
+    }
+  };
+
   return (
     <header className="border-b border-surface-border bg-surface/80 backdrop-blur-md sticky top-0 z-30 px-4 py-3 sm:px-6">
       <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
@@ -31,8 +39,8 @@ export const Header: React.FC<HeaderProps> = ({ apiStatus, onClearCache }) => {
           </div>
         </div>
 
-        {/* API Health & Polite Cache Status */}
-        <div className="flex items-center gap-3 bg-surface-subtle/80 px-3 py-1.5 rounded-lg border border-surface-border text-xs">
+        {/* API Health, Cache Status & Tab Expansion */}
+        <div className="flex items-center gap-2 sm:gap-3 bg-surface-subtle/80 px-3 py-1.5 rounded-lg border border-surface-border text-xs">
           {/* Caching Status */}
           <div className="flex items-center gap-1.5 text-gray-300">
             <Database className="w-3.5 h-3.5 text-indigo-400" />
@@ -57,14 +65,27 @@ export const Header: React.FC<HeaderProps> = ({ apiStatus, onClearCache }) => {
             <span className="hidden sm:inline">Rate Protected</span>
           </div>
 
-          {/* Clear Cache Button */}
-          <button
-            onClick={onClearCache}
-            title="Clear API Cache"
-            className="ml-1 text-gray-400 hover:text-gray-200 transition-colors p-1 rounded hover:bg-surface"
-          >
-            <RefreshCw className="w-3 h-3" />
-          </button>
+          <span className="text-gray-600">|</span>
+
+          {/* Action Buttons: Clear Cache & Expand to Full Tab */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={onClearCache}
+              title="Clear API Cache"
+              className="text-gray-400 hover:text-gray-200 transition-colors p-1 rounded hover:bg-surface"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+            </button>
+
+            <button
+              onClick={handleOpenInNewTab}
+              title="Open Calculator in New Tab"
+              className="text-emerald-400 hover:text-emerald-300 transition-colors p-1 rounded hover:bg-surface flex items-center gap-1"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              <span className="hidden md:inline text-[11px] font-medium">New Tab</span>
+            </button>
+          </div>
         </div>
       </div>
     </header>
