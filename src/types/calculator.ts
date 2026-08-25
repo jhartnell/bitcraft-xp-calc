@@ -17,7 +17,7 @@ export interface ToolStatusInfo {
 export interface ActiveBuffModifier {
   name: string;
   category: string;
-  craftingSpeedBonus: number; // e.g. +0.2 for +20%, -0.115 for -11.5%
+  craftingSpeedBonus: number; // e.g. +0.2 for +20%, -0.2 for -20%
   gatheringSpeedBonus: number;
   staminaRegenBonus: number;
   durationSeconds: number;
@@ -34,6 +34,44 @@ export interface EquipmentModifier {
   craftingSpeedBonus: number;
   gatheringSpeedBonus: number;
   staminaBonus: number;
+}
+
+export interface ParticipantContributionSummary {
+  entityId: string;
+  username: string;
+  isOnline: boolean;
+  isActive: boolean; // active recency <= 5 mins
+  isCurrentlyCrafting: boolean; // recency <= 2 mins or delta > 0
+  isIncludedInProjection: boolean; // user toggle
+  lastContributedAt?: string;
+  minutesSinceLastContribution: number;
+  totalProgressContributed: number;
+  contributionCount: number;
+  progressPerAction: number;
+  equippedToolName?: string;
+  equippedToolTier?: number;
+  craftingSpeedBonusPercent: number;
+  secondsPerAction: number;
+  effortPerSecond: number;
+  xpMultiplier: number;
+  earnedXp: number;
+  projectedRemainingEffort: number;
+  projectedRemainingXp: number;
+  totalExpectedXp: number;
+  projectedSharePercent: number;
+  activeBuffsSummary: string[];
+}
+
+export interface MultiUserCraftProjection {
+  activeParticipantsCount: number;
+  totalContributorsCount: number;
+  soloEstimatedSecondsRemaining: number;
+  collaborativeEstimatedSecondsRemaining: number;
+  secondsSaved: number;
+  soloEtaCompletionTime: string | null;
+  collaborativeEtaCompletionTime: string | null;
+  combinedEffortPerSecond: number;
+  participants: ParticipantContributionSummary[];
 }
 
 export interface XpCalculationResult {
@@ -84,6 +122,8 @@ export interface XpCalculationResult {
   toolStatus: ToolStatusInfo;
   activeBuffModifiers: ActiveBuffModifier[];
   equipmentModifiers: EquipmentModifier[];
+  
+  multiUserProjection?: MultiUserCraftProjection | null;
 }
 
 export interface ApiClientStatus {

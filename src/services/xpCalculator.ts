@@ -13,6 +13,8 @@ import {
   ToolStatusInfo,
   ActiveBuffModifier,
   EquipmentModifier,
+  ParticipantContributionSummary,
+  MultiUserCraftProjection,
 } from '../types/calculator';
 import {
   SKILL_DEFINITIONS,
@@ -23,6 +25,15 @@ import {
 
 // BitCraft Online base crafting station action tick duration is exactly 1.6 seconds
 export const BASE_ACTION_DURATION_SECONDS = 1.6;
+
+export interface ContributorDetailPayload {
+  contribution: CraftContribution;
+  playerDetails?: PlayerDetails | null;
+  equipment?: EquipmentSlot[];
+  buffs?: PlayerBuff[];
+  stats?: PlayerStatsData | null;
+  isIncluded?: boolean;
+}
 
 export function calculateCraftXp(
   craft: CraftResult,
@@ -50,7 +61,7 @@ export function calculateCraftXp(
     color: '#10b981',
   };
 
-  // 2. Base XP per progress unit (Checking recipe experiencePerProgress, fallback default, or custom override)
+  // 2. Base XP per progress unit
   let baseXpPerAction = DEFAULT_SKILL_BASE_XP[skillId] || 1.6;
   if (overrideBaseXp && overrideBaseXp > 0) {
     baseXpPerAction = overrideBaseXp;
@@ -59,7 +70,7 @@ export function calculateCraftXp(
     baseXpPerAction = matched ? matched.quantity : craft.experiencePerProgress[0].quantity;
   }
 
-  // 3. Progress and Items Breakdown (totalActionsRequired in API = Total Effort Points)
+  // 3. Progress and Items Breakdown
   const progressPerItem = craft.actionsRequiredPerItem || 1;
   const itemsTotal = craft.craftCount || 1;
   const totalProgressRequired = craft.totalActionsRequired || progressPerItem * itemsTotal;
@@ -192,7 +203,7 @@ export function calculateCraftXp(
     }
   }
 
-  // 7. Active Buff & Debuff Modifiers (Food buffs, rez sickness, potions, exp rate)
+  // 7. Active Buff & Debuff Modifiers
   const activeBuffModifiers: ActiveBuffModifier[] = [];
   let buffCraftingSpeedBonus = 0;
   let buffGatheringSpeedBonus = 0;
@@ -243,7 +254,7 @@ export function calculateCraftXp(
     });
   }
 
-  // 8. Total Crafting Speed Multiplier (Using Server Stat Index 15 if available)
+  // 8. Total Crafting Speed Multiplier
   let totalCraftingSpeedMultiplier: number;
 
   if (stats && stats.values && typeof stats.values[15] === 'number' && stats.values[15] > 0) {
@@ -255,11 +266,11 @@ export function calculateCraftXp(
 
   const craftingSpeedBonusPercent = Math.round((totalCraftingSpeedMultiplier - 1.0) * 100 * 10) / 10;
 
-  // In-Game action duration: 1.6s base divided by total crafting speed multiplier
+  // In-Game action duration
   const secondsPerAction = BASE_ACTION_DURATION_SECONDS / totalCraftingSpeedMultiplier;
   const effectiveActionsPerSecond = 1.0 / secondsPerAction;
 
-  // 9. XP Multiplier (from charms, instruments, and Experience Rate buffs/artifacts like EXP Pie / Librarian Book)
+  // 9. XP Multiplier
   let xpMultiplier = 1.0 + equipExpRateBonus + buffExpRateBonus;
   for (const slot of equipment) {
     if (slot.primary.includes('instrument') && slot.item) {
@@ -347,5 +358,212 @@ export function calculateCraftXp(
     toolStatus,
     activeBuffModifiers,
     equipmentModifiers,
+  };
+}
+
+// Multi-User Collaborative Crafting Projection Calculator
+export function calculateMultiUserCraftProjection(
+  _craft: CraftResult,
+  primaryPlayer: PlayerDetails | null,
+  primaryCalc: XpCalculationResult,
+  contributorPayloads: ContributorDetailPayload[],
+  activeWindowMinutes = 5.0
+): MultiUserCraftProjection {
+  const remainingEffort = primaryCalc.remainingProgress;
+  const now = Date.now();
+
+  const participants: ParticipantContributionSummary[] = [];
+
+  for (const payload of contributorPayloads) {
+    const cb = payload.contribution;
+    const isPrimary = Boolean(
+      primaryPlayer &&
+        (cb.contributorEntityId === primaryPlayer.entityId ||
+          cb.contributorUsername?.toLowerCase() === primaryPlayer.username.toLowerCase())
+    );
+
+    // Calculate recency
+    let minutesSinceLast = 999;
+    if (cb.lastContributedAt) {
+      try {
+        const lastTime = new Date(cb.lastContributedAt).getTime();
+        if (!isNaN(lastTime)) {
+          minutesSinceLast = Math.max(0, Math.round(((now - lastTime) / 60000) * 10) / 10);
+        }
+      } catch {
+        minutesSinceLast = 999;
+      }
+    }
+
+    // Determine activity status
+    const isActive = minutesSinceLast <= activeWindowMinutes || isPrimary;
+    const isCurrentlyCrafting = minutesSinceLast <= 2.0;
+
+    // Inclusion toggle
+    const isIncludedInProjection =
+      payload.isIncluded !== undefined ? payload.isIncluded : isActive;
+
+    // Progress per action
+    let ppa = 20;
+    if (cb.contributionCount > 0 && cb.totalProgressContributed > 0) {
+      ppa = Math.round((cb.totalProgressContributed / cb.contributionCount) * 10) / 10;
+    }
+
+    // Equipment, Buffs, and Speed calculation
+    let craftingSpeedBonusPercent = 0;
+    let secondsPerAction = primaryCalc.secondsPerAction;
+    let xpMultiplier = 1.0;
+    let equippedToolName = undefined;
+    let equippedToolTier = undefined;
+    const activeBuffsSummary: string[] = [];
+
+    if (isPrimary) {
+      craftingSpeedBonusPercent = primaryCalc.craftingSpeedBonusPercent;
+      secondsPerAction = primaryCalc.secondsPerAction;
+      xpMultiplier = primaryCalc.xpMultiplier;
+      equippedToolName = primaryCalc.toolStatus.equippedTool?.name;
+      equippedToolTier = primaryCalc.toolStatus.effectivePower;
+      for (const b of primaryCalc.activeBuffModifiers) {
+        if (b.craftingSpeedBonus !== 0) {
+          activeBuffsSummary.push(
+            `${b.name} (${b.craftingSpeedBonus > 0 ? '+' : ''}${(b.craftingSpeedBonus * 100).toFixed(0)}% Speed)`
+          );
+        }
+      }
+    } else if (payload.stats || payload.equipment || payload.buffs) {
+      // Calculate from contributor payload
+      let equipSpeed = 0;
+      let expRateBonus = 0;
+
+      if (payload.equipment) {
+        for (const eq of payload.equipment) {
+          if (eq.item) {
+            if (eq.item.tag?.toLowerCase().includes('tool') || eq.primary === 'main_hand') {
+              equippedToolName = eq.item.name;
+              equippedToolTier = eq.item.tier || 1;
+            }
+            if (eq.item.stats) {
+              for (const st of eq.item.stats) {
+                if (st.id === 15) equipSpeed += st.value;
+                if (st.id === 50) expRateBonus += st.value;
+              }
+            }
+          }
+        }
+      }
+
+      let buffSpeed = 0;
+      if (payload.buffs) {
+        for (const bf of payload.buffs) {
+          const isActiveBuff = bf.status === 'active' || (bf.timeRemaining && bf.timeRemaining > 0);
+          if (isActiveBuff && bf.stats) {
+            for (const st of bf.stats) {
+              if (st.id === 15) buffSpeed += st.value;
+              if (st.id === 50) expRateBonus += st.value;
+            }
+            if (bf.description) activeBuffsSummary.push(bf.description);
+          }
+        }
+      }
+
+      let totalSpeed = 1.0;
+      if (payload.stats?.values && typeof payload.stats.values[15] === 'number' && payload.stats.values[15] > 0) {
+        totalSpeed = payload.stats.values[15];
+      } else {
+        totalSpeed = Math.max(0.1, 1.0 + equipSpeed + buffSpeed);
+      }
+
+      craftingSpeedBonusPercent = Math.round((totalSpeed - 1.0) * 100 * 10) / 10;
+      secondsPerAction = BASE_ACTION_DURATION_SECONDS / totalSpeed;
+      xpMultiplier = 1.0 + expRateBonus;
+    }
+
+    const effortPerSecond = secondsPerAction > 0 ? ppa / secondsPerAction : 0;
+    const earnedXp = Math.round(cb.totalProgressContributed * primaryCalc.baseXpPerAction * xpMultiplier);
+
+    participants.push({
+      entityId: cb.contributorEntityId,
+      username: cb.contributorUsername || `Player #${cb.contributorEntityId.slice(0, 6)}`,
+      isOnline: payload.playerDetails?.signedIn ?? true,
+      isActive,
+      isCurrentlyCrafting,
+      isIncludedInProjection,
+      lastContributedAt: cb.lastContributedAt,
+      minutesSinceLastContribution: minutesSinceLast,
+      totalProgressContributed: cb.totalProgressContributed,
+      contributionCount: cb.contributionCount,
+      progressPerAction: ppa,
+      equippedToolName,
+      equippedToolTier,
+      craftingSpeedBonusPercent,
+      secondsPerAction,
+      effortPerSecond,
+      xpMultiplier,
+      earnedXp,
+      projectedRemainingEffort: 0,
+      projectedRemainingXp: 0,
+      totalExpectedXp: earnedXp,
+      projectedSharePercent: 0,
+      activeBuffsSummary,
+    });
+  }
+
+  // Calculate Combined Collaborative Rate
+  const includedParticipants = participants.filter((p) => p.isIncludedInProjection);
+  const combinedEffortPerSecond = includedParticipants.reduce(
+    (sum, p) => sum + Math.max(0, p.effortPerSecond),
+    0
+  );
+
+  // Distribute remaining effort & compute projected XP
+  for (const p of participants) {
+    if (p.isIncludedInProjection && combinedEffortPerSecond > 0) {
+      const share = p.effortPerSecond / combinedEffortPerSecond;
+      p.projectedSharePercent = Math.round(share * 1000) / 10;
+      p.projectedRemainingEffort = Math.round(remainingEffort * share);
+      p.projectedRemainingXp = Math.round(
+        p.projectedRemainingEffort * primaryCalc.baseXpPerAction * p.xpMultiplier
+      );
+      p.totalExpectedXp = p.earnedXp + p.projectedRemainingXp;
+    } else {
+      p.projectedSharePercent = 0;
+      p.projectedRemainingEffort = 0;
+      p.projectedRemainingXp = 0;
+      p.totalExpectedXp = p.earnedXp;
+    }
+  }
+
+  const soloEstimatedSecondsRemaining = primaryCalc.estimatedSecondsRemaining;
+  const collaborativeEstimatedSecondsRemaining =
+    combinedEffortPerSecond > 0
+      ? Math.round(remainingEffort / combinedEffortPerSecond)
+      : soloEstimatedSecondsRemaining;
+
+  const secondsSaved = Math.max(
+    0,
+    soloEstimatedSecondsRemaining - collaborativeEstimatedSecondsRemaining
+  );
+
+  const soloEtaCompletionTime = primaryCalc.estimatedCompletionTime;
+  let collaborativeEtaCompletionTime: string | null = null;
+  if (collaborativeEstimatedSecondsRemaining > 0 && isFinite(collaborativeEstimatedSecondsRemaining)) {
+    const colDate = new Date(Date.now() + collaborativeEstimatedSecondsRemaining * 1000);
+    collaborativeEtaCompletionTime = colDate.toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+  }
+
+  return {
+    activeParticipantsCount: includedParticipants.length,
+    totalContributorsCount: participants.length,
+    soloEstimatedSecondsRemaining,
+    collaborativeEstimatedSecondsRemaining,
+    secondsSaved,
+    soloEtaCompletionTime,
+    collaborativeEtaCompletionTime,
+    combinedEffortPerSecond,
+    participants,
   };
 }

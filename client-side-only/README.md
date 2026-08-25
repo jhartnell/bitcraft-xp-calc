@@ -37,8 +37,9 @@ client-side-only/
 3. **Background Alarms & Toolbar Badge Alerts:**
    * **Craft In Progress:** **Emerald Green** badge displaying progress % (e.g. `11%`, `45%`).
    * **No Active Craft / Finished:** **Bright Red** badge (`IDLE`) alerting you immediately when crafting stops.
-4. **Full Tab Mode:** Click the **"New Tab"** button in the header to expand the calculator into a dedicated, full-width desktop browser tab anytime.
-5. **Background Stats Synchronization:** Keeps equipment, buffs, and stats up to date in background storage.
+4. **Multi-User Collaborative Crafting (v1.1.0):** Automatically detects multiple participants on shared or public crafting stations, combines effort rates to compute accelerated team completion times, and projects individual XP shares.
+5. **Full Tab Mode:** Click the **"New Tab"** button in the header to expand the calculator into a dedicated, full-width desktop browser tab anytime.
+6. **Background Stats Synchronization:** Keeps equipment, buffs, and stats up to date in background storage.
 
 ---
 

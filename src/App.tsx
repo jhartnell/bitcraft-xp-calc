@@ -10,13 +10,14 @@ import {
 } from './types/api';
 import { ApiClientStatus } from './types/calculator';
 import { bitjitaApi } from './services/apiClient';
-import { calculateCraftXp } from './services/xpCalculator';
+import { calculateCraftXp, calculateMultiUserCraftProjection } from './services/xpCalculator';
 import { Header } from './components/Header';
 import { PlayerSearch } from './components/PlayerSearch';
 import { RefreshControls } from './components/RefreshControls';
 import { ActiveCraftCard } from './components/ActiveCraftCard';
 import { XpProjections } from './components/XpProjections';
 import { ModifiersPanel } from './components/ModifiersPanel';
+import { ContributorsPanel } from './components/ContributorsPanel';
 import { SkillList } from './components/SkillList';
 import { PublicCraftsModal } from './components/PublicCraftsModal';
 import { Hammer, Globe, AlertCircle, Info } from 'lucide-react';
@@ -44,6 +45,8 @@ export const App: React.FC = () => {
   const [stats, setStats] = useState<PlayerStatsData | null>(null);
   const [itemMetadataMap, setItemMetadataMap] = useState<Map<number, ItemMetadata>>(new Map());
   const [contributions, setContributions] = useState<import('./types/api').CraftContribution[]>([]);
+  const [contributorPayloads, setContributorPayloads] = useState<import('./services/xpCalculator').ContributorDetailPayload[]>([]);
+  const [includedContributors, setIncludedContributors] = useState<Record<string, boolean>>({});
   const [customProgressPerAction, setCustomProgressPerAction] = useState<number | null>(null);
 
   // Load primary player from chrome.storage.local on extension startup
@@ -188,10 +191,17 @@ export const App: React.FC = () => {
         if (activeCrafts.length > 0) {
           bitjitaApi
             .getCraftContributions(activeCrafts[0].entityId, forceFresh)
-            .then((cb) => setContributions(cb))
-            .catch(() => setContributions([]));
+            .then((cb) => {
+              setContributions(cb);
+              loadContributorPayloads(cb, player.entityId);
+            })
+            .catch(() => {
+              setContributions([]);
+              setContributorPayloads([]);
+            });
         } else {
           setContributions([]);
+          setContributorPayloads([]);
         }
 
         // Map item metadata
@@ -206,14 +216,54 @@ export const App: React.FC = () => {
         setLastUpdated(new Date());
         saveRecentPlayer(player);
       } catch (err) {
-        console.error('Error loading player data:', err);
-        setError(err instanceof Error ? err.message : 'Failed to fetch player data from BitJita.');
+        console.error('Failed to load player data:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load player details.');
       } finally {
         setIsLoading(false);
       }
     },
     []
   );
+
+  // Background loader for other contributors' gear & stats
+  const loadContributorPayloads = async (
+    contribs: import('./types/api').CraftContribution[],
+    primaryId: string
+  ) => {
+    const payloads: import('./services/xpCalculator').ContributorDetailPayload[] = [];
+
+    for (const cb of contribs) {
+      if (cb.contributorEntityId === primaryId) {
+        payloads.push({
+          contribution: cb,
+          isIncluded: includedContributors[cb.contributorEntityId] ?? true,
+        });
+      } else {
+        try {
+          const [equip, buffs, stats] = await Promise.all([
+            bitjitaApi.getPlayerEquipment(cb.contributorEntityId).catch(() => null),
+            bitjitaApi.getPlayerBuffs(cb.contributorEntityId).catch(() => null),
+            bitjitaApi.getPlayerStats(cb.contributorEntityId).catch(() => null),
+          ]);
+
+          payloads.push({
+            contribution: cb,
+            equipment: equip?.equipment || [],
+            buffs: buffs?.buffs || [],
+            stats,
+            isIncluded: includedContributors[cb.contributorEntityId],
+          });
+        } catch {
+          payloads.push({
+            contribution: cb,
+            isIncluded: includedContributors[cb.contributorEntityId],
+          });
+        }
+      }
+    }
+
+    setContributorPayloads(payloads);
+  };
 
   // Player Selection Handler
   const handleSelectPlayer = async (player: PlayerSummary) => {
@@ -268,6 +318,35 @@ export const App: React.FC = () => {
         customProgressPerAction
       )
     : null;
+
+  // Multi-User Collaborative Crafting Projection
+  const multiUserProjection =
+    activeCraft && calcResult && (contributorPayloads.length > 0 || contributions.length > 0)
+      ? calculateMultiUserCraftProjection(
+          activeCraft,
+          playerDetails,
+          calcResult,
+          contributorPayloads.length > 0
+            ? contributorPayloads.map((cp) => ({
+                ...cp,
+                isIncluded: includedContributors[cp.contribution.contributorEntityId],
+              }))
+            : contributions.map((cb) => ({
+                contribution: cb,
+                isIncluded: includedContributors[cb.contributorEntityId],
+              }))
+        )
+      : null;
+
+  const handleToggleParticipant = (entityId: string) => {
+    setIncludedContributors((prev) => {
+      const current = prev[entityId];
+      const participant = multiUserProjection?.participants.find((p) => p.entityId === entityId);
+      const defaultState = participant ? participant.isActive : true;
+      const nextVal = current !== undefined ? !current : !defaultState;
+      return { ...prev, [entityId]: nextVal };
+    });
+  };
 
   return (
     <div className="min-h-screen bg-background text-gray-100 flex flex-col font-sans selection:bg-emerald-500 selection:text-white">
@@ -349,14 +428,29 @@ export const App: React.FC = () => {
                     if (crafts[idx]) {
                       bitjitaApi
                         .getCraftContributions(crafts[idx].entityId)
-                        .then((cb) => setContributions(cb))
-                        .catch(() => setContributions([]));
+                        .then((cb) => {
+                          setContributions(cb);
+                          loadContributorPayloads(cb, selectedPlayer.entityId);
+                        })
+                        .catch(() => {
+                          setContributions([]);
+                          setContributorPayloads([]);
+                        });
                     }
                   }}
                   calc={calcResult}
                   itemMetadata={activeCraftMetadata}
                   onOverrideProgressPerAction={(val) => setCustomProgressPerAction(val)}
                 />
+
+                {/* Shared Craft Contributors & Collaborative Projections */}
+                {multiUserProjection && multiUserProjection.totalContributorsCount > 0 && (
+                  <ContributorsPanel
+                    projection={multiUserProjection}
+                    primaryEntityId={playerDetails?.entityId}
+                    onToggleParticipant={handleToggleParticipant}
+                  />
+                )}
 
                 {/* Projections & XP Calculations */}
                 <XpProjections calc={calcResult} />

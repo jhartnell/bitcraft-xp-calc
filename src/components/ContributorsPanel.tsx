@@ -1,0 +1,233 @@
+import React from 'react';
+import { Users, Zap, Star, Activity, ArrowRight, Sparkles } from 'lucide-react';
+import { MultiUserCraftProjection } from '../types/calculator';
+import { formatTimeSeconds } from '../services/bitcraftData';
+
+interface ContributorsPanelProps {
+  projection: MultiUserCraftProjection;
+  primaryEntityId?: string;
+  onToggleParticipant: (entityId: string) => void;
+}
+
+export const ContributorsPanel: React.FC<ContributorsPanelProps> = ({
+  projection,
+  primaryEntityId,
+  onToggleParticipant,
+}) => {
+  const { participants, activeParticipantsCount, totalContributorsCount, secondsSaved } = projection;
+
+  if (!participants || participants.length === 0) {
+    return null;
+  }
+
+  const isMultiplayerActive = activeParticipantsCount > 1;
+
+  return (
+    <div className="bg-surface rounded-xl border border-surface-border p-5 shadow-xl space-y-4">
+      {/* Panel Header */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-surface-border pb-3">
+        <div className="flex items-center gap-2.5">
+          <div className="p-2 rounded-lg bg-indigo-950/80 border border-indigo-800/60 text-indigo-400">
+            <Users className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-base font-bold text-gray-100">
+                Shared Craft Contributors & Collaborative Projections
+              </h3>
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                {activeParticipantsCount} Active / {totalContributorsCount} Total
+              </span>
+            </div>
+            <p className="text-xs text-gray-400">
+              Real-time multi-crafter speed compounding and individual expected XP shares
+            </p>
+          </div>
+        </div>
+
+        {/* Collaborative Speed & Time Saved Pill */}
+        {isMultiplayerActive && secondsSaved > 0 && (
+          <div className="flex items-center gap-2 bg-emerald-950/70 border border-emerald-700/60 px-3 py-1.5 rounded-lg text-xs font-mono text-emerald-300 shadow-md">
+            <Zap className="w-4 h-4 text-emerald-400 animate-pulse" />
+            <span>
+              Collaborative ETA: <strong>{projection.collaborativeEtaCompletionTime}</strong> ({formatTimeSeconds(projection.collaborativeEstimatedSecondsRemaining)})
+            </span>
+            <span className="text-emerald-400/80 font-sans font-bold">
+              • Saving {formatTimeSeconds(secondsSaved)}!
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Collaborative Summary Stat Bar */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs font-mono">
+        <div className="bg-surface-subtle p-3 rounded-lg border border-surface-border">
+          <div className="text-gray-400 text-[11px] mb-0.5">Combined Effort Rate</div>
+          <div className="text-base font-bold text-emerald-400">
+            {projection.combinedEffortPerSecond.toFixed(1)} effort / sec
+          </div>
+          <div className="text-[10px] text-gray-500 font-sans mt-0.5">
+            Across {activeParticipantsCount} active crafting participants
+          </div>
+        </div>
+
+        <div className="bg-surface-subtle p-3 rounded-lg border border-surface-border">
+          <div className="text-gray-400 text-[11px] mb-0.5">Solo vs Collaborative Time</div>
+          <div className="text-base font-bold text-gray-200 flex items-center gap-1.5">
+            <span className="text-gray-400 line-through text-xs">
+              {formatTimeSeconds(projection.soloEstimatedSecondsRemaining)}
+            </span>
+            <ArrowRight className="w-3.5 h-3.5 text-emerald-400" />
+            <span className="text-emerald-300 font-bold">
+              {formatTimeSeconds(projection.collaborativeEstimatedSecondsRemaining)}
+            </span>
+          </div>
+          <div className="text-[10px] text-gray-400 font-sans mt-0.5">
+            {isMultiplayerActive ? 'Accelerated completion' : 'Only 1 active crafter'}
+          </div>
+        </div>
+
+        <div className="bg-surface-subtle p-3 rounded-lg border border-surface-border">
+          <div className="text-gray-400 text-[11px] mb-0.5">Time Saved with Team</div>
+          <div className="text-base font-bold text-teal-300">
+            {secondsSaved > 0 ? formatTimeSeconds(secondsSaved) : '0s (Solo)'}
+          </div>
+          <div className="text-[10px] text-gray-400 font-sans mt-0.5">
+            Toggle crafters below to simulate rates
+          </div>
+        </div>
+      </div>
+
+      {/* Contributors Table / Cards */}
+      <div className="space-y-2">
+        <div className="text-xs font-semibold text-gray-300 flex items-center justify-between">
+          <span>Active & Historical Crafters ({participants.length})</span>
+          <span className="text-[11px] text-gray-500 font-normal">
+            Check/uncheck players to simulate team completion speed
+          </span>
+        </div>
+
+        <div className="divide-y divide-surface-border/60 border border-surface-border rounded-xl overflow-hidden bg-surface-subtle/40">
+          {participants.map((p) => {
+            const isPrimary = p.entityId === primaryEntityId;
+
+            return (
+              <div
+                key={p.entityId}
+                className={`p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs transition-colors ${
+                  p.isIncludedInProjection
+                    ? p.isCurrentlyCrafting
+                      ? 'bg-emerald-950/20 hover:bg-emerald-950/30'
+                      : 'hover:bg-surface-subtle'
+                    : 'opacity-60 bg-surface/40'
+                }`}
+              >
+                {/* Left: Player ID, Star, and Status Badges */}
+                <div className="flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    checked={p.isIncludedInProjection}
+                    onChange={() => onToggleParticipant(p.entityId)}
+                    className="mt-1 w-4 h-4 rounded border-surface-border text-emerald-600 focus:ring-emerald-500 bg-surface cursor-pointer"
+                    title="Include in collaborative ETA and remaining XP projection"
+                  />
+
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-sm text-gray-100 flex items-center gap-1">
+                        {isPrimary && <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />}
+                        {p.username}
+                      </span>
+
+                      {/* Crafting Activity Badge */}
+                      {p.isCurrentlyCrafting ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                          <Activity className="w-3 h-3 animate-pulse text-emerald-400" />
+                          Crafting Now
+                        </span>
+                      ) : p.isActive ? (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-950/80 text-indigo-300 border border-indigo-700/60">
+                          Active Participant
+                        </span>
+                      ) : (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-800 text-gray-400">
+                          Idle / Left ({p.minutesSinceLastContribution < 999 ? `${p.minutesSinceLastContribution}m ago` : 'Past'})
+                        </span>
+                      )}
+
+                      {p.isOnline ? (
+                        <span className="w-2 h-2 rounded-full bg-emerald-400" title="Player is currently online in BitCraft" />
+                      ) : (
+                        <span className="w-2 h-2 rounded-full bg-gray-500" title="Offline" />
+                      )}
+                    </div>
+
+                    {/* Minimal Tool, Speed, & Buff Details */}
+                    <div className="text-[11px] text-gray-400 flex flex-wrap items-center gap-2 font-mono">
+                      {p.equippedToolName ? (
+                        <span className="text-gray-300">
+                          🛠️ {p.equippedToolName} {p.equippedToolTier ? `(T${p.equippedToolTier})` : ''}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">Tool Power T1+</span>
+                      )}
+                      <span>•</span>
+                      <span className={p.craftingSpeedBonusPercent < 0 ? 'text-red-400' : 'text-emerald-400'}>
+                        Speed: {p.craftingSpeedBonusPercent >= 0 ? `+${p.craftingSpeedBonusPercent}%` : `${p.craftingSpeedBonusPercent}%`} ({p.secondsPerAction.toFixed(2)}s/act)
+                      </span>
+                      <span>•</span>
+                      <span className="text-indigo-300">
+                        {p.progressPerAction.toFixed(1)} effort/click ({p.effortPerSecond.toFixed(1)} eff/s)
+                      </span>
+                      {p.xpMultiplier > 1 && (
+                        <>
+                          <span>•</span>
+                          <span className="text-amber-400">{p.xpMultiplier.toFixed(2)}x XP</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right: XP Contribution and Projection Metrics */}
+                <div className="flex flex-wrap items-center gap-4 text-right font-mono text-xs">
+                  {/* Historical Earned */}
+                  <div className="space-y-0.5">
+                    <div className="text-[10px] text-gray-500">Already Contributed</div>
+                    <div className="font-semibold text-gray-200">
+                      {p.totalProgressContributed.toLocaleString()} effort
+                    </div>
+                    <div className="text-[10px] text-indigo-400">
+                      {p.earnedXp.toLocaleString()} XP earned
+                    </div>
+                  </div>
+
+                  {/* Projected Remaining Share */}
+                  {p.isIncludedInProjection ? (
+                    <div className="space-y-0.5 pl-3 border-l border-surface-border">
+                      <div className="text-[10px] text-emerald-400 flex items-center justify-end gap-1 font-semibold">
+                        <Sparkles className="w-3 h-3" />
+                        Projected Share ({p.projectedSharePercent}%)
+                      </div>
+                      <div className="font-bold text-amber-400">
+                        +{p.projectedRemainingXp.toLocaleString()} XP remaining
+                      </div>
+                      <div className="text-[10px] text-emerald-300">
+                        Total: <strong>{p.totalExpectedXp.toLocaleString()} XP</strong>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-0.5 pl-3 border-l border-surface-border text-gray-500 text-[11px]">
+                      <div>Excluded from ETA</div>
+                      <div>Total: {p.earnedXp.toLocaleString()} XP</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+};

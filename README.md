@@ -56,7 +56,14 @@ A high-performance, real-time web application to track active crafting progress,
    - **Request Queue & Throttling:** Enforces a minimum 120ms spacing and maximum 2 concurrent outbound requests with automatic exponential backoff on HTTP 429 errors.
    - **User-Configurable Auto-Refresh:** Selectable polling intervals (`Off`, `15s`, `30s`, `60s`, `2m`, `5m`) with live pause/resume and countdown indicator.
 
-8. **Public Crafts Explorer:**
+8. **Multi-User Collaborative Crafting & Contributor XP (v1.1.0):**
+   - **Dynamic Activity Detection:** Tracks contributor recency and live progress deltas (`🔥 Currently Crafting`, `Active Participant`, `Idle / Left`).
+   - **Compounded Team Speed:** Combines the effort-per-second rates of all active participants to calculate collaborative station completion times.
+   - **Time Saved Highlight:** Shows Solo ETA vs. Collaborative ETA and time saved with the team.
+   - **Individual Projected XP Shares:** Accurately distributes remaining craft effort and expected XP according to each participant's relative crafting speed and gear buffs.
+   - **Interactive Simulation Toggles:** Check or uncheck any contributor to simulate team compositions on shared or public crafting stations.
+
+9. **Public Crafts Explorer:**
    - Search and inspect global in-progress crafts across the realm to test character stats and hypothetical XP gains.
 
 ---
