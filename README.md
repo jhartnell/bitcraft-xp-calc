@@ -148,4 +148,5 @@ $$\text{Remaining XP} = \text{Remaining Effort} \times \text{baseXpPerAction} \t
 ---
 
 ## 📄 License
-MIT License
+
+This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
