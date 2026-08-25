@@ -97,11 +97,17 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 npm run test:run
 ```
 
-### Production Build
+### Production Web Build
 ```bash
 npm run build
 npm run preview
 ```
+
+### Browser Extension Build (Zero-Hosting Client Distribution)
+```bash
+npm run build:extension
+```
+Load the unpacked extension in Chrome/Edge at `client-side-only/browser-extension/dist` (see [`client-side-only/README.md`](client-side-only/README.md)).
 
 ---
 
