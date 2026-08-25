@@ -20,7 +20,7 @@ import { ModifiersPanel } from './components/ModifiersPanel';
 import { ContributorsPanel } from './components/ContributorsPanel';
 import { SkillList } from './components/SkillList';
 import { PublicCraftsModal } from './components/PublicCraftsModal';
-import { Hammer, Globe, AlertCircle, Info } from 'lucide-react';
+import { Hammer, Globe, AlertCircle, Info, Users } from 'lucide-react';
 
 const RECENT_PLAYERS_KEY = 'bitcraft_xp_recent_players';
 const REFRESH_INTERVAL_KEY = 'bitcraft_xp_refresh_interval';
@@ -56,6 +56,7 @@ export const App: React.FC = () => {
   const [contributions, setContributions] = useState<import('./types/api').CraftContribution[]>([]);
   const [contributorPayloads, setContributorPayloads] = useState<import('./services/xpCalculator').ContributorDetailPayload[]>([]);
   const [includedContributors, setIncludedContributors] = useState<Record<string, boolean>>({});
+  const [showSoloContributorPanel, setShowSoloContributorPanel] = useState(false);
   const [customProgressPerAction, setCustomProgressPerAction] = useState<number | null>(null);
 
   // Load primary player from chrome.storage.local on extension startup
@@ -352,6 +353,17 @@ export const App: React.FC = () => {
     });
   };
 
+  const otherContributorsCount = multiUserProjection
+    ? multiUserProjection.participants.filter(
+        (p) => p.entityId !== selectedPlayer?.entityId && p.entityId !== playerDetails?.entityId
+      ).length
+    : 0;
+
+  const shouldRenderContributorsPanel =
+    multiUserProjection &&
+    multiUserProjection.totalContributorsCount > 0 &&
+    (otherContributorsCount > 0 || showSoloContributorPanel);
+
   return (
     <div className="min-h-screen bg-background text-gray-100 flex flex-col font-sans selection:bg-emerald-500 selection:text-white">
       {/* Top Navigation & Status */}
@@ -447,14 +459,31 @@ export const App: React.FC = () => {
                   onOverrideProgressPerAction={(val) => setCustomProgressPerAction(val)}
                 />
 
-                {/* Shared Craft Contributors & Collaborative Projections */}
-                {multiUserProjection && multiUserProjection.totalContributorsCount > 0 && (
+                {/* Shared Craft Contributors & Collaborative Projections (Auto-hidden for pure solo crafts until helpers arrive) */}
+                {shouldRenderContributorsPanel && (
                   <ContributorsPanel
                     projection={multiUserProjection}
                     primaryEntityId={playerDetails?.entityId}
                     onToggleParticipant={handleToggleParticipant}
                     onInactivityTimeoutChange={handleInactivityTimeoutChange}
                   />
+                )}
+
+                {/* Solo Craft Helper Link (when 0 helpers have contributed) */}
+                {multiUserProjection && otherContributorsCount === 0 && (
+                  <div className="flex justify-end">
+                    <button
+                      onClick={() => setShowSoloContributorPanel(!showSoloContributorPanel)}
+                      className="text-[11px] text-gray-500 hover:text-gray-300 flex items-center gap-1.5 transition-colors py-0.5 px-2 rounded hover:bg-surface-subtle"
+                    >
+                      <Users className="w-3.5 h-3.5 text-indigo-400" />
+                      <span>
+                        {showSoloContributorPanel
+                          ? 'Hide Contributor Log'
+                          : 'Solo Craft (0 Helpers) • View Contributor Log'}
+                      </span>
+                    </button>
+                  </div>
                 )}
 
                 {/* Projections & XP Calculations */}

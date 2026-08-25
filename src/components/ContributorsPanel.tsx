@@ -1,5 +1,17 @@
-import React from 'react';
-import { Users, Zap, Star, Activity, ArrowRight, Sparkles, Timer } from 'lucide-react';
+import React, { useState } from 'react';
+import {
+  Users,
+  Zap,
+  Star,
+  Activity,
+  ArrowRight,
+  Sparkles,
+  Timer,
+  ChevronDown,
+  ChevronUp,
+  Eye,
+  EyeOff,
+} from 'lucide-react';
 import { MultiUserCraftProjection } from '../types/calculator';
 import { formatTimeSeconds } from '../services/bitcraftData';
 
@@ -8,6 +20,7 @@ interface ContributorsPanelProps {
   primaryEntityId?: string;
   onToggleParticipant: (entityId: string) => void;
   onInactivityTimeoutChange?: (minutes: number) => void;
+  isInitiallyCollapsed?: boolean;
 }
 
 export const ContributorsPanel: React.FC<ContributorsPanelProps> = ({
@@ -15,7 +28,10 @@ export const ContributorsPanel: React.FC<ContributorsPanelProps> = ({
   primaryEntityId,
   onToggleParticipant,
   onInactivityTimeoutChange,
+  isInitiallyCollapsed = false,
 }) => {
+  const [isCollapsed, setIsCollapsed] = useState(isInitiallyCollapsed);
+
   const {
     participants,
     activeParticipantsCount,
@@ -30,8 +46,41 @@ export const ContributorsPanel: React.FC<ContributorsPanelProps> = ({
 
   const isMultiplayerActive = activeParticipantsCount > 1;
 
+  // Collapsed compact pill view
+  if (isCollapsed) {
+    return (
+      <div className="bg-surface rounded-xl border border-surface-border p-3.5 shadow-md flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div className="flex items-center gap-2.5">
+          <div className="p-1.5 rounded-lg bg-indigo-950/80 border border-indigo-800/60 text-indigo-400">
+            <Users className="w-4 h-4" />
+          </div>
+          <div>
+            <span className="font-semibold text-gray-200">Shared Craft Contributors:</span>{' '}
+            <span className="text-gray-400">
+              {activeParticipantsCount} Active / {totalContributorsCount} Total
+            </span>
+            {isMultiplayerActive && secondsSaved > 0 && (
+              <span className="text-emerald-400 font-mono ml-2">
+                • Collaborative ETA: <strong>{projection.collaborativeEtaCompletionTime}</strong> ({formatTimeSeconds(projection.collaborativeEstimatedSecondsRemaining)})
+              </span>
+            )}
+          </div>
+        </div>
+
+        <button
+          onClick={() => setIsCollapsed(false)}
+          className="flex items-center gap-1.5 bg-surface-subtle hover:bg-surface-border border border-surface-border text-gray-300 hover:text-white px-3 py-1 rounded-lg transition-colors font-medium"
+        >
+          <Eye className="w-3.5 h-3.5 text-emerald-400" />
+          <span>Show Details</span>
+          <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <div className="bg-surface rounded-xl border border-surface-border p-5 shadow-xl space-y-4">
+    <div className="bg-surface rounded-xl border border-surface-border p-5 shadow-xl space-y-4 animate-in fade-in duration-200">
       {/* Panel Header */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-surface-border pb-3">
         <div className="flex items-center gap-2.5">
@@ -53,13 +102,13 @@ export const ContributorsPanel: React.FC<ContributorsPanelProps> = ({
           </div>
         </div>
 
-        {/* Inactivity Threshold Selector & Collaborative Speed Banner */}
+        {/* Header Controls: Inactivity Selector, Time Saved Pill, Collapse Toggle */}
         <div className="flex flex-wrap items-center gap-2 text-xs">
           {/* Timeout Selector */}
           {onInactivityTimeoutChange && (
             <div className="flex items-center gap-1.5 bg-surface-subtle border border-surface-border px-2.5 py-1 rounded-lg text-gray-300">
               <Timer className="w-3.5 h-3.5 text-indigo-400" />
-              <span className="text-[11px] text-gray-400">Inactivity Timeout:</span>
+              <span className="text-[11px] text-gray-400">Timeout:</span>
               <select
                 value={inactivityTimeoutMinutes}
                 onChange={(e) => onInactivityTimeoutChange(Number(e.target.value))}
@@ -85,6 +134,17 @@ export const ContributorsPanel: React.FC<ContributorsPanelProps> = ({
               </span>
             </div>
           )}
+
+          {/* Collapse Button */}
+          <button
+            onClick={() => setIsCollapsed(true)}
+            className="flex items-center gap-1 text-gray-400 hover:text-gray-200 bg-surface-subtle border border-surface-border px-2.5 py-1 rounded-lg transition-colors"
+            title="Collapse shared craft section"
+          >
+            <EyeOff className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Hide</span>
+            <ChevronUp className="w-3.5 h-3.5" />
+          </button>
         </div>
       </div>
 
