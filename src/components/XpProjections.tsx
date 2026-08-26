@@ -7,9 +7,6 @@ import {
   TrendingUp,
   Sparkles,
   Milestone,
-  CheckCircle2,
-  Calendar,
-  Layers,
 } from 'lucide-react';
 import { XpCalculationResult } from '../types/calculator';
 import { formatXp, formatTimeSeconds } from '../services/bitcraftData';
@@ -70,22 +67,27 @@ export const XpProjections: React.FC<XpProjectionsProps> = ({ calc }) => {
           </div>
         </div>
 
-        {/* Estimated Time Remaining */}
-        <div className="bg-surface rounded-xl p-4 border border-surface-border shadow-md">
-          <div className="flex items-center justify-between text-xs text-gray-400 mb-1">
-            <span>Time Remaining</span>
+        {/* Estimated Time Remaining & Next Level ETA */}
+        <div className="bg-surface rounded-xl p-4 border border-surface-border shadow-md space-y-1">
+          <div className="flex items-center justify-between text-xs text-gray-400">
+            <span>Craft Time Remaining</span>
             <Clock className="w-4 h-4 text-teal-400" />
           </div>
           <div className="text-xl font-bold text-teal-300 font-mono">
             {formatTimeSeconds(calc.estimatedSecondsRemaining)}
           </div>
-          <div className="text-[11px] text-gray-400 mt-1">
-            ETA: <strong className="text-gray-200">{calc.estimatedCompletionTime || 'N/A'}</strong> ({calc.physicalActionsRemaining.toLocaleString()} actions)
+          <div className="text-[11px] text-gray-400 flex items-center justify-between">
+            <span>ETA: <strong className="text-gray-200">{calc.estimatedCompletionTime || 'N/A'}</strong></span>
+            {levelForecast && levelForecast.isNextLevelAchievable && (
+              <span className="text-emerald-400 font-mono font-semibold" title={`Next Level ${levelForecast.targetNextLevel} at ${levelForecast.nextLevelEtaTimestamp}`}>
+                • Lv {levelForecast.targetNextLevel} in {formatTimeSeconds(levelForecast.secondsToNextLevel || 0)}
+              </span>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Level Progression Card */}
+      {/* Level Progression Card (Streamlined Option 2) */}
       <div className="bg-surface rounded-xl p-5 border border-surface-border shadow-xl space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -98,7 +100,7 @@ export const XpProjections: React.FC<XpProjectionsProps> = ({ calc }) => {
                   {calc.skillName} Level Projection
                 </h3>
                 {calc.levelsGained > 0 && (
-                  <span className="inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 animate-pulse">
+                  <span className="inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
                     <Sparkles className="w-3 h-3 text-emerald-400" />
                     +{calc.levelsGained} {calc.levelsGained === 1 ? 'Level' : 'Levels'}!
                   </span>
@@ -110,11 +112,22 @@ export const XpProjections: React.FC<XpProjectionsProps> = ({ calc }) => {
             </div>
           </div>
 
-          {/* Level Transition Pill */}
-          <div className="flex items-center gap-2 bg-surface-subtle px-3 py-1.5 rounded-lg border border-surface-border text-sm font-mono font-bold">
-            <span className="text-gray-300">Lvl {calc.currentSkillLevel}</span>
-            <ArrowUpRight className="w-4 h-4 text-emerald-400" />
-            <span className="text-emerald-400">Lvl {calc.projectedSkillLevel}</span>
+          {/* Header Badges: Next Level Countdown & Transition Pill */}
+          <div className="flex flex-wrap items-center gap-2">
+            {levelForecast && levelForecast.isNextLevelAchievable && (
+              <div className="flex items-center gap-1.5 bg-indigo-950/80 border border-indigo-700/60 px-2.5 py-1.5 rounded-lg text-xs font-mono text-indigo-200">
+                <Milestone className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Level {levelForecast.targetNextLevel} in </span>
+                <strong className="text-emerald-400">{formatTimeSeconds(levelForecast.secondsToNextLevel || 0)}</strong>
+                <span className="text-gray-400 text-[10px]">({levelForecast.nextLevelEtaTimestamp})</span>
+              </div>
+            )}
+
+            <div className="flex items-center gap-2 bg-surface-subtle px-3 py-1.5 rounded-lg border border-surface-border text-sm font-mono font-bold">
+              <span className="text-gray-300">Lvl {calc.currentSkillLevel}</span>
+              <ArrowUpRight className="w-4 h-4 text-emerald-400" />
+              <span className="text-emerald-400">Lvl {calc.projectedSkillLevel}</span>
+            </div>
           </div>
         </div>
 
@@ -122,11 +135,20 @@ export const XpProjections: React.FC<XpProjectionsProps> = ({ calc }) => {
         <div className="space-y-3 pt-2">
           {/* Current Level Progress */}
           <div className="space-y-1">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-gray-400">Current Level {calc.currentSkillLevel} Progress:</span>
-              <span className="text-gray-200 font-mono">
-                {formatXp(calc.currentSkillXp)} / {formatXp(calc.xpForNextLevel)} ({calc.currentLevelProgressPct.toFixed(1)}%)
+            <div className="flex flex-wrap items-center justify-between text-xs gap-1">
+              <span className="text-gray-400">
+                Current Level {calc.currentSkillLevel} Progress:
               </span>
+              <div className="text-gray-200 font-mono flex items-center gap-2">
+                {levelForecast && levelForecast.isNextLevelAchievable && levelForecast.itemsFinishedAtNextLevel !== null && (
+                  <span className="text-indigo-300 text-[11px] font-sans">
+                    (Level up at item #{levelForecast.itemsFinishedAtNextLevel.toLocaleString()}) •
+                  </span>
+                )}
+                <span>
+                  {formatXp(calc.currentSkillXp)} / {formatXp(calc.xpForNextLevel)} ({calc.currentLevelProgressPct.toFixed(1)}%)
+                </span>
+              </div>
             </div>
             <div className="w-full bg-surface-subtle rounded-full h-2.5 overflow-hidden border border-surface-border">
               <div
@@ -152,120 +174,6 @@ export const XpProjections: React.FC<XpProjectionsProps> = ({ calc }) => {
             </div>
           </div>
         </div>
-
-        {/* NEXT LEVEL TIMING & MILESTONES (Option 1) */}
-        {levelForecast && (
-          <div className="pt-2 border-t border-surface-border/80 space-y-3">
-            {/* Immediate Next Level Banner */}
-            <div className="bg-gradient-to-r from-indigo-950/70 via-purple-950/40 to-surface-subtle border border-indigo-700/50 rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-md">
-              <div className="flex items-start gap-3">
-                <div className="p-2 rounded-lg bg-indigo-500/20 border border-indigo-500/40 text-indigo-300 mt-0.5">
-                  <Milestone className="w-5 h-5 text-indigo-400" />
-                </div>
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold uppercase tracking-wider text-indigo-300">
-                      Next Level Milestone
-                    </span>
-                    <span className="text-xs px-2 py-0.5 rounded font-bold font-mono bg-indigo-500/30 text-indigo-200 border border-indigo-400/40">
-                      Level {levelForecast.targetNextLevel}
-                    </span>
-                  </div>
-
-                  {levelForecast.isNextLevelAchievable ? (
-                    <div className="text-sm font-semibold text-gray-100 flex flex-wrap items-center gap-2">
-                      <span>Reaching Level {levelForecast.targetNextLevel} in</span>
-                      <span className="text-emerald-400 font-mono text-base font-bold">
-                        {formatTimeSeconds(levelForecast.secondsToNextLevel || 0)}
-                      </span>
-                      <span className="text-gray-400 font-normal text-xs flex items-center gap-1 font-mono">
-                        <Calendar className="w-3.5 h-3.5 text-indigo-400" />
-                        (at {levelForecast.nextLevelEtaTimestamp})
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="text-xs text-amber-300">
-                      Requires <strong>{levelForecast.xpNeededForNextLevel.toLocaleString()} XP</strong> to reach Level {levelForecast.targetNextLevel}.
-                      Craft completes before reaching this level.
-                    </div>
-                  )}
-
-                  {/* Benchmark Progress */}
-                  {levelForecast.isNextLevelAchievable && levelForecast.itemsFinishedAtNextLevel !== null && (
-                    <div className="text-xs text-gray-400 font-mono">
-                      🎯 Occurs at item{' '}
-                      <strong className="text-gray-200">
-                        #{levelForecast.itemsFinishedAtNextLevel.toLocaleString()}
-                      </strong>{' '}
-                      of {calc.itemsTotal.toLocaleString()} ({levelForecast.craftProgressPercentAtNextLevel?.toFixed(1)}% craft complete)
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* XP Remaining to Milestone */}
-              <div className="text-right font-mono text-xs pl-4 border-l border-surface-border md:border-l-indigo-800/60 shrink-0">
-                <div className="text-[10px] text-gray-400">XP to Next Level</div>
-                <div className="text-sm font-bold text-indigo-300">
-                  {levelForecast.xpNeededForNextLevel.toLocaleString()} XP
-                </div>
-                <div className="text-[10px] text-gray-500">
-                  {Math.ceil(levelForecast.xpNeededForNextLevel / (calc.progressPerAction * calc.baseXpPerAction * calc.xpMultiplier)).toLocaleString()} clicks away
-                </div>
-              </div>
-            </div>
-
-            {/* Multi-Level Milestone Roadmap (Rendered when gaining 2+ levels) */}
-            {levelForecast.totalLevelsGained >= 2 && levelForecast.milestones.length > 1 && (
-              <div className="bg-surface-subtle p-3.5 rounded-xl border border-surface-border space-y-2.5">
-                <div className="flex items-center gap-1.5 text-xs font-semibold text-gray-300">
-                  <Layers className="w-4 h-4 text-emerald-400" />
-                  <span>Multi-Level Milestone Roadmap (+{levelForecast.totalLevelsGained} Levels This Craft)</span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 pt-1">
-                  {levelForecast.milestones.map((m) => {
-                    const isFinal = m.level === levelForecast.projectedFinalLevel;
-
-                    return (
-                      <div
-                        key={m.level}
-                        className={`p-3 rounded-lg border text-xs font-mono space-y-1.5 transition-all ${
-                          isFinal
-                            ? 'bg-emerald-950/40 border-emerald-600/60 shadow-sm'
-                            : 'bg-surface border-surface-border'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-gray-100 flex items-center gap-1">
-                            <CheckCircle2
-                              className={`w-3.5 h-3.5 ${
-                                isFinal ? 'text-emerald-400' : 'text-indigo-400'
-                              }`}
-                            />
-                            Level {m.level} {isFinal && '(Final)'}
-                          </span>
-                          <span className="text-[10px] text-gray-400 font-sans">
-                            {m.craftProgressPercentAtMilestone.toFixed(0)}% craft
-                          </span>
-                        </div>
-
-                        <div className="text-emerald-300 font-bold text-sm">
-                          in {formatTimeSeconds(m.estimatedSecondsFromNow)}
-                        </div>
-
-                        <div className="text-[11px] text-gray-400 flex items-center justify-between">
-                          <span>{m.estimatedTimestamp}</span>
-                          <span>#{m.itemsFinishedAtMilestone.toLocaleString()} items</span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
       </div>
     </div>
   );
