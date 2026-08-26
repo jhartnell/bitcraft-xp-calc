@@ -74,7 +74,7 @@ export const ContributorsPanel: React.FC<ContributorsPanelProps> = ({
             {isMultiplayerActive && secondsTotalSaved > 0 && (
               <span className="text-emerald-400 font-mono ml-2">
                 • Collaborative ETA: <strong>{projection.collaborativeEtaCompletionTime}</strong> ({formatTimeSeconds(projection.collaborativeEstimatedSecondsRemaining)})
-                {secondsProjectedSaved > 0 && ` • Saving ${formatTimeSeconds(secondsProjectedSaved)} on remaining work`}
+                {secondsProjectedSaved > 0 && ` • ${formatTimeSeconds(secondsProjectedSaved)} estimated future savings`}
                 {secondsAlreadySaved > 0 && ` (${formatTimeSeconds(secondsAlreadySaved)} already saved)`}
               </span>
             )}
@@ -148,7 +148,7 @@ export const ContributorsPanel: React.FC<ContributorsPanelProps> = ({
                 ETA: <strong>{projection.collaborativeEtaCompletionTime}</strong> ({formatTimeSeconds(projection.collaborativeEstimatedSecondsRemaining)})
               </span>
               <span className="text-emerald-400/80 font-sans font-bold">
-                {secondsProjectedSaved > 0 && `• Saving ${formatTimeSeconds(secondsProjectedSaved)} on remaining work`}
+                {secondsProjectedSaved > 0 && `• ${formatTimeSeconds(secondsProjectedSaved)} estimated future savings`}
                 {secondsAlreadySaved > 0 && ` (${formatTimeSeconds(secondsAlreadySaved)} already saved)`}!
               </span>
             </div>
@@ -225,7 +225,7 @@ export const ContributorsPanel: React.FC<ContributorsPanelProps> = ({
           <div className="text-gray-400 text-[11px] mb-0.5">Team Time Savings</div>
           <div className="text-base font-bold text-teal-300">
             {secondsProjectedSaved > 0
-              ? `${formatTimeSeconds(secondsProjectedSaved)} Saved on Remaining Work`
+              ? `${formatTimeSeconds(secondsProjectedSaved)} Estimated Future Savings`
               : secondsAlreadySaved > 0
               ? `${formatTimeSeconds(secondsAlreadySaved)} Already Saved`
               : '0s (Solo)'}
@@ -233,7 +233,7 @@ export const ContributorsPanel: React.FC<ContributorsPanelProps> = ({
           <div className="text-[10px] text-gray-400 font-sans mt-1 space-y-0.5">
             {secondsAlreadySaved > 0 && (
               <div>
-                ⚡ Already Saved (Completed):{' '}
+                ⚡ Already Saved (Past Work):{' '}
                 <strong className="text-emerald-400 font-mono">
                   {formatTimeSeconds(secondsAlreadySaved)}
                 </strong>
