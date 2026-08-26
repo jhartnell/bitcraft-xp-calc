@@ -1,5 +1,15 @@
-import React, { useState } from 'react';
-import { Hammer, MapPin, Wrench, ShieldAlert, CheckCircle2, Sliders, Star, Compass } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import {
+  Hammer,
+  MapPin,
+  Wrench,
+  ShieldAlert,
+  CheckCircle2,
+  Sliders,
+  Star,
+  Compass,
+  ChevronDown,
+} from 'lucide-react';
 import { CraftResult, ItemMetadata } from '../types/api';
 import { XpCalculationResult } from '../types/calculator';
 
@@ -36,6 +46,19 @@ export const ActiveCraftCard: React.FC<ActiveCraftCardProps> = ({
 }) => {
   const [isEditingEffort, setIsEditingEffort] = useState(false);
   const [effortInput, setEffortInput] = useState<string>(String(calc.progressPerAction));
+  const [isNearbyDropdownOpen, setIsNearbyDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsNearbyDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const itemName =
     itemMetadata?.name ||
@@ -86,6 +109,10 @@ export const ActiveCraftCard: React.FC<ActiveCraftCardProps> = ({
     (n) => !craftsList.some((c) => c.entityId === n.craft.entityId)
   );
 
+  const helperCrafts = uniqueNearbyCrafts.filter((n) => n.isHelper);
+  const idleNearbyCrafts = uniqueNearbyCrafts.filter((n) => !n.isHelper);
+  const selectedIdleCraft = idleNearbyCrafts.find((n) => isCurrentCraftSelected(n.craft));
+
   const hasMultipleOptions = craftsList.length > 1 || uniqueNearbyCrafts.length > 0;
 
   return (
@@ -125,7 +152,7 @@ export const ActiveCraftCard: React.FC<ActiveCraftCardProps> = ({
           </div>
         </div>
 
-        {/* Multi-craft Navigation Tabs (Own Crafts + Spatial Nearby Helper Stations) */}
+        {/* Compact & Clean Station Tabs (Own Crafts + Active Helper Stations + Compact Nearby Dropdown) */}
         {hasMultipleOptions && (
           <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-surface-border/50 text-xs">
             <div className="flex items-center gap-1 text-gray-400 font-semibold mr-1">
@@ -133,7 +160,7 @@ export const ActiveCraftCard: React.FC<ActiveCraftCardProps> = ({
               <span>Stations:</span>
             </div>
 
-            {/* Own Crafts */}
+            {/* 1. Own Crafts */}
             {craftsList.map((c, idx) => {
               const isSelected = isCurrentCraftSelected(c);
               return (
@@ -155,35 +182,96 @@ export const ActiveCraftCard: React.FC<ActiveCraftCardProps> = ({
               );
             })}
 
-            {/* Nearby Stations / Helper Crafts */}
-            {uniqueNearbyCrafts.map(({ craft: nCraft, distanceMeters, isHelper }) => {
-              const isSelected = isCurrentCraftSelected(nCraft);
+            {/* 2. Active Helper Crafts (Only stations where you've contributed) */}
+            {helperCrafts.map(({ craft: hCraft, distanceMeters }) => {
+              const isSelected = isCurrentCraftSelected(hCraft);
               return (
                 <button
-                  key={nCraft.entityId}
-                  onClick={() => onSelectNearbyCraft && onSelectNearbyCraft(nCraft)}
+                  key={hCraft.entityId}
+                  onClick={() => onSelectNearbyCraft && onSelectNearbyCraft(hCraft)}
                   className={`px-2.5 py-1 rounded-lg transition-all flex items-center gap-1.5 font-medium cursor-pointer ${
                     isSelected
                       ? 'bg-indigo-600 text-white font-semibold shadow-sm'
-                      : isHelper
-                      ? 'bg-indigo-950/70 hover:bg-indigo-900 border border-indigo-700/60 text-indigo-200'
-                      : 'bg-surface-subtle hover:bg-surface-border text-gray-300 border border-surface-border'
+                      : 'bg-indigo-950/70 hover:bg-indigo-900 border border-indigo-700/60 text-indigo-200'
                   }`}
                 >
-                  {isHelper ? (
-                    <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
-                  ) : (
-                    <MapPin className="w-3 h-3 text-teal-400" />
-                  )}
-                  <span>
-                    {isHelper ? 'Helping:' : ''} {nCraft.buildingName?.replace(' Station', '') || 'Station'}
-                  </span>
+                  <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
+                  <span>Helping: {hCraft.buildingName?.replace(' Station', '') || 'Station'}</span>
                   <span className="text-[10px] font-mono text-gray-400 opacity-90">
-                    ({distanceMeters}m{nCraft.ownerUsername ? ` • ${nCraft.ownerUsername}` : ''})
+                    ({distanceMeters}m{hCraft.ownerUsername ? ` • ${hCraft.ownerUsername}` : ''})
                   </span>
                 </button>
               );
             })}
+
+            {/* 3. Compact Dropdown for Other Idle Stations on Claim */}
+            {idleNearbyCrafts.length > 0 && (
+              <div className="relative" ref={dropdownRef}>
+                <button
+                  onClick={() => setIsNearbyDropdownOpen(!isNearbyDropdownOpen)}
+                  className={`px-2.5 py-1 rounded-lg transition-all flex items-center gap-1.5 font-medium cursor-pointer border ${
+                    selectedIdleCraft
+                      ? 'bg-indigo-600 text-white border-indigo-500 shadow-sm font-semibold'
+                      : 'bg-surface-subtle hover:bg-surface-border text-gray-300 border-surface-border'
+                  }`}
+                >
+                  <MapPin className={`w-3 h-3 ${selectedIdleCraft ? 'text-white' : 'text-teal-400'}`} />
+                  <span>
+                    {selectedIdleCraft
+                      ? `Viewing: ${selectedIdleCraft.craft.buildingName?.replace(' Station', '') || 'Station'}`
+                      : `+${idleNearbyCrafts.length} Nearby Stations`}
+                  </span>
+                  <ChevronDown
+                    className={`w-3 h-3 text-gray-400 transition-transform duration-200 ${
+                      isNearbyDropdownOpen ? 'rotate-180 text-white' : ''
+                    }`}
+                  />
+                </button>
+
+                {/* Floating Dropdown Drawer */}
+                {isNearbyDropdownOpen && (
+                  <div className="absolute left-0 mt-1.5 w-72 bg-surface border border-surface-border rounded-xl shadow-2xl p-1.5 z-40 space-y-1 animate-in fade-in zoom-in-95 duration-150">
+                    <div className="px-2 py-1 text-[10px] font-semibold text-gray-400 uppercase tracking-wider border-b border-surface-border/50 flex items-center justify-between">
+                      <span>Nearby Claim Stations</span>
+                      <span className="text-gray-500 font-mono">{idleNearbyCrafts.length} available</span>
+                    </div>
+                    <div className="max-h-60 overflow-y-auto space-y-1 py-1">
+                      {idleNearbyCrafts.map(({ craft: nCraft, distanceMeters }) => {
+                        const isSelected = isCurrentCraftSelected(nCraft);
+                        return (
+                          <button
+                            key={nCraft.entityId}
+                            onClick={() => {
+                              onSelectNearbyCraft && onSelectNearbyCraft(nCraft);
+                              setIsNearbyDropdownOpen(false);
+                            }}
+                            className={`w-full text-left px-2.5 py-2 rounded-lg text-xs flex flex-col gap-0.5 transition-colors cursor-pointer ${
+                              isSelected
+                                ? 'bg-indigo-950/90 border border-indigo-600 text-indigo-100 shadow-sm'
+                                : 'hover:bg-surface-subtle text-gray-300'
+                            }`}
+                          >
+                            <div className="font-semibold flex items-center justify-between">
+                              <span className="flex items-center gap-1">
+                                <MapPin className="w-3 h-3 text-teal-400" />
+                                {nCraft.buildingName || 'Station'}
+                              </span>
+                              <span className="text-[10px] text-emerald-400 font-mono font-normal">
+                                {distanceMeters}m
+                              </span>
+                            </div>
+                            <div className="text-[10px] text-gray-400 font-mono flex items-center justify-between pl-4">
+                              <span>Recipe #{nCraft.recipeId}</span>
+                              <span>Owner: {nCraft.ownerUsername || 'Public'}</span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>
