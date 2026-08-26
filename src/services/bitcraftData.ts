@@ -68,28 +68,32 @@ export const DEFAULT_SKILL_BASE_XP: Record<number, number> = {
   21: 13.0, // Sailing
 };
 
-// Calibrated BitCraft logarithmic/exponential level curve formula
-export function calculateXpForLevel(level: number): number {
-  if (level <= 1) return 0;
-  if (level === 2) return 500;
-  if (level === 3) return 1168;
-  if (level === 4) return 1850;
-  if (level === 5) return 2657;
-  if (level === 6) return 3339;
-  if (level === 7) return 4781;
-  if (level === 8) return 5342;
-  if (level === 9) return 7185;
-  if (level === 10) return 8500;
-  if (level === 15) return 17291;
-  if (level === 20) return 31524;
-  
-  const base = 4385;
-  const rate = 1.1161232;
-  return Math.round(base * Math.pow(rate, level - 1));
+// Calibrated BitCraft incremental level delta XP (XP needed to complete level L and reach L + 1)
+export function calculateLevelDeltaXp(level: number): number {
+  if (level <= 1) return 500;
+  const rate = 1.115682968;
+  const scale = 649.8617534;
+  return Math.round(500 + scale * (Math.pow(rate, level - 1) - 1));
 }
 
-// Pre-computed lookup table for instant O(1) performance
-export const LEVEL_XP_TABLE: number[] = Array.from({ length: 111 }, (_, i) => calculateXpForLevel(i));
+// Pre-computed cumulative lookup table for instant O(1) performance
+// LEVEL_XP_TABLE[L] = Cumulative lifetime XP required to reach Level L (Level 1 = 0 XP)
+export const LEVEL_XP_TABLE: number[] = (() => {
+  const table = new Array<number>(111).fill(0);
+  table[0] = 0;
+  table[1] = 0;
+  for (let l = 1; l < 110; l++) {
+    table[l + 1] = table[l] + calculateLevelDeltaXp(l);
+  }
+  return table;
+})();
+
+// Cumulative lifetime XP required to reach a specific level
+export function calculateXpForLevel(level: number): number {
+  if (level <= 1) return 0;
+  const clamped = Math.min(110, Math.max(1, level));
+  return LEVEL_XP_TABLE[clamped];
+}
 
 export function getLevelFromXp(xp: number): number {
   if (xp <= 0) return 1;

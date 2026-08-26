@@ -286,23 +286,33 @@ describe('Bitcraft XP and Level Progression Curve', () => {
   it('correctly maps base level thresholds', () => {
     expect(calculateXpForLevel(1)).toBe(0);
     expect(calculateXpForLevel(2)).toBe(500);
-    expect(calculateXpForLevel(10)).toBe(8500);
+    expect(calculateXpForLevel(10)).toBe(8079);
+    expect(calculateXpForLevel(77)).toBe(23032019);
+    expect(calculateXpForLevel(78)).toBe(25698249);
   });
 
   it('correctly converts arbitrary XP to skill levels', () => {
     expect(getLevelFromXp(0)).toBe(1);
     expect(getLevelFromXp(500)).toBe(2);
     expect(getLevelFromXp(4000)).toBe(6);
-    expect(getLevelFromXp(2876143)).toBeGreaterThanOrEqual(60);
+    expect(getLevelFromXp(25694018)).toBe(77); // Ikuria's live Masonry level
   });
 
   it('calculates level progress percentage and remaining XP to next level', () => {
     const progress = getXpProgressForLevel(750);
-    expect(progress.level).toBe(2); // level 2 is 500..1168
+    expect(progress.level).toBe(2); // level 2 is 500..1075
     expect(progress.currentLevelXp).toBe(500);
-    expect(progress.nextLevelXp).toBe(1168);
-    expect(progress.xpNeededForNext).toBe(418); // 1168 - 750
-    expect(progress.progressPercent).toBeGreaterThan(30);
+    expect(progress.nextLevelXp).toBe(1075);
+    expect(progress.xpNeededForNext).toBe(325); // 1075 - 750
+    expect(progress.progressPercent).toBeGreaterThan(40);
+
+    // Test with Ikuria's exact level 77 Masonry XP
+    const ikuriaProgress = getXpProgressForLevel(25694018);
+    expect(ikuriaProgress.level).toBe(77);
+    expect(ikuriaProgress.currentLevelXp).toBe(23032019);
+    expect(ikuriaProgress.nextLevelXp).toBe(25698249);
+    expect(ikuriaProgress.xpNeededForNext).toBe(4231);
+    expect(ikuriaProgress.progressPercent).toBeGreaterThan(99);
   });
 
   it('formats large XP numbers and timestamps cleanly', () => {
