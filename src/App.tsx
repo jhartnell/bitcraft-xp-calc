@@ -255,18 +255,23 @@ export const App: React.FC = () => {
         setStats(statsRes);
 
         // Filter active (incomplete) crafts
-        const activeCrafts = (craftsRes?.craftResults || []).filter((c) => !c.completed);
+        const activeCrafts = (craftsRes?.craftResults || []).filter(
+          (c) => !c.completed && (c.progress ?? 0) < (c.totalActionsRequired || Infinity)
+        );
         setCrafts(activeCrafts);
 
-        // Preserve current craft selection on refresh!
+        // Preserve current craft selection or detect newly active craft
         const currentTargetCraftId = selectedCraftIdRef.current;
+        let isCraftResolved = false;
 
         if (currentTargetCraftId) {
           const ownedIndex = activeCrafts.findIndex((c) => c.entityId === currentTargetCraftId);
           if (ownedIndex >= 0) {
-            // Player is viewing an owned craft
+            // Player is viewing an owned active craft that is still in progress
             setSelectedCraftIndex(ownedIndex);
             setCustomCraft(null);
+            isCraftResolved = true;
+
             bitjitaApi
               .getCraftContributions(activeCrafts[ownedIndex].entityId, forceFresh)
               .then((cb) => {
@@ -278,27 +283,63 @@ export const App: React.FC = () => {
                 setContributorPayloads([]);
               });
           } else {
-            // Player is viewing a nearby / helper custom craft: refresh its live progress!
-            bitjitaApi
-              .getCraft(currentTargetCraftId, forceFresh)
-              .then((res) => {
-                if (res?.craft) {
-                  setCustomCraft(res.craft);
-                  if (res.items) {
-                    setItemMetadataMap((prev) => {
-                      const next = new Map(prev);
-                      for (const itm of res.items!) {
-                        next.set(Number(itm.id), itm);
-                      }
-                      return next;
-                    });
-                  }
+            // Check if the custom / helper craft is still ongoing
+            try {
+              const res = await bitjitaApi.getCraft(currentTargetCraftId, forceFresh);
+              const isStillOngoing =
+                Boolean(res?.craft) &&
+                !res!.craft.completed &&
+                res!.craft.status !== 'completed' &&
+                (res!.craft.progress ?? 0) < (res!.craft.totalActionsRequired || Infinity);
+
+              if (isStillOngoing) {
+                setCustomCraft(res!.craft);
+                isCraftResolved = true;
+                if (res!.items) {
+                  setItemMetadataMap((prev) => {
+                    const next = new Map(prev);
+                    for (const itm of res!.items!) {
+                      next.set(Number(itm.id), itm);
+                    }
+                    return next;
+                  });
                 }
-              })
-              .catch(() => {});
+
+                const cb = await bitjitaApi.getCraftContributions(currentTargetCraftId, forceFresh).catch(() => []);
+                setContributions(cb);
+                loadContributorPayloads(cb, player.entityId);
+              } else {
+                // The targeted craft has completed or is no longer active! Clear it to auto-pick the new craft.
+                selectedCraftIdRef.current = null;
+                setCustomCraft(null);
+              }
+            } catch {
+              selectedCraftIdRef.current = null;
+              setCustomCraft(null);
+            }
+          }
+        }
+
+        // If the targeted craft was completed or none was selected, auto-select the active craft!
+        if (!isCraftResolved) {
+          if (activeCrafts.length > 0) {
+            // Prioritize the craft with active lock expiration / recent activity, else first craft
+            let bestIndex = 0;
+            const now = Date.now();
+            for (let i = 0; i < activeCrafts.length; i++) {
+              const lockTime = activeCrafts[i].lockExpiration ? new Date(activeCrafts[i].lockExpiration!).getTime() : 0;
+              if (lockTime > now - 60_000) {
+                bestIndex = i;
+                break;
+              }
+            }
+
+            selectedCraftIdRef.current = activeCrafts[bestIndex].entityId;
+            setSelectedCraftIndex(bestIndex);
+            setCustomCraft(null);
 
             bitjitaApi
-              .getCraftContributions(currentTargetCraftId, forceFresh)
+              .getCraftContributions(activeCrafts[bestIndex].entityId, forceFresh)
               .then((cb) => {
                 setContributions(cb);
                 loadContributorPayloads(cb, player.entityId);
@@ -307,24 +348,11 @@ export const App: React.FC = () => {
                 setContributions([]);
                 setContributorPayloads([]);
               });
+          } else {
+            setCustomCraft(null);
+            setContributions([]);
+            setContributorPayloads([]);
           }
-        } else if (activeCrafts.length > 0) {
-          // Default to first active owned craft if no specific craft was chosen
-          setSelectedCraftIndex(0);
-          setCustomCraft(null);
-          bitjitaApi
-            .getCraftContributions(activeCrafts[0].entityId, forceFresh)
-            .then((cb) => {
-              setContributions(cb);
-              loadContributorPayloads(cb, player.entityId);
-            })
-            .catch(() => {
-              setContributions([]);
-              setContributorPayloads([]);
-            });
-        } else {
-          setContributions([]);
-          setContributorPayloads([]);
         }
 
         // Spatial Proximity: Find nearby stations in the player's region (< 500m)
@@ -374,10 +402,12 @@ export const App: React.FC = () => {
 
               setNearbyCrafts(enhancedNearby);
 
-              // If player has NO owned crafts and NO craft is selected yet, auto-select the helper station!
+              // If player has NO owned active crafts and NO active craft is selected, auto-select helper station!
               if (!selectedCraftIdRef.current && activeCrafts.length === 0 && enhancedNearby.length > 0) {
-                const bestCandidate = enhancedNearby.find((n) => n.isHelper) || enhancedNearby[0];
-                handleSelectCustomCraft(bestCandidate.craft);
+                const bestCandidate = enhancedNearby.find((n) => n.isHelper && !n.craft.completed) || enhancedNearby[0];
+                if (bestCandidate && !bestCandidate.craft.completed) {
+                  handleSelectCustomCraft(bestCandidate.craft);
+                }
               }
             })
             .catch(() => setNearbyCrafts([]));

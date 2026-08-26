@@ -87,6 +87,7 @@ export interface CraftResult {
   claimLocationZ?: number;
   regionName?: string;
   completed: boolean;
+  status?: string;
   isPublic?: boolean;
   functionType?: number;
 }
