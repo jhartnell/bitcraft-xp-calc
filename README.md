@@ -62,13 +62,14 @@ A high-performance, real-time web application to track active crafting progress,
    - **Request Queue & Throttling:** Enforces a minimum 120ms spacing and maximum 2 concurrent outbound requests with automatic exponential backoff on HTTP 429 errors.
    - **User-Configurable Auto-Refresh:** Selectable polling intervals (`Off`, `15s`, `30s`, `60s`, `2m`, `5m`) with live pause/resume and countdown indicator.
 
-9. **Multi-User Collaborative Crafting & Contributor XP (v1.1.0, v1.2.1):**
+9. **Multi-User Collaborative Crafting & Contributor Projections (v1.1.0, v1.2.1, v1.3.2):**
    - **Dynamic Activity Detection:** Tracks contributor recency and live progress deltas (`🔥 Currently Crafting`, `Active Participant`, `Idle / Left`).
    - **Compounded Team Speed:** Combines the effort-per-second rates of all active participants to calculate collaborative station completion times.
-   - **Comprehensive Time Saved Metrics (v1.2.1):**
-     - **⚡ Actively Saved:** Exact time already saved for the owner by helpers' historical contributions.
-     - **🔮 Projected Saved:** Time saved on the remaining craft effort if the active team continues.
-     - **Total Time Saved:** Combined team contribution savings.
+   - **Contextual Time Saved & Acceleration Metrics (v1.3.2):**
+     - **Projected Time to Finish:** Prominently displays the collaborative completion ETA alongside the solo baseline duration and speedup.
+     - **🔮 Estimated Future Savings:** Clear future-tense metric showing the grinding hours shaved off the *remaining* unfinished progress.
+     - **⚡ Already Saved (Past Work):** Exact time shaved off so far by helpers' completed contributions.
+     - **🏆 Projected Total Craft Savings:** Lifetime project savings combining past contributions and projected future speedups.
    - **Individual Projected XP Shares:** Accurately distributes remaining craft effort and expected XP according to each participant's relative crafting speed and gear buffs.
    - **Interactive Simulation Toggles:** Check or uncheck any contributor to simulate team compositions on shared or public crafting stations.
 
