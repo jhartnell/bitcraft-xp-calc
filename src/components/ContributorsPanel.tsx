@@ -75,7 +75,8 @@ export const ContributorsPanel: React.FC<ContributorsPanelProps> = ({
             {isMultiplayerActive && secondsTotalSaved > 0 && (
               <span className="text-emerald-400 font-mono ml-2">
                 • Collaborative ETA: <strong>{projection.collaborativeEtaCompletionTime}</strong> ({formatTimeSeconds(projection.collaborativeEstimatedSecondsRemaining)})
-                {secondsAlreadySaved > 0 && ` • ${formatTimeSeconds(secondsAlreadySaved)} saved so far`}
+                {secondsProjectedSaved > 0 && ` • Shaving ${formatTimeSeconds(secondsProjectedSaved)} remaining`}
+                {secondsAlreadySaved > 0 && ` (${formatTimeSeconds(secondsAlreadySaved)} already saved)`}
               </span>
             )}
           </div>
@@ -148,8 +149,8 @@ export const ContributorsPanel: React.FC<ContributorsPanelProps> = ({
                 ETA: <strong>{projection.collaborativeEtaCompletionTime}</strong> ({formatTimeSeconds(projection.collaborativeEstimatedSecondsRemaining)})
               </span>
               <span className="text-emerald-400/80 font-sans font-bold">
-                • Saving {formatTimeSeconds(secondsProjectedSaved)} projected
-                {secondsAlreadySaved > 0 && ` (${formatTimeSeconds(secondsAlreadySaved)} saved so far)`}!
+                {secondsProjectedSaved > 0 && `• Shaving ${formatTimeSeconds(secondsProjectedSaved)} remaining`}
+                {secondsAlreadySaved > 0 && ` (${formatTimeSeconds(secondsAlreadySaved)} already saved)`}!
               </span>
             </div>
           )}
@@ -210,27 +211,32 @@ export const ContributorsPanel: React.FC<ContributorsPanelProps> = ({
         </div>
 
         <div className="bg-surface-subtle p-3 rounded-lg border border-surface-border">
-          <div className="text-gray-400 text-[11px] mb-0.5">Time Saved with Team</div>
+          <div className="text-gray-400 text-[11px] mb-0.5">Team Time Savings</div>
           <div className="text-base font-bold text-teal-300">
-            {secondsTotalSaved > 0 ? `${formatTimeSeconds(secondsTotalSaved)} Total` : '0s (Solo)'}
+            {secondsProjectedSaved > 0
+              ? `${formatTimeSeconds(secondsProjectedSaved)} Faster Remaining`
+              : secondsAlreadySaved > 0
+              ? `${formatTimeSeconds(secondsAlreadySaved)} Already Saved`
+              : '0s (Solo)'}
           </div>
           <div className="text-[10px] text-gray-400 font-sans mt-1 space-y-0.5">
             {secondsAlreadySaved > 0 && (
               <div>
-                ⚡ Already Saved:{' '}
+                ⚡ Already Saved (Completed):{' '}
                 <strong className="text-emerald-400 font-mono">
                   {formatTimeSeconds(secondsAlreadySaved)}
                 </strong>
               </div>
             )}
-            {secondsProjectedSaved > 0 ? (
+            {secondsTotalSaved > 0 && (
               <div>
-                🔮 Projected Saved:{' '}
+                🏆 Total Craft Savings:{' '}
                 <strong className="text-teal-300 font-mono">
-                  {formatTimeSeconds(secondsProjectedSaved)}
+                  {formatTimeSeconds(secondsTotalSaved)}
                 </strong>
               </div>
-            ) : (
+            )}
+            {secondsProjectedSaved <= 0 && secondsAlreadySaved <= 0 && (
               <div>{isMultiplayerActive ? 'No remaining acceleration' : 'Waiting for helpers to join'}</div>
             )}
           </div>
