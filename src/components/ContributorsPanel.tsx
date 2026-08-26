@@ -4,7 +4,6 @@ import {
   Zap,
   Star,
   Activity,
-  ArrowRight,
   Sparkles,
   Timer,
   ChevronDown,
@@ -75,7 +74,7 @@ export const ContributorsPanel: React.FC<ContributorsPanelProps> = ({
             {isMultiplayerActive && secondsTotalSaved > 0 && (
               <span className="text-emerald-400 font-mono ml-2">
                 • Collaborative ETA: <strong>{projection.collaborativeEtaCompletionTime}</strong> ({formatTimeSeconds(projection.collaborativeEstimatedSecondsRemaining)})
-                {secondsProjectedSaved > 0 && ` • Shaving ${formatTimeSeconds(secondsProjectedSaved)} remaining`}
+                {secondsProjectedSaved > 0 && ` • Saving ${formatTimeSeconds(secondsProjectedSaved)} on remaining work`}
                 {secondsAlreadySaved > 0 && ` (${formatTimeSeconds(secondsAlreadySaved)} already saved)`}
               </span>
             )}
@@ -149,7 +148,7 @@ export const ContributorsPanel: React.FC<ContributorsPanelProps> = ({
                 ETA: <strong>{projection.collaborativeEtaCompletionTime}</strong> ({formatTimeSeconds(projection.collaborativeEstimatedSecondsRemaining)})
               </span>
               <span className="text-emerald-400/80 font-sans font-bold">
-                {secondsProjectedSaved > 0 && `• Shaving ${formatTimeSeconds(secondsProjectedSaved)} remaining`}
+                {secondsProjectedSaved > 0 && `• Saving ${formatTimeSeconds(secondsProjectedSaved)} on remaining work`}
                 {secondsAlreadySaved > 0 && ` (${formatTimeSeconds(secondsAlreadySaved)} already saved)`}!
               </span>
             </div>
@@ -170,6 +169,7 @@ export const ContributorsPanel: React.FC<ContributorsPanelProps> = ({
 
       {/* Collaborative Summary Stat Bar */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs font-mono">
+        {/* Card 1: Combined Effort Rate */}
         <div className="bg-surface-subtle p-3 rounded-lg border border-surface-border">
           <div className="text-gray-400 text-[11px] mb-0.5">
             {isMultiplayerActive ? 'Combined Effort Rate' : 'Player Effort Rate'}
@@ -184,21 +184,21 @@ export const ContributorsPanel: React.FC<ContributorsPanelProps> = ({
           </div>
         </div>
 
+        {/* Card 2: Projected Time to Finish */}
         <div className="bg-surface-subtle p-3 rounded-lg border border-surface-border">
           <div className="text-gray-400 text-[11px] mb-0.5">
-            {isMultiplayerActive ? 'Solo vs Collaborative Time' : 'Estimated Time Remaining'}
+            {isMultiplayerActive ? 'Projected Time to Finish' : 'Estimated Time Remaining'}
           </div>
           <div className="text-base font-bold text-gray-200 flex items-center gap-1.5">
             {isMultiplayerActive ? (
-              <>
-                <span className="text-gray-400 line-through text-xs">
-                  {formatTimeSeconds(projection.soloEstimatedSecondsRemaining)}
-                </span>
-                <ArrowRight className="w-3.5 h-3.5 text-emerald-400" />
-                <span className="text-emerald-300 font-bold">
+              <div className="flex items-baseline gap-2">
+                <span className="text-emerald-300 font-bold text-base">
                   {formatTimeSeconds(projection.collaborativeEstimatedSecondsRemaining)}
                 </span>
-              </>
+                <span className="text-[11px] text-gray-400 font-sans font-normal">
+                  (Team ETA)
+                </span>
+              </div>
             ) : (
               <span className="text-emerald-300 font-bold">
                 {formatTimeSeconds(projection.soloEstimatedSecondsRemaining)}
@@ -206,15 +206,26 @@ export const ContributorsPanel: React.FC<ContributorsPanelProps> = ({
             )}
           </div>
           <div className="text-[10px] text-gray-400 font-sans mt-0.5">
-            {isMultiplayerActive ? 'Accelerated with helpers' : 'Standard in-game duration'}
+            {isMultiplayerActive ? (
+              <span>
+                Solo pace would take{' '}
+                <span className="text-gray-300 font-mono">
+                  {formatTimeSeconds(projection.soloEstimatedSecondsRemaining)}
+                </span>{' '}
+                (saves {formatTimeSeconds(secondsProjectedSaved)})
+              </span>
+            ) : (
+              'Standard solo in-game duration'
+            )}
           </div>
         </div>
 
+        {/* Card 3: Team Time Savings */}
         <div className="bg-surface-subtle p-3 rounded-lg border border-surface-border">
           <div className="text-gray-400 text-[11px] mb-0.5">Team Time Savings</div>
           <div className="text-base font-bold text-teal-300">
             {secondsProjectedSaved > 0
-              ? `${formatTimeSeconds(secondsProjectedSaved)} Faster Remaining`
+              ? `${formatTimeSeconds(secondsProjectedSaved)} Saved on Remaining Work`
               : secondsAlreadySaved > 0
               ? `${formatTimeSeconds(secondsAlreadySaved)} Already Saved`
               : '0s (Solo)'}
@@ -230,7 +241,7 @@ export const ContributorsPanel: React.FC<ContributorsPanelProps> = ({
             )}
             {secondsTotalSaved > 0 && (
               <div>
-                🏆 Total Craft Savings:{' '}
+                🏆 Projected Total Craft Savings:{' '}
                 <strong className="text-teal-300 font-mono">
                   {formatTimeSeconds(secondsTotalSaved)}
                 </strong>
