@@ -20,6 +20,7 @@ import { ModifiersPanel } from './components/ModifiersPanel';
 import { ContributorsPanel } from './components/ContributorsPanel';
 import { SkillList } from './components/SkillList';
 import { PublicCraftsModal } from './components/PublicCraftsModal';
+import { Footer } from './components/Footer';
 import { Hammer, Globe, AlertCircle, Info } from 'lucide-react';
 
 const RECENT_PLAYERS_KEY = 'bitcraft_xp_recent_players';
@@ -547,18 +548,8 @@ export const App: React.FC = () => {
         onSelectCraft={(craft) => setCustomCraft(craft)}
       />
 
-      {/* Footer */}
-      <footer className="border-t border-surface-border/60 py-4 px-6 text-center text-xs text-gray-500">
-        BitCraft XP Calculator • Powered by{' '}
-        <a
-          href="https://bitjita.com/docs/api"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-emerald-400 hover:underline"
-        >
-          BitJita Developer API
-        </a>
-      </footer>
+      {/* Embedded App Version & Footer */}
+      <Footer />
     </div>
   );
 };
