@@ -69,7 +69,10 @@ export interface MultiUserCraftProjection {
   inactivityTimeoutMinutes: number;
   soloEstimatedSecondsRemaining: number;
   collaborativeEstimatedSecondsRemaining: number;
-  secondsSaved: number;
+  secondsSaved: number; // backwards compatibility alias for secondsProjectedSaved
+  secondsProjectedSaved: number;
+  secondsAlreadySaved: number;
+  secondsTotalSaved: number;
   soloEtaCompletionTime: string | null;
   collaborativeEtaCompletionTime: string | null;
   combinedEffortPerSecond: number;

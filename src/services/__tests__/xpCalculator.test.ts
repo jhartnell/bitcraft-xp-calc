@@ -261,7 +261,11 @@ describe('Multi-User Collaborative Crafting Engine', () => {
     expect(multiProjection.collaborativeEstimatedSecondsRemaining).toBeLessThan(
       multiProjection.soloEstimatedSecondsRemaining
     );
-    expect(multiProjection.secondsSaved).toBeGreaterThan(0);
+    expect(multiProjection.secondsProjectedSaved).toBeGreaterThan(0);
+    expect(multiProjection.secondsAlreadySaved).toBeGreaterThan(0);
+    expect(multiProjection.secondsTotalSaved).toBe(
+      multiProjection.secondsAlreadySaved + multiProjection.secondsProjectedSaved
+    );
 
     // Ikuria and DOOM each get 50% of the remaining projected effort
     const ikuriaPart = multiProjection.participants.find((p) => p.username === 'Ikuria');

@@ -41,7 +41,9 @@ export const ContributorsPanel: React.FC<ContributorsPanelProps> = ({
     participants,
     activeParticipantsCount,
     totalContributorsCount,
-    secondsSaved,
+    secondsProjectedSaved,
+    secondsAlreadySaved,
+    secondsTotalSaved,
     inactivityTimeoutMinutes,
   } = projection;
 
@@ -70,9 +72,10 @@ export const ContributorsPanel: React.FC<ContributorsPanelProps> = ({
                 1 Active (Solo Craft)
               </span>
             )}
-            {isMultiplayerActive && secondsSaved > 0 && (
+            {isMultiplayerActive && secondsTotalSaved > 0 && (
               <span className="text-emerald-400 font-mono ml-2">
                 • Collaborative ETA: <strong>{projection.collaborativeEtaCompletionTime}</strong> ({formatTimeSeconds(projection.collaborativeEstimatedSecondsRemaining)})
+                {secondsAlreadySaved > 0 && ` • ${formatTimeSeconds(secondsAlreadySaved)} saved so far`}
               </span>
             )}
           </div>
@@ -138,14 +141,15 @@ export const ContributorsPanel: React.FC<ContributorsPanelProps> = ({
           )}
 
           {/* Time Saved Pill */}
-          {isMultiplayerActive && secondsSaved > 0 && (
+          {isMultiplayerActive && secondsTotalSaved > 0 && (
             <div className="flex items-center gap-2 bg-emerald-950/70 border border-emerald-700/60 px-3 py-1.5 rounded-lg font-mono text-emerald-300 shadow-md">
               <Zap className="w-4 h-4 text-emerald-400 animate-pulse" />
               <span>
                 ETA: <strong>{projection.collaborativeEtaCompletionTime}</strong> ({formatTimeSeconds(projection.collaborativeEstimatedSecondsRemaining)})
               </span>
               <span className="text-emerald-400/80 font-sans font-bold">
-                • Saving {formatTimeSeconds(secondsSaved)}!
+                • Saving {formatTimeSeconds(secondsProjectedSaved)} projected
+                {secondsAlreadySaved > 0 && ` (${formatTimeSeconds(secondsAlreadySaved)} saved so far)`}!
               </span>
             </div>
           )}
@@ -208,10 +212,27 @@ export const ContributorsPanel: React.FC<ContributorsPanelProps> = ({
         <div className="bg-surface-subtle p-3 rounded-lg border border-surface-border">
           <div className="text-gray-400 text-[11px] mb-0.5">Time Saved with Team</div>
           <div className="text-base font-bold text-teal-300">
-            {secondsSaved > 0 ? formatTimeSeconds(secondsSaved) : '0s (Solo)'}
+            {secondsTotalSaved > 0 ? `${formatTimeSeconds(secondsTotalSaved)} Total` : '0s (Solo)'}
           </div>
-          <div className="text-[10px] text-gray-400 font-sans mt-0.5">
-            {isMultiplayerActive ? 'Combined output boost' : 'Waiting for helpers to join'}
+          <div className="text-[10px] text-gray-400 font-sans mt-1 space-y-0.5">
+            {secondsAlreadySaved > 0 && (
+              <div>
+                ⚡ Already Saved:{' '}
+                <strong className="text-emerald-400 font-mono">
+                  {formatTimeSeconds(secondsAlreadySaved)}
+                </strong>
+              </div>
+            )}
+            {secondsProjectedSaved > 0 ? (
+              <div>
+                🔮 Projected Saved:{' '}
+                <strong className="text-teal-300 font-mono">
+                  {formatTimeSeconds(secondsProjectedSaved)}
+                </strong>
+              </div>
+            ) : (
+              <div>{isMultiplayerActive ? 'No remaining acceleration' : 'Waiting for helpers to join'}</div>
+            )}
           </div>
         </div>
       </div>

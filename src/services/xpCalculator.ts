@@ -660,10 +660,34 @@ export function calculateMultiUserCraftProjection(
       ? Math.round(remainingEffort / combinedEffortPerSecond)
       : soloEstimatedSecondsRemaining;
 
-  const secondsSaved = Math.max(
+  const secondsProjectedSaved = Math.max(
     0,
     soloEstimatedSecondsRemaining - collaborativeEstimatedSecondsRemaining
   );
+
+  // Calculate time already saved by helpers' historical contributions
+  let helperEffortContributed = 0;
+  for (const p of participants) {
+    const isPrimary = Boolean(
+      primaryPlayer &&
+        (p.entityId === primaryPlayer.entityId ||
+          p.username?.toLowerCase() === primaryPlayer.username.toLowerCase())
+    );
+    if (!isPrimary) {
+      helperEffortContributed += Math.max(0, p.totalProgressContributed);
+    }
+  }
+
+  const helperActionsOwnerSaved =
+    primaryCalc.progressPerAction > 0
+      ? Math.ceil(helperEffortContributed / primaryCalc.progressPerAction)
+      : 0;
+
+  const secondsAlreadySaved = Math.round(
+    helperActionsOwnerSaved * primaryCalc.secondsPerAction
+  );
+
+  const secondsTotalSaved = secondsAlreadySaved + secondsProjectedSaved;
 
   const soloEtaCompletionTime = primaryCalc.estimatedCompletionTime;
   let collaborativeEtaCompletionTime: string | null = null;
@@ -682,7 +706,10 @@ export function calculateMultiUserCraftProjection(
     inactivityTimeoutMinutes: activeWindowMinutes,
     soloEstimatedSecondsRemaining,
     collaborativeEstimatedSecondsRemaining,
-    secondsSaved,
+    secondsSaved: secondsProjectedSaved,
+    secondsProjectedSaved,
+    secondsAlreadySaved,
+    secondsTotalSaved,
     soloEtaCompletionTime,
     collaborativeEtaCompletionTime,
     combinedEffortPerSecond,
