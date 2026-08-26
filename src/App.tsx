@@ -21,6 +21,8 @@ import { ContributorsPanel } from './components/ContributorsPanel';
 import { SkillList } from './components/SkillList';
 import { PublicCraftsModal } from './components/PublicCraftsModal';
 import { Footer } from './components/Footer';
+import { UpdateNotificationToast } from './components/UpdateNotificationToast';
+import { useVersionUpdateChecker } from './hooks/useVersionUpdateChecker';
 import { Hammer, Globe, AlertCircle, Info, Star, MapPin } from 'lucide-react';
 
 const RECENT_PLAYERS_KEY = 'bitcraft_xp_recent_players';
@@ -29,6 +31,15 @@ const PRIMARY_PLAYER_KEY = 'bitcraft_primary_player';
 const INACTIVITY_TIMEOUT_KEY = 'bitcraft_inactivity_timeout';
 
 export const App: React.FC = () => {
+  // Update Notification Checker
+  const {
+    hasUpdate,
+    currentVersion,
+    latestVersion,
+    reload: handleReloadUpdate,
+    dismiss: handleDismissUpdate,
+  } = useVersionUpdateChecker();
+
   // State
   const [selectedPlayer, setSelectedPlayer] = useState<PlayerSummary | null>(null);
   const [primaryPlayer, setPrimaryPlayer] = useState<PlayerSummary | null>(() => {
@@ -724,6 +735,15 @@ export const App: React.FC = () => {
         isOpen={isPublicModalOpen}
         onClose={() => setIsPublicModalOpen(false)}
         onSelectCraft={(craft) => handleSelectCustomCraft(craft)}
+      />
+
+      {/* Floating Update Notification Toast */}
+      <UpdateNotificationToast
+        hasUpdate={hasUpdate}
+        latestVersion={latestVersion}
+        currentVersion={currentVersion}
+        onReload={handleReloadUpdate}
+        onDismiss={handleDismissUpdate}
       />
 
       {/* Embedded App Version & Footer */}

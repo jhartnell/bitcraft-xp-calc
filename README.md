@@ -87,6 +87,11 @@ A high-performance, real-time web application to track active crafting progress,
 12. **Public Crafts Explorer:**
     - Search and inspect global in-progress crafts across the realm to test character stats and hypothetical XP gains.
 
+13. **Auto-Deployment Version Detection & Toast Notification (v1.3.3):**
+    - **Background Manifest Polling:** Periodically checks `/version.json` with cache-busting headers on tab focus and background intervals.
+    - **Interactive Update Toast:** Displays a floating alert (`🚀 New Version Available! (vX.X.X)`) with a 30-second auto-reload countdown (pauses on hover) and instant `[ Reload Now ]` / `[ Later ]` controls.
+    - **Stale Chunk Preload Trap:** Listens for Vite dynamic chunk errors (`vite:preloadError`) to automatically reload stale sessions after new server deployments.
+
 ---
 
 ## 🛠️ Architecture & Tech Stack
