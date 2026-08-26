@@ -318,16 +318,29 @@ class PoliteApiClient {
     playerZ?: number,
     maxDistanceMeters = 500,
     forceFresh = false
-  ): Promise<{ craft: CraftResult; distanceMeters: number }[]> {
+  ): Promise<{
+    craft: CraftResult;
+    distanceMeters: number;
+    itemName?: string;
+    itemTier?: number;
+    itemMetadata?: ItemMetadata;
+  }[]> {
     if (!regionId) return [];
 
-    const res = await this.fetchWithCache<{ craftResults: CraftResult[] }>(
+    const res = await this.fetchWithCache<{ craftResults: CraftResult[]; items?: ItemMetadata[] }>(
       `/crafts?completed=false&regionId=${regionId}&limit=100`,
       20000,
       forceFresh
     );
 
     if (!res || !res.craftResults) return [];
+
+    const itemsMap = new Map<number, ItemMetadata>();
+    if (res.items) {
+      for (const itm of res.items) {
+        itemsMap.set(Number(itm.id), itm);
+      }
+    }
 
     // Cache recipe XP metadata
     for (const c of res.craftResults) {
@@ -336,7 +349,13 @@ class PoliteApiClient {
       }
     }
 
-    const nearbyList: { craft: CraftResult; distanceMeters: number }[] = [];
+    const nearbyList: {
+      craft: CraftResult;
+      distanceMeters: number;
+      itemName?: string;
+      itemTier?: number;
+      itemMetadata?: ItemMetadata;
+    }[] = [];
 
     for (const c of res.craftResults) {
       const cx = c.claimLocationX !== undefined ? c.claimLocationX : c.claimLocationX;
@@ -347,8 +366,17 @@ class PoliteApiClient {
         distance = Math.round(Math.sqrt(Math.pow(playerX - cx, 2) + Math.pow(playerZ - cz, 2)));
       }
 
+      const itemId = c.craftedItem?.[0]?.item_id;
+      const itm = itemId ? itemsMap.get(Number(itemId)) : undefined;
+
       if (distance <= maxDistanceMeters || (cx === undefined && cz === undefined)) {
-        nearbyList.push({ craft: c, distanceMeters: distance });
+        nearbyList.push({
+          craft: c,
+          distanceMeters: distance,
+          itemName: itm?.name,
+          itemTier: itm?.tier,
+          itemMetadata: itm,
+        });
       }
     }
 

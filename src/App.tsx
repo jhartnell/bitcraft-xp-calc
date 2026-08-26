@@ -350,6 +350,17 @@ export const App: React.FC = () => {
                 return a.distanceMeters - b.distanceMeters;
               });
 
+              // Cache all nearby items metadata
+              for (const item of nearList) {
+                if (item.itemMetadata) {
+                  setItemMetadataMap((prev) => {
+                    const next = new Map(prev);
+                    next.set(Number(item.itemMetadata!.id), item.itemMetadata!);
+                    return next;
+                  });
+                }
+              }
+
               setNearbyCrafts(enhancedNearby);
 
               // If player has NO owned crafts and NO craft is selected yet, auto-select the helper station!

@@ -17,6 +17,9 @@ export interface NearbyCraftItem {
   craft: CraftResult;
   distanceMeters: number;
   isHelper?: boolean;
+  itemName?: string;
+  itemTier?: number;
+  itemMetadata?: ItemMetadata;
 }
 
 interface ActiveCraftCardProps {
@@ -183,7 +186,7 @@ export const ActiveCraftCard: React.FC<ActiveCraftCardProps> = ({
             })}
 
             {/* 2. Active Helper Crafts (Only stations where you've contributed) */}
-            {helperCrafts.map(({ craft: hCraft, distanceMeters }) => {
+            {helperCrafts.map(({ craft: hCraft, distanceMeters, itemName: hItemName }) => {
               const isSelected = isCurrentCraftSelected(hCraft);
               return (
                 <button
@@ -196,7 +199,10 @@ export const ActiveCraftCard: React.FC<ActiveCraftCardProps> = ({
                   }`}
                 >
                   <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
-                  <span>Helping: {hCraft.buildingName?.replace(' Station', '') || 'Station'}</span>
+                  <span>
+                    Helping: {hCraft.buildingName?.replace(' Station', '') || 'Station'}
+                    {hItemName ? ` (${hItemName})` : ''}
+                  </span>
                   <span className="text-[10px] font-mono text-gray-400 opacity-90">
                     ({distanceMeters}m{hCraft.ownerUsername ? ` • ${hCraft.ownerUsername}` : ''})
                   </span>
@@ -218,7 +224,9 @@ export const ActiveCraftCard: React.FC<ActiveCraftCardProps> = ({
                   <MapPin className={`w-3 h-3 ${selectedIdleCraft ? 'text-white' : 'text-teal-400'}`} />
                   <span>
                     {selectedIdleCraft
-                      ? `Viewing: ${selectedIdleCraft.craft.buildingName?.replace(' Station', '') || 'Station'}`
+                      ? `Viewing: ${selectedIdleCraft.craft.buildingName?.replace(' Station', '') || 'Station'}${
+                          selectedIdleCraft.itemName ? ` (${selectedIdleCraft.itemName})` : ''
+                        }`
                       : `+${idleNearbyCrafts.length} Nearby Stations`}
                   </span>
                   <ChevronDown
@@ -230,13 +238,13 @@ export const ActiveCraftCard: React.FC<ActiveCraftCardProps> = ({
 
                 {/* Floating Dropdown Drawer */}
                 {isNearbyDropdownOpen && (
-                  <div className="absolute left-0 mt-1.5 w-72 bg-surface border border-surface-border rounded-xl shadow-2xl p-1.5 z-40 space-y-1 animate-in fade-in zoom-in-95 duration-150">
+                  <div className="absolute left-0 mt-1.5 w-80 bg-surface border border-surface-border rounded-xl shadow-2xl p-1.5 z-40 space-y-1 animate-in fade-in zoom-in-95 duration-150">
                     <div className="px-2 py-1 text-[10px] font-semibold text-gray-400 uppercase tracking-wider border-b border-surface-border/50 flex items-center justify-between">
                       <span>Nearby Claim Stations</span>
                       <span className="text-gray-500 font-mono">{idleNearbyCrafts.length} available</span>
                     </div>
                     <div className="max-h-60 overflow-y-auto space-y-1 py-1">
-                      {idleNearbyCrafts.map(({ craft: nCraft, distanceMeters }) => {
+                      {idleNearbyCrafts.map(({ craft: nCraft, distanceMeters, itemName: nItemName, itemTier: nItemTier }) => {
                         const isSelected = isCurrentCraftSelected(nCraft);
                         return (
                           <button
@@ -260,9 +268,13 @@ export const ActiveCraftCard: React.FC<ActiveCraftCardProps> = ({
                                 {distanceMeters}m
                               </span>
                             </div>
-                            <div className="text-[10px] text-gray-400 font-mono flex items-center justify-between pl-4">
-                              <span>Recipe #{nCraft.recipeId}</span>
-                              <span>Owner: {nCraft.ownerUsername || 'Public'}</span>
+                            <div className="text-[11px] text-amber-300 font-sans flex items-center justify-between pl-4">
+                              <span className="truncate max-w-[180px]">
+                                📦 {nItemName || `Recipe #${nCraft.recipeId}`} {nItemTier ? `(T${nItemTier})` : ''}
+                              </span>
+                              <span className="text-gray-400 font-mono text-[10px] shrink-0">
+                                {nCraft.ownerUsername || 'Public'}
+                              </span>
                             </div>
                           </button>
                         );
