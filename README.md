@@ -11,13 +11,19 @@ A high-performance, real-time web application to track active crafting progress,
    - Quick-switch character dropdown and recent player chip history (persisted in local storage).
    - Instant multi-character management for players with active alts.
 
-2. **Active Craft Tracker:**
+2. **Dynamic Level Progression & Next-Level Timing (v1.2.0):**
+   - Accurate 1–110 non-linear progression curve formula ($4,385 \times 1.1161232^{\text{lvl}-1}$).
+   - **Immediate Next Level Countdown:** Computes exact time to ding (e.g. `Level 71 in 2h 15m at 10:42 PM`).
+   - **Interactive Milestone Roadmap:** Clickable milestone pill that expands to show intermediate level milestones, craft completion % markers, and XP needed when gaining multiple levels on a large craft.
+   - Dual progress bars illustrating current skill level progression % vs. projected outcome upon completion.
+
+3. **Active Craft Tracker:**
    - Automatically detects in-progress crafts (`/api/players/{id}/crafts`).
    - Detailed recipe inspection (Item Name, Tier, Rarity, Building Station, and Claim / Region location coordinates).
    - Effort progress bar (`progress` / `totalProgressRequired`) and finished vs. remaining item counts.
    - Multi-craft navigation tabs when a player has multiple active crafts.
 
-3. **Accurate Tool Mapping:**
+4. **Accurate Tool Mapping:**
    - Verified tool type mappings across all 14 BitCraft professions:
      - **Masonry:** Chisel
      - **Mining:** Pickaxe
@@ -33,30 +39,30 @@ A high-performance, real-time web application to track active crafting progress,
      - **Scholar:** Quill / Codex
      - **Construction:** Mallet / Trowel
 
-4. **In-Game Calibrated Action Timing & Debuff Calculation:**
-   - **Base Action Cycle (1.4s):** Uses BitCraft's actual 1.4-second base channel duration per crafting action.
+5. **In-Game Calibrated Action Timing & Debuff Calculation:**
+   - **Base Action Cycle (1.6s):** Uses BitCraft's actual 1.6-second base channel duration per crafting action.
    - **Food Debuff & Speed Modifiers:** Accurately accounts for negative Crafting Speed modifiers (e.g. food debuffs like $-11.5\%$ or $-20\%$ Crafting Speed, rez sickness, etc.) which lengthen action duration:
-     $$\text{Action Duration} = \frac{1.4\text{s}}{\text{Total Crafting Speed Multiplier}}$$
+     $$\text{Action Duration} = \frac{1.6\text{s}}{\text{Total Crafting Speed Multiplier}}$$
    - **Server Stat Integration:** Directly ingests `player.stats.values[15]` when available from BitJita for exact server-calculated speed rates.
    - **Historical Contribution Detection:** Automatically calculates real-world progress-per-action rate ($\text{progress} \div \text{actions}$) from `/api/crafts/{id}/contributions`.
 
-5. **Accurate XP & Progression Engine:**
+6. **Accurate XP & Progression Engine:**
    - **Total Craft XP:** `totalProgressRequired * baseXpPerAction * xpMultiplier`.
    - **XP Left to Gain:** `(totalProgressRequired - progress) * baseXpPerAction * xpMultiplier`.
    - **XP Already Earned:** `progress * baseXpPerAction * xpMultiplier`.
    - **Calibrated Level Curve:** Converts XP into BitCraft skill levels (1–110) with exact progress percentages and XP needed for the next level milestone.
 
-6. **Equipment & Food Buff Modifiers:**
+7. **Equipment & Food Buff Modifiers:**
    - **Tool Compatibility Verification:** Inspects main-hand, off-hand, and profession charm slots to ensure required tool type, minimum level, and power tier are satisfied.
    - **Debuff Highlighting:** Visually distinguishes beneficial buffs from speed penalties.
    - **Active Buff Countdown:** Live countdown timers with expiration warnings (< 2 minutes).
 
-7. **Polite API Architecture & Rate Limit Protection:**
+8. **Polite API Architecture & Rate Limit Protection:**
    - **In-Memory TTL Cache:** Caches search results, player metadata, crafts, and skills to minimize network traffic.
    - **Request Queue & Throttling:** Enforces a minimum 120ms spacing and maximum 2 concurrent outbound requests with automatic exponential backoff on HTTP 429 errors.
    - **User-Configurable Auto-Refresh:** Selectable polling intervals (`Off`, `15s`, `30s`, `60s`, `2m`, `5m`) with live pause/resume and countdown indicator.
 
-8. **Multi-User Collaborative Crafting & Contributor XP (v1.1.0):**
+9. **Multi-User Collaborative Crafting & Contributor XP (v1.1.0):**
    - **Dynamic Activity Detection:** Tracks contributor recency and live progress deltas (`🔥 Currently Crafting`, `Active Participant`, `Idle / Left`).
    - **Compounded Team Speed:** Combines the effort-per-second rates of all active participants to calculate collaborative station completion times.
    - **Time Saved Highlight:** Shows Solo ETA vs. Collaborative ETA and time saved with the team.
