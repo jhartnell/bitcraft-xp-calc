@@ -286,32 +286,32 @@ describe('Bitcraft XP and Level Progression Curve', () => {
   it('correctly maps base level thresholds', () => {
     expect(calculateXpForLevel(1)).toBe(0);
     expect(calculateXpForLevel(2)).toBe(500);
-    expect(calculateXpForLevel(10)).toBe(8079);
-    expect(calculateXpForLevel(77)).toBe(23032019);
-    expect(calculateXpForLevel(78)).toBe(25698249);
+    expect(calculateXpForLevel(10)).toBe(7366);
+    expect(calculateXpForLevel(79)).toBe(23032020);
+    expect(calculateXpForLevel(80)).toBe(25698250);
   });
 
   it('correctly converts arbitrary XP to skill levels', () => {
     expect(getLevelFromXp(0)).toBe(1);
     expect(getLevelFromXp(500)).toBe(2);
     expect(getLevelFromXp(4000)).toBe(6);
-    expect(getLevelFromXp(25694018)).toBe(77); // Ikuria's live Masonry level
+    expect(getLevelFromXp(25694018)).toBe(79); // Ikuria's live Masonry level
   });
 
   it('calculates level progress percentage and remaining XP to next level', () => {
     const progress = getXpProgressForLevel(750);
-    expect(progress.level).toBe(2); // level 2 is 500..1075
+    expect(progress.level).toBe(2); // level 2 is 500..1060
     expect(progress.currentLevelXp).toBe(500);
-    expect(progress.nextLevelXp).toBe(1075);
-    expect(progress.xpNeededForNext).toBe(325); // 1075 - 750
+    expect(progress.nextLevelXp).toBe(1060);
+    expect(progress.xpNeededForNext).toBe(310); // 1060 - 750
     expect(progress.progressPercent).toBeGreaterThan(40);
 
-    // Test with Ikuria's exact level 77 Masonry XP
+    // Test with Ikuria's exact level 79 Masonry XP
     const ikuriaProgress = getXpProgressForLevel(25694018);
-    expect(ikuriaProgress.level).toBe(77);
-    expect(ikuriaProgress.currentLevelXp).toBe(23032019);
-    expect(ikuriaProgress.nextLevelXp).toBe(25698249);
-    expect(ikuriaProgress.xpNeededForNext).toBe(4231);
+    expect(ikuriaProgress.level).toBe(79);
+    expect(ikuriaProgress.currentLevelXp).toBe(23032020);
+    expect(ikuriaProgress.nextLevelXp).toBe(25698250);
+    expect(ikuriaProgress.xpNeededForNext).toBe(4232);
     expect(ikuriaProgress.progressPercent).toBeGreaterThan(99);
   });
 

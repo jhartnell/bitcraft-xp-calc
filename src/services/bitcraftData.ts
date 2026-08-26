@@ -71,8 +71,8 @@ export const DEFAULT_SKILL_BASE_XP: Record<number, number> = {
 // Calibrated BitCraft incremental level delta XP (XP needed to complete level L and reach L + 1)
 export function calculateLevelDeltaXp(level: number): number {
   if (level <= 1) return 500;
-  const rate = 1.115682968;
-  const scale = 649.8617534;
+  const rate = 1.115732232;
+  const scale = 520.2624865;
   return Math.round(500 + scale * (Math.pow(rate, level - 1) - 1));
 }
 
