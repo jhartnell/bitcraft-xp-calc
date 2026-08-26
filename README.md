@@ -1,7 +1,5 @@
 # BitCraft Online XP Calculator
 
-🌐 **Live Deployment:** [https://xpcalc.adhocbasis.com/](https://xpcalc.adhocbasis.com/)
-
 A high-performance, real-time web application to track active crafting progress, calculate expected Experience Points (XP), estimate time to completion, and project level-ups for **Bitcraft Online** players using the [BitJita Developer API](https://bitjita.com/docs/api).
 
 ---
