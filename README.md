@@ -73,11 +73,12 @@ A high-performance, real-time web application to track active crafting progress,
    - **Individual Projected XP Shares:** Accurately distributes remaining craft effort and expected XP according to each participant's relative crafting speed and gear buffs.
    - **Interactive Simulation Toggles:** Check or uncheck any contributor to simulate team compositions on shared or public crafting stations.
 
-10. **Spatial Proximity Auto-Detection & Helper Station Detection (v1.3.0):**
+10. **Spatial Proximity & Automatic Task Rollover (v1.3.0, v1.3.4):**
     - **2D World Coordinate Tracking:** Ingests character `(locationX, locationZ)` and region to detect all active crafting stations within interaction distance ($\le 500\text{m}$).
     - **Boundary-Proof Proximity:** Resolves stations seamlessly whether standing inside a claim, outside a perimeter fence, or in a ruined city without polygon boundary limitations.
     - **Automatic Helper Station Tabs:** Identifies stations where the player has contributed effort and pins a prominent **`⭐ Helping: Station (Item Name)`** tab directly to the dashboard.
-    - **Selection Persistence:** Seamlessly retains chosen station selections and live progress during background auto-refresh cycles.
+    - **Lifecycle Completion & Active Task Rollover (v1.3.4):** Automatically detects when a currently tracked craft completes, discards stale identifiers, and transitions seamlessly to newly started owned crafts or active helper stations without requiring manual user refresh.
+    - **Selection Persistence:** Seamlessly retains chosen station selections and live progress during background auto-refresh cycles while a craft is ongoing.
 
 11. **Compact Station Dropdown & Clean UI Controls (v1.3.0):**
     - **Real Item & Recipe Name Resolution:** Resolves and displays human-readable item names and tiers (e.g. `📦 Cedar Planks (T2)`, `📦 Pyrelite Ore Concentrate`) instead of numeric recipe IDs.
