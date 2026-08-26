@@ -9,6 +9,7 @@ import {
   PlayerStatsData,
   SkillsApiResponse,
   CraftResult,
+  ItemMetadata,
 } from '../types/api';
 import { ApiClientStatus } from '../types/calculator';
 
@@ -289,6 +290,15 @@ class PoliteApiClient {
     }
 
     return res.craftResults || [];
+  }
+
+  // Get single craft details and metadata
+  public async getCraft(craftId: string, forceFresh = false): Promise<{ craft: CraftResult; items?: ItemMetadata[] }> {
+    return this.fetchWithCache<{ craft: CraftResult; items?: ItemMetadata[] }>(
+      `/crafts/${craftId}`,
+      10000,
+      forceFresh
+    );
   }
 
   // Get craft contributions (history of player actions and progress per action)

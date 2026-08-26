@@ -95,6 +95,7 @@ export const App: React.FC = () => {
   });
 
   const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const selectedCraftIdRef = useRef<string | null>(null);
 
   // Clear cache handler
   const handleClearCache = () => {
@@ -158,6 +159,67 @@ export const App: React.FC = () => {
     }
   };
 
+  // Background loader for other contributors' gear & stats
+  const loadContributorPayloads = async (
+    contribs: import('./types/api').CraftContribution[],
+    primaryId: string
+  ) => {
+    const payloads: import('./services/xpCalculator').ContributorDetailPayload[] = [];
+
+    for (const cb of contribs) {
+      if (cb.contributorEntityId === primaryId) {
+        payloads.push({
+          contribution: cb,
+          isIncluded: includedContributors[cb.contributorEntityId],
+        });
+      } else {
+        try {
+          const [equip, buffs, stats] = await Promise.all([
+            bitjitaApi.getPlayerEquipment(cb.contributorEntityId).catch(() => null),
+            bitjitaApi.getPlayerBuffs(cb.contributorEntityId).catch(() => null),
+            bitjitaApi.getPlayerStats(cb.contributorEntityId).catch(() => null),
+          ]);
+
+          payloads.push({
+            contribution: cb,
+            equipment: equip?.equipment || [],
+            buffs: buffs?.buffs || [],
+            stats: stats || undefined,
+            isIncluded: includedContributors[cb.contributorEntityId],
+          });
+        } catch {
+          payloads.push({
+            contribution: cb,
+            isIncluded: includedContributors[cb.contributorEntityId],
+          });
+        }
+      }
+    }
+
+    setContributorPayloads(payloads);
+  };
+
+  const handleSelectCustomCraft = (craft: CraftResult) => {
+    selectedCraftIdRef.current = craft.entityId;
+    setCustomCraft(craft);
+    setCustomProgressPerAction(null);
+    setContributions([]);
+    setContributorPayloads([]);
+
+    bitjitaApi
+      .getCraftContributions(craft.entityId, true)
+      .then((cb) => {
+        setContributions(cb);
+        if (playerDetails) {
+          loadContributorPayloads(cb, playerDetails.entityId);
+        }
+      })
+      .catch(() => {
+        setContributions([]);
+        setContributorPayloads([]);
+      });
+  };
+
   // Fetch full player data
   const loadPlayerData = useCallback(
     async (player: PlayerSummary, forceFresh = false) => {
@@ -184,11 +246,61 @@ export const App: React.FC = () => {
         // Filter active (incomplete) crafts
         const activeCrafts = (craftsRes?.craftResults || []).filter((c) => !c.completed);
         setCrafts(activeCrafts);
-        setCustomCraft(null); // Reset custom selected craft on player change
-        setCustomProgressPerAction(null);
 
-        // Fetch contributions for the first active craft if exists
-        if (activeCrafts.length > 0) {
+        // Preserve current craft selection on refresh!
+        const currentTargetCraftId = selectedCraftIdRef.current;
+
+        if (currentTargetCraftId) {
+          const ownedIndex = activeCrafts.findIndex((c) => c.entityId === currentTargetCraftId);
+          if (ownedIndex >= 0) {
+            // Player is viewing an owned craft
+            setSelectedCraftIndex(ownedIndex);
+            setCustomCraft(null);
+            bitjitaApi
+              .getCraftContributions(activeCrafts[ownedIndex].entityId, forceFresh)
+              .then((cb) => {
+                setContributions(cb);
+                loadContributorPayloads(cb, player.entityId);
+              })
+              .catch(() => {
+                setContributions([]);
+                setContributorPayloads([]);
+              });
+          } else {
+            // Player is viewing a nearby / helper custom craft: refresh its live progress!
+            bitjitaApi
+              .getCraft(currentTargetCraftId, forceFresh)
+              .then((res) => {
+                if (res?.craft) {
+                  setCustomCraft(res.craft);
+                  if (res.items) {
+                    setItemMetadataMap((prev) => {
+                      const next = new Map(prev);
+                      for (const itm of res.items!) {
+                        next.set(Number(itm.id), itm);
+                      }
+                      return next;
+                    });
+                  }
+                }
+              })
+              .catch(() => {});
+
+            bitjitaApi
+              .getCraftContributions(currentTargetCraftId, forceFresh)
+              .then((cb) => {
+                setContributions(cb);
+                loadContributorPayloads(cb, player.entityId);
+              })
+              .catch(() => {
+                setContributions([]);
+                setContributorPayloads([]);
+              });
+          }
+        } else if (activeCrafts.length > 0) {
+          // Default to first active owned craft if no specific craft was chosen
+          setSelectedCraftIndex(0);
+          setCustomCraft(null);
           bitjitaApi
             .getCraftContributions(activeCrafts[0].entityId, forceFresh)
             .then((cb) => {
@@ -240,8 +352,8 @@ export const App: React.FC = () => {
 
               setNearbyCrafts(enhancedNearby);
 
-              // If player has NO owned crafts, but has a nearby helper craft, auto-select it!
-              if (activeCrafts.length === 0 && enhancedNearby.length > 0) {
+              // If player has NO owned crafts and NO craft is selected yet, auto-select the helper station!
+              if (!selectedCraftIdRef.current && activeCrafts.length === 0 && enhancedNearby.length > 0) {
                 const bestCandidate = enhancedNearby.find((n) => n.isHelper) || enhancedNearby[0];
                 handleSelectCustomCraft(bestCandidate.craft);
               }
@@ -271,66 +383,6 @@ export const App: React.FC = () => {
     },
     []
   );
-
-  // Background loader for other contributors' gear & stats
-  const loadContributorPayloads = async (
-    contribs: import('./types/api').CraftContribution[],
-    primaryId: string
-  ) => {
-    const payloads: import('./services/xpCalculator').ContributorDetailPayload[] = [];
-
-    for (const cb of contribs) {
-      if (cb.contributorEntityId === primaryId) {
-        payloads.push({
-          contribution: cb,
-          isIncluded: includedContributors[cb.contributorEntityId],
-        });
-      } else {
-        try {
-          const [equip, buffs, stats] = await Promise.all([
-            bitjitaApi.getPlayerEquipment(cb.contributorEntityId).catch(() => null),
-            bitjitaApi.getPlayerBuffs(cb.contributorEntityId).catch(() => null),
-            bitjitaApi.getPlayerStats(cb.contributorEntityId).catch(() => null),
-          ]);
-
-          payloads.push({
-            contribution: cb,
-            equipment: equip?.equipment || [],
-            buffs: buffs?.buffs || [],
-            stats: stats || undefined,
-            isIncluded: includedContributors[cb.contributorEntityId],
-          });
-        } catch {
-          payloads.push({
-            contribution: cb,
-            isIncluded: includedContributors[cb.contributorEntityId],
-          });
-        }
-      }
-    }
-
-    setContributorPayloads(payloads);
-  };
-
-  const handleSelectCustomCraft = (craft: CraftResult) => {
-    setCustomCraft(craft);
-    setCustomProgressPerAction(null);
-    setContributions([]);
-    setContributorPayloads([]);
-
-    bitjitaApi
-      .getCraftContributions(craft.entityId, true)
-      .then((cb) => {
-        setContributions(cb);
-        if (playerDetails) {
-          loadContributorPayloads(cb, playerDetails.entityId);
-        }
-      })
-      .catch(() => {
-        setContributions([]);
-        setContributorPayloads([]);
-      });
-  };
 
   // Initial load: pick primary player if available, else first recent player
   useEffect(() => {
@@ -364,8 +416,10 @@ export const App: React.FC = () => {
   }, [refreshInterval, isPaused, selectedPlayer, loadPlayerData]);
 
   const handleSelectPlayer = (player: PlayerSummary) => {
-    setSelectedPlayer(player);
+    selectedCraftIdRef.current = null;
+    setCustomCraft(null);
     setSelectedCraftIndex(0);
+    setSelectedPlayer(player);
     loadPlayerData(player);
   };
 
@@ -480,14 +534,18 @@ export const App: React.FC = () => {
             {activeCraft && calcResult ? (
               <div className="space-y-5">
                 {customCraft && (
-                  <div className="bg-indigo-950/60 border border-indigo-700/60 rounded-xl px-4 py-2.5 flex items-center justify-between text-xs text-indigo-200">
+                  <div className="bg-indigo-950/60 border border-indigo-700/60 rounded-xl px-4 py-2.5 flex items-center justify-between text-xs text-indigo-200 shadow-md">
                     <span className="flex items-center gap-1.5">
                       <Info className="w-4 h-4 text-indigo-400" />
                       Station: <strong>{customCraft.buildingName || 'Crafting Station'}</strong> ({customCraft.claimName || `Region ${customCraft.regionId}`}) • Owner: <strong>{customCraft.ownerUsername || 'Public'}</strong>
                     </span>
                     {crafts.length > 0 && (
                       <button
-                        onClick={() => setCustomCraft(null)}
+                        onClick={() => {
+                          selectedCraftIdRef.current = crafts[0].entityId;
+                          setCustomCraft(null);
+                          setSelectedCraftIndex(0);
+                        }}
                         className="text-indigo-300 hover:text-white underline cursor-pointer"
                       >
                         Return to my owned craft
@@ -505,10 +563,11 @@ export const App: React.FC = () => {
                   nearbyCrafts={nearbyCrafts}
                   onSelectNearbyCraft={handleSelectCustomCraft}
                   onSelectIndex={(idx) => {
-                    setCustomCraft(null);
-                    setSelectedCraftIndex(idx);
-                    setCustomProgressPerAction(null);
                     if (crafts[idx]) {
+                      selectedCraftIdRef.current = crafts[idx].entityId;
+                      setCustomCraft(null);
+                      setSelectedCraftIndex(idx);
+                      setCustomProgressPerAction(null);
                       bitjitaApi
                         .getCraftContributions(crafts[idx].entityId)
                         .then((cb) => {
@@ -635,7 +694,7 @@ export const App: React.FC = () => {
                   <button
                     key={name}
                     onClick={() => handleSelectPlayer({ entityId: '', username: name })}
-                    className="text-xs bg-surface-subtle hover:bg-emerald-950/70 hover:border-emerald-700/60 border border-surface-border text-gray-300 hover:text-emerald-300 px-3 py-1.5 rounded-lg font-medium transition-colors cursor-pointer"
+                    className="text-xs bg-surface-subtle hover:bg-emerald-950/70 hover:border-emerald-700/60 border border-surface-border text-gray-300 hover:text-emerald-300 px-3 py-1.5 rounded-lg font-medium transition-colors"
                   >
                     👤 {name}
                   </button>
