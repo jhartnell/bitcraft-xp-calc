@@ -21,12 +21,13 @@ import { ContributorsPanel } from './components/ContributorsPanel';
 import { SkillList } from './components/SkillList';
 import { PublicCraftsModal } from './components/PublicCraftsModal';
 import { Footer } from './components/Footer';
-import { Hammer, Globe, AlertCircle, Info, Star, MapPin } from 'lucide-react';
+import { Hammer, Globe, AlertCircle, Info, Star, MapPin, Sparkles, Layout } from 'lucide-react';
 
 const RECENT_PLAYERS_KEY = 'bitcraft_xp_recent_players';
 const REFRESH_INTERVAL_KEY = 'bitcraft_xp_refresh_interval';
 const PRIMARY_PLAYER_KEY = 'bitcraft_primary_player';
 const INACTIVITY_TIMEOUT_KEY = 'bitcraft_inactivity_timeout';
+const FOCUS_MODE_KEY = 'bitcraft_xp_focus_mode';
 
 export const App: React.FC = () => {
   // State
@@ -45,6 +46,14 @@ export const App: React.FC = () => {
       return saved !== null ? Number(saved) : 2.0;
     } catch {
       return 2.0;
+    }
+  });
+  const [isFocusMode, setIsFocusMode] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem(FOCUS_MODE_KEY);
+      return saved === 'true';
+    } catch {
+      return false;
     }
   });
 
@@ -122,6 +131,19 @@ export const App: React.FC = () => {
     } catch (err) {
       console.error('Failed to save inactivity timeout:', err);
     }
+  };
+
+  // Focus mode toggle
+  const toggleFocusMode = () => {
+    setIsFocusMode((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(FOCUS_MODE_KEY, String(next));
+      } catch (err) {
+        console.error('Failed to save focus mode:', err);
+      }
+      return next;
+    });
   };
 
   // Recent players helper
@@ -513,7 +535,7 @@ export const App: React.FC = () => {
           </div>
         )}
 
-        {/* Player Selection & Refresh Controls Row */}
+        {/* Player Selection, Refresh Controls, and Focus Mode Row */}
         <div className="space-y-3">
           <PlayerSearch
             selectedPlayer={selectedPlayer}
@@ -526,15 +548,40 @@ export const App: React.FC = () => {
           />
 
           {selectedPlayer && (
-            <RefreshControls
-              intervalSeconds={refreshInterval}
-              onIntervalChange={handleIntervalChange}
-              isPaused={isPaused}
-              onTogglePause={() => setIsPaused(!isPaused)}
-              onRefreshNow={handleManualRefresh}
-              isRefreshing={isLoading}
-              lastUpdated={lastUpdated}
-            />
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-surface/50 p-2 rounded-xl border border-surface-border/50">
+              <RefreshControls
+                intervalSeconds={refreshInterval}
+                onIntervalChange={handleIntervalChange}
+                isPaused={isPaused}
+                onTogglePause={() => setIsPaused(!isPaused)}
+                onRefreshNow={handleManualRefresh}
+                isRefreshing={isLoading}
+                lastUpdated={lastUpdated}
+              />
+
+              {/* Focus / Minimal HUD Mode Toggle */}
+              <button
+                onClick={toggleFocusMode}
+                className={`px-3 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                  isFocusMode
+                    ? 'bg-amber-950/80 border-amber-600/80 text-amber-300 shadow-md ring-1 ring-amber-500/40'
+                    : 'bg-surface-subtle border-surface-border text-gray-400 hover:text-gray-200'
+                }`}
+                title="Focus Mode: Collapses secondary panels for a clean, minimal grinding HUD"
+              >
+                {isFocusMode ? (
+                  <>
+                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                    <span>✨ Focus Mode (Minimal)</span>
+                  </>
+                ) : (
+                  <>
+                    <Layout className="w-3.5 h-3.5 text-gray-400" />
+                    <span>📊 Detailed View</span>
+                  </>
+                )}
+              </button>
+            </div>
           )}
         </div>
 
@@ -596,14 +643,14 @@ export const App: React.FC = () => {
                   onOverrideProgressPerAction={(val) => setCustomProgressPerAction(val)}
                 />
 
-                {/* Craft Contributors & Projections Panel (Starts collapsed for solo crafts, expanded for shared crafts) */}
+                {/* Craft Contributors & Projections Panel */}
                 {multiUserProjection && multiUserProjection.totalContributorsCount > 0 && (
                   <ContributorsPanel
                     projection={multiUserProjection}
                     primaryEntityId={playerDetails?.entityId}
                     onToggleParticipant={handleToggleParticipant}
                     onInactivityTimeoutChange={handleInactivityTimeoutChange}
-                    isInitiallyCollapsed={otherContributorsCount === 0}
+                    isInitiallyCollapsed={isFocusMode || otherContributorsCount === 0}
                   />
                 )}
 
@@ -611,7 +658,10 @@ export const App: React.FC = () => {
                 <XpProjections calc={calcResult} />
 
                 {/* Modifiers (Food buffs & Equipment) */}
-                <ModifiersPanel calc={calcResult} />
+                <ModifiersPanel
+                  calc={calcResult}
+                  isInitiallyCollapsed={isFocusMode}
+                />
               </div>
             ) : (
               /* No In-Progress Craft Empty State */
@@ -634,7 +684,7 @@ export const App: React.FC = () => {
                       <span>Found {nearbyCrafts.length} nearby crafting stations within ~100m:</span>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                      {nearbyCrafts.map(({ craft: nCraft, distanceMeters, isHelper }) => (
+                      {nearbyCrafts.map(({ craft: nCraft, distanceMeters, isHelper, itemName: nItemName, itemTier: nItemTier }) => (
                         <button
                           key={nCraft.entityId}
                           onClick={() => handleSelectCustomCraft(nCraft)}
@@ -648,7 +698,10 @@ export const App: React.FC = () => {
                             {isHelper && <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />}
                             <span>{nCraft.buildingName || 'Station'}</span>
                           </div>
-                          <div className="text-[11px] text-gray-400 flex items-center justify-between font-mono">
+                          <div className="text-[11px] text-amber-300 font-sans">
+                            📦 {nItemName || `Recipe #${nCraft.recipeId}`} {nItemTier ? `(T${nItemTier})` : ''}
+                          </div>
+                          <div className="text-[10px] text-gray-400 flex items-center justify-between font-mono">
                             <span>{nCraft.claimName || 'Local Claim'}</span>
                             <span className="text-emerald-400 font-bold">{distanceMeters}m away</span>
                           </div>
@@ -675,6 +728,7 @@ export const App: React.FC = () => {
               <SkillList
                 player={playerDetails}
                 highlightSkillId={calcResult?.skillId}
+                isInitiallyCollapsed={isFocusMode}
               />
             )}
           </div>
@@ -705,7 +759,7 @@ export const App: React.FC = () => {
                   <button
                     key={name}
                     onClick={() => handleSelectPlayer({ entityId: '', username: name })}
-                    className="text-xs bg-surface-subtle hover:bg-emerald-950/70 hover:border-emerald-700/60 border border-surface-border text-gray-300 hover:text-emerald-300 px-3 py-1.5 rounded-lg font-medium transition-colors"
+                    className="text-xs bg-surface-subtle hover:bg-emerald-950/70 hover:border-emerald-700/60 border border-surface-border text-gray-300 hover:text-emerald-300 px-3 py-1.5 rounded-lg font-medium transition-colors cursor-pointer"
                   >
                     👤 {name}
                   </button>

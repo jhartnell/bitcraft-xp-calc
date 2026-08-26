@@ -1,13 +1,25 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { PlayerDetails } from '../types/api';
 import { SKILL_DEFINITIONS, getXpProgressForLevel, formatXp } from '../services/bitcraftData';
+import { ChevronDown, ChevronUp, Eye, EyeOff } from 'lucide-react';
 
 interface SkillListProps {
   player: PlayerDetails;
   highlightSkillId?: number;
+  isInitiallyCollapsed?: boolean;
 }
 
-export const SkillList: React.FC<SkillListProps> = ({ player, highlightSkillId }) => {
+export const SkillList: React.FC<SkillListProps> = ({
+  player,
+  highlightSkillId,
+  isInitiallyCollapsed = false,
+}) => {
+  const [isCollapsed, setIsCollapsed] = useState(isInitiallyCollapsed);
+
+  useEffect(() => {
+    setIsCollapsed(isInitiallyCollapsed);
+  }, [isInitiallyCollapsed]);
+
   const experiences = player.experience || [];
   const expMap = new Map<number, number>();
   for (const exp of experiences) {
@@ -16,9 +28,44 @@ export const SkillList: React.FC<SkillListProps> = ({ player, highlightSkillId }
 
   // Sort skills: highlighted first, then by profession/adventure
   const skillList = Object.values(SKILL_DEFINITIONS).filter((s) => s.id !== 1);
+  const activeSkill = highlightSkillId ? SKILL_DEFINITIONS[highlightSkillId] : null;
+  const activeSkillExp = highlightSkillId ? expMap.get(highlightSkillId) || 0 : 0;
+  const activeSkillProg = getXpProgressForLevel(activeSkillExp);
+
+  // Collapsed View
+  if (isCollapsed) {
+    return (
+      <div className="bg-surface rounded-xl border border-surface-border p-3.5 shadow-md flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div className="flex items-center gap-2.5">
+          <div className="p-1.5 rounded-lg bg-surface-subtle border border-surface-border text-emerald-400">
+            📊
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-semibold text-gray-200">Character Skills:</span>
+            {activeSkill ? (
+              <span className="text-emerald-400 font-mono font-bold">
+                {activeSkill.icon} {activeSkill.name} Level {activeSkillProg.level} ({formatXp(activeSkillExp)} XP)
+              </span>
+            ) : (
+              <span className="text-gray-400 font-mono">14 Profession Skills</span>
+            )}
+          </div>
+        </div>
+
+        <button
+          onClick={() => setIsCollapsed(false)}
+          className="flex items-center gap-1.5 bg-surface-subtle hover:bg-surface-border border border-surface-border text-gray-300 hover:text-white px-3 py-1 rounded-lg transition-colors font-medium cursor-pointer"
+        >
+          <Eye className="w-3.5 h-3.5 text-emerald-400" />
+          <span>Show Skills Matrix</span>
+          <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
+        </button>
+      </div>
+    );
+  }
 
   return (
-    <div className="bg-surface rounded-xl border border-surface-border p-5 shadow-xl space-y-3">
+    <div className="bg-surface rounded-xl border border-surface-border p-5 shadow-xl space-y-3 animate-in fade-in duration-200">
       <div className="flex items-center justify-between border-b border-surface-border pb-3">
         <div>
           <h3 className="text-base font-bold text-gray-100 flex items-center gap-2">
@@ -28,6 +75,16 @@ export const SkillList: React.FC<SkillListProps> = ({ player, highlightSkillId }
             All professions & adventure skills for {player.username}
           </p>
         </div>
+
+        <button
+          onClick={() => setIsCollapsed(true)}
+          className="flex items-center gap-1 text-gray-400 hover:text-gray-200 bg-surface-subtle border border-surface-border px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer text-xs"
+          title="Collapse Skills Overview"
+        >
+          <EyeOff className="w-3.5 h-3.5" />
+          <span className="hidden sm:inline">Hide</span>
+          <ChevronUp className="w-3.5 h-3.5" />
+        </button>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5 pt-1">
@@ -58,14 +115,15 @@ export const SkillList: React.FC<SkillListProps> = ({ player, highlightSkillId }
               <div className="w-full bg-surface rounded-full h-1.5 overflow-hidden border border-surface-border my-1">
                 <div
                   className={`h-full rounded-full transition-all duration-300 ${
-                    isHighlighted ? 'bg-emerald-400' : 'bg-indigo-400'
+                    isHighlighted ? 'bg-emerald-400' : 'bg-indigo-500'
                   }`}
                   style={{ width: `${Math.max(1, prog.progressPercent)}%` }}
                 />
               </div>
 
-              <div className="text-[10px] text-gray-400 font-mono text-right">
-                {formatXp(currentXp)} XP
+              <div className="text-[10px] text-gray-400 font-mono flex justify-between">
+                <span>{prog.progressPercent.toFixed(0)}%</span>
+                <span>{formatXp(currentXp)} XP</span>
               </div>
             </div>
           );
