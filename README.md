@@ -11,9 +11,9 @@ A high-performance, real-time web application to track active crafting progress,
    - Quick-switch character dropdown and recent player chip history (persisted in local storage).
    - Instant multi-character management for players with active alts.
 
-2. **Dynamic Level Progression & Next-Level Timing (v1.2.0):**
-   - Accurate 1–110 non-linear progression curve formula ($4,385 \times 1.1161232^{\text{lvl}-1}$).
-   - **Immediate Next Level Countdown:** Computes exact time to ding (e.g. `Level 71 in 2h 15m at 10:42 PM`).
+2. **Dynamic Level Progression & Next-Level Timing (v1.2.0, v1.3.1):**
+   - **Calibrated Cumulative Curve:** Matches BitCraft's live in-game exponential progression curve ($\text{delta}(L) = 500 + 520.26 \times (1.115732^{L-1} - 1)$) with exact lifetime cumulative tracking.
+   - **Immediate Next Level Countdown:** Computes exact time to ding (e.g. `Level 80 in ~1m 45s at 10:42 PM`).
    - **Interactive Milestone Roadmap:** Clickable milestone pill that expands to show intermediate level milestones, craft completion % markers, and XP needed when gaining multiple levels on a large craft.
    - Dual progress bars illustrating current skill level progression % vs. projected outcome upon completion.
 
