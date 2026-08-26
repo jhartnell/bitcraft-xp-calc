@@ -76,6 +76,36 @@ export interface MultiUserCraftProjection {
   participants: ParticipantContributionSummary[];
 }
 
+export interface LevelMilestone {
+  level: number;
+  xpThreshold: number;
+  xpNeededFromCurrent: number;
+  effortRequired: number;
+  physicalActionsRequired: number;
+  itemsFinishedAtMilestone: number;
+  craftProgressPercentAtMilestone: number;
+  estimatedSecondsFromNow: number;
+  estimatedTimestamp: string | null;
+  isAchievableInThisCraft: boolean;
+}
+
+export interface LevelProgressForecast {
+  currentLevel: number;
+  currentSkillXp: number;
+  targetNextLevel: number;
+  xpNeededForNextLevel: number;
+  isNextLevelAchievable: boolean;
+  secondsToNextLevel: number | null;
+  nextLevelEtaTimestamp: string | null;
+  itemsFinishedAtNextLevel: number | null;
+  craftProgressPercentAtNextLevel: number | null;
+  totalLevelsGained: number;
+  projectedFinalLevel: number;
+  projectedFinalXp: number;
+  projectedFinalProgressPercent: number;
+  milestones: LevelMilestone[];
+}
+
 export interface XpCalculationResult {
   skillId: number;
   skillName: string;
@@ -126,6 +156,7 @@ export interface XpCalculationResult {
   equipmentModifiers: EquipmentModifier[];
   
   multiUserProjection?: MultiUserCraftProjection | null;
+  levelForecast: LevelProgressForecast;
 }
 
 export interface ApiClientStatus {

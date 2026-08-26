@@ -307,3 +307,67 @@ describe('Bitcraft XP and Level Progression Curve', () => {
     expect(formatTimeSeconds(49500)).toBe('13h 45m 0s');
   });
 });
+
+describe('Level Milestone Timing & Multi-Level Forecast Engine', () => {
+  const craft: CraftResult = {
+    entityId: 'craft-123',
+    buildingEntityId: 'bld-123',
+    ownerEntityId: 'player-1',
+    regionId: 1,
+    progress: 0,
+    recipeId: 101,
+    craftCount: 100,
+    lockExpiration: '2026-08-25T12:00:00Z',
+    actionsRequiredPerItem: 100,
+    totalActionsRequired: 10000,
+    craftedItem: [{ item_id: 1, quantity: 1, item_type: 'item', durability: 0 }],
+    levelRequirements: [],
+    toolRequirements: [],
+    experiencePerProgress: [{ quantity: 2.0, skill_id: 4 }], // Masonry 2.0 XP/action
+    completed: false,
+  };
+
+  it('accurately forecasts single next level ETA and craft benchmark item', () => {
+    // Current XP = 4,000 (Level 6). Next level 7 threshold is 4,942.
+    // XP needed = 942. At 2.0 XP/action, effort needed = 471.
+    // Progress per action = 20 -> 24 actions * 1.6s = ~38s.
+    const player: PlayerDetails = {
+      entityId: 'player-1',
+      username: 'Tester',
+      experience: [{ skill_id: 4, quantity: 4000 }],
+    };
+
+    const result = calculateCraftXp(craft, player, [], [], null, [], 20);
+
+    expect(result.levelForecast.currentLevel).toBe(6);
+    expect(result.levelForecast.targetNextLevel).toBe(7);
+    expect(result.levelForecast.isNextLevelAchievable).toBe(true);
+    expect(result.levelForecast.xpNeededForNextLevel).toBeGreaterThan(0);
+    expect(result.levelForecast.secondsToNextLevel).toBeGreaterThan(0);
+    expect(result.levelForecast.itemsFinishedAtNextLevel).toBeDefined();
+    expect(result.levelForecast.craftProgressPercentAtNextLevel).toBeGreaterThan(0);
+  });
+
+  it('generates multi-level milestone roadmap when craft yields multiple levels', () => {
+    // Current XP = 0 (Level 1). Craft yields 20,000 XP (10,000 effort * 2.0).
+    // 20,000 XP reaches Level 18+.
+    const player: PlayerDetails = {
+      entityId: 'player-1',
+      username: 'Tester',
+      experience: [{ skill_id: 4, quantity: 0 }],
+    };
+
+    const result = calculateCraftXp(craft, player, [], [], null, [], 20);
+
+    expect(result.levelForecast.totalLevelsGained).toBeGreaterThanOrEqual(10);
+    expect(result.levelForecast.milestones.length).toBeGreaterThanOrEqual(10);
+
+    // Verify milestone properties
+    const firstMilestone = result.levelForecast.milestones[0];
+    expect(firstMilestone.level).toBe(2);
+    expect(firstMilestone.isAchievableInThisCraft).toBe(true);
+    expect(firstMilestone.estimatedSecondsFromNow).toBeGreaterThan(0);
+    expect(firstMilestone.itemsFinishedAtMilestone).toBeGreaterThanOrEqual(0);
+  });
+});
+
