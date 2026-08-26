@@ -23,6 +23,16 @@ export interface PlayerDetails extends PlayerSummary {
   teleportLocationType?: string;
   sessionStartTimestamp?: string;
   signInTimestamp?: string;
+  locationX?: number;
+  locationZ?: number;
+  regionId?: number;
+  location?: {
+    entityId?: string;
+    name?: string;
+    regionId?: number;
+    locationX?: number;
+    locationZ?: number;
+  };
   experience?: PlayerExperience[];
 }
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   PlayerSummary,
   PlayerDetails,
@@ -14,14 +14,14 @@ import { calculateCraftXp, calculateMultiUserCraftProjection } from './services/
 import { Header } from './components/Header';
 import { PlayerSearch } from './components/PlayerSearch';
 import { RefreshControls } from './components/RefreshControls';
-import { ActiveCraftCard } from './components/ActiveCraftCard';
+import { ActiveCraftCard, NearbyCraftItem } from './components/ActiveCraftCard';
 import { XpProjections } from './components/XpProjections';
 import { ModifiersPanel } from './components/ModifiersPanel';
 import { ContributorsPanel } from './components/ContributorsPanel';
 import { SkillList } from './components/SkillList';
 import { PublicCraftsModal } from './components/PublicCraftsModal';
 import { Footer } from './components/Footer';
-import { Hammer, Globe, AlertCircle, Info } from 'lucide-react';
+import { Hammer, Globe, AlertCircle, Info, Star, MapPin } from 'lucide-react';
 
 const RECENT_PLAYERS_KEY = 'bitcraft_xp_recent_players';
 const REFRESH_INTERVAL_KEY = 'bitcraft_xp_refresh_interval';
@@ -47,67 +47,32 @@ export const App: React.FC = () => {
       return 2.0;
     }
   });
+
   const [playerDetails, setPlayerDetails] = useState<PlayerDetails | null>(null);
-  const [crafts, setCrafts] = useState<CraftResult[]>([]);
-  const [selectedCraftIndex, setSelectedCraftIndex] = useState(0);
   const [equipment, setEquipment] = useState<EquipmentSlot[]>([]);
   const [buffs, setBuffs] = useState<PlayerBuff[]>([]);
   const [stats, setStats] = useState<PlayerStatsData | null>(null);
-  const [itemMetadataMap, setItemMetadataMap] = useState<Map<number, ItemMetadata>>(new Map());
+  const [crafts, setCrafts] = useState<CraftResult[]>([]);
+  const [selectedCraftIndex, setSelectedCraftIndex] = useState<number>(0);
+  const [customCraft, setCustomCraft] = useState<CraftResult | null>(null);
+  const [nearbyCrafts, setNearbyCrafts] = useState<NearbyCraftItem[]>([]);
   const [contributions, setContributions] = useState<import('./types/api').CraftContribution[]>([]);
   const [contributorPayloads, setContributorPayloads] = useState<import('./services/xpCalculator').ContributorDetailPayload[]>([]);
   const [includedContributors, setIncludedContributors] = useState<Record<string, boolean>>({});
+  const [itemMetadataMap, setItemMetadataMap] = useState<Map<number, ItemMetadata>>(new Map());
   const [customProgressPerAction, setCustomProgressPerAction] = useState<number | null>(null);
-
-  // Load primary player from chrome.storage.local on extension startup
-  useEffect(() => {
-    if (typeof chrome !== 'undefined' && chrome.storage?.local) {
-      chrome.storage.local.get(['primaryPlayer'], (res: Record<string, any>) => {
-        if (res.primaryPlayer && res.primaryPlayer.entityId) {
-          const loaded = res.primaryPlayer as PlayerSummary;
-          setPrimaryPlayer(loaded);
-          if (!selectedPlayer) {
-            handleSelectPlayer(loaded);
-          }
-        }
-      });
-    } else if (primaryPlayer && !selectedPlayer) {
-      handleSelectPlayer(primaryPlayer);
-    }
-  }, []);
-
-  // Toggle primary player pinning
-  const togglePrimaryPlayer = (player: PlayerSummary) => {
-    const isCurrentlyPrimary = primaryPlayer?.entityId === player.entityId;
-    const newPrimary = isCurrentlyPrimary ? null : player;
-
-    setPrimaryPlayer(newPrimary);
-
-    if (newPrimary) {
-      localStorage.setItem(PRIMARY_PLAYER_KEY, JSON.stringify(newPrimary));
-    } else {
-      localStorage.removeItem(PRIMARY_PLAYER_KEY);
-    }
-
-    if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
-      chrome.runtime.sendMessage({
-        type: 'SYNC_PRIMARY_PLAYER',
-        player: newPrimary,
-      });
-    }
-  };
-
-  // Recent Players Storage
-  const [recentPlayers, setRecentPlayers] = useState<PlayerSummary[]>(() => {
-    try {
-      const saved = localStorage.getItem(RECENT_PLAYERS_KEY);
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
+  
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const [apiStatus, setApiStatus] = useState<ApiClientStatus>({
+    lastFetchedAt: null,
+    cachedEntriesCount: 0,
+    isFetching: false,
+    lastResponseTimeMs: null,
+    rateLimitBackoffMs: 0,
+    error: null,
   });
 
-  // Refresh Interval (default 30s)
   const [refreshInterval, setRefreshInterval] = useState<number>(() => {
     try {
       const saved = localStorage.getItem(REFRESH_INTERVAL_KEY);
@@ -117,27 +82,52 @@ export const App: React.FC = () => {
     }
   });
 
-  const [isPaused, setIsPaused] = useState(false);
+  const [isPaused, setIsPaused] = useState<boolean>(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [isPublicModalOpen, setIsPublicModalOpen] = useState(false);
-  const [customCraft, setCustomCraft] = useState<CraftResult | null>(null);
+  const [recentPlayers, setRecentPlayers] = useState<PlayerSummary[]>(() => {
+    try {
+      const saved = localStorage.getItem(RECENT_PLAYERS_KEY);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
 
-  // Live API status
-  const [apiStatus, setApiStatus] = useState<ApiClientStatus>(bitjitaApi.status);
+  const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  useEffect(() => {
-    return bitjitaApi.subscribe((newStatus) => {
-      setApiStatus(newStatus);
-    });
-  }, []);
+  // Clear cache handler
+  const handleClearCache = () => {
+    bitjitaApi.clearCache();
+    setApiStatus((prev) => ({ ...prev, cachedEntriesCount: 0 }));
+  };
 
-  // Save recents to localStorage
+  // Primary player toggle
+  const togglePrimaryPlayer = (player: PlayerSummary) => {
+    if (primaryPlayer?.entityId === player.entityId) {
+      setPrimaryPlayer(null);
+      localStorage.removeItem(PRIMARY_PLAYER_KEY);
+    } else {
+      setPrimaryPlayer(player);
+      localStorage.setItem(PRIMARY_PLAYER_KEY, JSON.stringify(player));
+    }
+  };
+
+  // Inactivity timeout setting
+  const handleInactivityTimeoutChange = (minutes: number) => {
+    setInactivityTimeout(minutes);
+    try {
+      localStorage.setItem(INACTIVITY_TIMEOUT_KEY, String(minutes));
+    } catch (err) {
+      console.error('Failed to save inactivity timeout:', err);
+    }
+  };
+
+  // Recent players helper
   const saveRecentPlayer = (player: PlayerSummary) => {
     setRecentPlayers((prev) => {
       const filtered = prev.filter((p) => p.entityId !== player.entityId);
-      const updated = [player, ...filtered].slice(0, 6);
+      const updated = [player, ...filtered].slice(0, 8);
       try {
         localStorage.setItem(RECENT_PLAYERS_KEY, JSON.stringify(updated));
       } catch (err) {
@@ -214,6 +204,53 @@ export const App: React.FC = () => {
           setContributorPayloads([]);
         }
 
+        // Spatial Proximity: Find nearby stations in the player's region (< 500m)
+        if (detailsRes?.regionId) {
+          bitjitaApi
+            .getNearbyActiveCrafts(
+              detailsRes.regionId,
+              detailsRes.locationX,
+              detailsRes.locationZ,
+              500,
+              forceFresh
+            )
+            .then(async (nearList) => {
+              const enhancedNearby: NearbyCraftItem[] = [];
+              for (const item of nearList.slice(0, 8)) {
+                let isHelper = false;
+                try {
+                  const cbs = await bitjitaApi.getCraftContributions(item.craft.entityId);
+                  isHelper = cbs.some(
+                    (cb) =>
+                      cb.contributorEntityId === player.entityId ||
+                      cb.contributorUsername?.toLowerCase() === player.username.toLowerCase()
+                  );
+                } catch {
+                  // ignore
+                }
+                enhancedNearby.push({ ...item, isHelper });
+              }
+
+              // Sort helper crafts first, then by distance
+              enhancedNearby.sort((a, b) => {
+                if (a.isHelper && !b.isHelper) return -1;
+                if (!a.isHelper && b.isHelper) return 1;
+                return a.distanceMeters - b.distanceMeters;
+              });
+
+              setNearbyCrafts(enhancedNearby);
+
+              // If player has NO owned crafts, but has a nearby helper craft, auto-select it!
+              if (activeCrafts.length === 0 && enhancedNearby.length > 0) {
+                const bestCandidate = enhancedNearby.find((n) => n.isHelper) || enhancedNearby[0];
+                handleSelectCustomCraft(bestCandidate.craft);
+              }
+            })
+            .catch(() => setNearbyCrafts([]));
+        } else {
+          setNearbyCrafts([]);
+        }
+
         // Map item metadata
         const metaMap = new Map<number, ItemMetadata>();
         if (craftsRes?.items) {
@@ -260,7 +297,7 @@ export const App: React.FC = () => {
             contribution: cb,
             equipment: equip?.equipment || [],
             buffs: buffs?.buffs || [],
-            stats,
+            stats: stats || undefined,
             isIncluded: includedContributors[cb.contributorEntityId],
           });
         } catch {
@@ -275,28 +312,63 @@ export const App: React.FC = () => {
     setContributorPayloads(payloads);
   };
 
-  const handleInactivityTimeoutChange = (minutes: number) => {
-    setInactivityTimeout(minutes);
-    try {
-      localStorage.setItem(INACTIVITY_TIMEOUT_KEY, String(minutes));
-    } catch {
-      // ignore
-    }
+  const handleSelectCustomCraft = (craft: CraftResult) => {
+    setCustomCraft(craft);
+    setCustomProgressPerAction(null);
+    setContributions([]);
+    setContributorPayloads([]);
+
+    bitjitaApi
+      .getCraftContributions(craft.entityId, true)
+      .then((cb) => {
+        setContributions(cb);
+        if (playerDetails) {
+          loadContributorPayloads(cb, playerDetails.entityId);
+        }
+      })
+      .catch(() => {
+        setContributions([]);
+        setContributorPayloads([]);
+      });
   };
 
-  // Player Selection Handler
-  const handleSelectPlayer = async (player: PlayerSummary) => {
+  // Initial load: pick primary player if available, else first recent player
+  useEffect(() => {
+    if (primaryPlayer) {
+      setSelectedPlayer(primaryPlayer);
+      loadPlayerData(primaryPlayer);
+    } else if (recentPlayers.length > 0) {
+      setSelectedPlayer(recentPlayers[0]);
+      loadPlayerData(recentPlayers[0]);
+    }
+  }, []);
+
+  // Polling setup
+  useEffect(() => {
+    if (refreshTimerRef.current) {
+      clearInterval(refreshTimerRef.current);
+      refreshTimerRef.current = null;
+    }
+
+    if (refreshInterval > 0 && !isPaused && selectedPlayer) {
+      refreshTimerRef.current = setInterval(() => {
+        loadPlayerData(selectedPlayer, true);
+      }, refreshInterval * 1000);
+    }
+
+    return () => {
+      if (refreshTimerRef.current) {
+        clearInterval(refreshTimerRef.current);
+      }
+    };
+  }, [refreshInterval, isPaused, selectedPlayer, loadPlayerData]);
+
+  const handleSelectPlayer = (player: PlayerSummary) => {
     setSelectedPlayer(player);
     setSelectedCraftIndex(0);
-    setCustomProgressPerAction(null);
-    setIncludedContributors({});
-
-    if (player && player.entityId) {
-      loadPlayerData(player, false);
-    }
+    loadPlayerData(player);
   };
 
-  // Manual Refresh Trigger
   const handleManualRefresh = () => {
     if (selectedPlayer) {
       loadPlayerData(selectedPlayer, true);
@@ -362,19 +434,13 @@ export const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-background text-gray-100 flex flex-col font-sans selection:bg-emerald-500 selection:text-white">
       {/* Top Navigation & Status */}
-      <Header
-        apiStatus={apiStatus}
-        onClearCache={() => {
-          bitjitaApi.clearCache();
-          if (selectedPlayer) loadPlayerData(selectedPlayer, true);
-        }}
-      />
+      <Header apiStatus={apiStatus} onClearCache={handleClearCache} />
 
-      {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 space-y-5">
-        {/* Error Alert Banner */}
+      {/* Main Container */}
+      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
+        {/* Global Error Notice */}
         {error && (
-          <div className="bg-red-950/80 border border-red-800 rounded-xl p-4 flex items-start gap-3 text-red-200 text-sm shadow-lg">
+          <div className="bg-red-950/80 border border-red-800 text-red-200 p-4 rounded-xl flex items-start gap-3 shadow-lg animate-in fade-in duration-200 text-sm">
             <AlertCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
             <div className="flex-1">
               <strong className="font-semibold text-red-100">BitJita API Notice:</strong> {error}
@@ -417,14 +483,16 @@ export const App: React.FC = () => {
                   <div className="bg-indigo-950/60 border border-indigo-700/60 rounded-xl px-4 py-2.5 flex items-center justify-between text-xs text-indigo-200">
                     <span className="flex items-center gap-1.5">
                       <Info className="w-4 h-4 text-indigo-400" />
-                      Analyzing custom public craft with <strong>{selectedPlayer.username}</strong>'s stats & gear.
+                      Station: <strong>{customCraft.buildingName || 'Crafting Station'}</strong> ({customCraft.claimName || `Region ${customCraft.regionId}`}) • Owner: <strong>{customCraft.ownerUsername || 'Public'}</strong>
                     </span>
-                    <button
-                      onClick={() => setCustomCraft(null)}
-                      className="text-indigo-400 hover:text-white underline"
-                    >
-                      Return to player's active craft
-                    </button>
+                    {crafts.length > 0 && (
+                      <button
+                        onClick={() => setCustomCraft(null)}
+                        className="text-indigo-300 hover:text-white underline cursor-pointer"
+                      >
+                        Return to my owned craft
+                      </button>
+                    )}
                   </div>
                 )}
 
@@ -433,7 +501,11 @@ export const App: React.FC = () => {
                   craft={activeCraft}
                   craftsList={crafts}
                   selectedIndex={selectedCraftIndex}
+                  selectedCraftEntityId={activeCraft.entityId}
+                  nearbyCrafts={nearbyCrafts}
+                  onSelectNearbyCraft={handleSelectCustomCraft}
                   onSelectIndex={(idx) => {
+                    setCustomCraft(null);
                     setSelectedCraftIndex(idx);
                     setCustomProgressPerAction(null);
                     if (crafts[idx]) {
@@ -483,6 +555,39 @@ export const App: React.FC = () => {
                     <strong>{selectedPlayer.username}</strong> does not currently have any active crafts in progress on the server.
                   </p>
                 </div>
+
+                {/* Nearby Stations List if found */}
+                {nearbyCrafts.length > 0 && (
+                  <div className="pt-3 max-w-lg mx-auto space-y-2">
+                    <div className="text-xs text-indigo-300 font-semibold flex items-center justify-center gap-1.5">
+                      <MapPin className="w-3.5 h-3.5" />
+                      <span>Found {nearbyCrafts.length} nearby crafting stations within ~100m:</span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                      {nearbyCrafts.map(({ craft: nCraft, distanceMeters, isHelper }) => (
+                        <button
+                          key={nCraft.entityId}
+                          onClick={() => handleSelectCustomCraft(nCraft)}
+                          className={`p-2.5 rounded-lg border text-left flex flex-col gap-1 transition-all cursor-pointer ${
+                            isHelper
+                              ? 'bg-indigo-950/80 border-indigo-600/80 text-indigo-200 shadow'
+                              : 'bg-surface-subtle border-surface-border hover:bg-surface-border text-gray-300'
+                          }`}
+                        >
+                          <div className="font-bold flex items-center gap-1">
+                            {isHelper && <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />}
+                            <span>{nCraft.buildingName || 'Station'}</span>
+                          </div>
+                          <div className="text-[11px] text-gray-400 flex items-center justify-between font-mono">
+                            <span>{nCraft.claimName || 'Local Claim'}</span>
+                            <span className="text-emerald-400 font-bold">{distanceMeters}m away</span>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <div className="pt-2">
                   <button
                     onClick={() => setIsPublicModalOpen(true)}
@@ -530,7 +635,7 @@ export const App: React.FC = () => {
                   <button
                     key={name}
                     onClick={() => handleSelectPlayer({ entityId: '', username: name })}
-                    className="text-xs bg-surface-subtle hover:bg-emerald-950/70 hover:border-emerald-700/60 border border-surface-border text-gray-300 hover:text-emerald-300 px-3 py-1.5 rounded-lg font-medium transition-colors"
+                    className="text-xs bg-surface-subtle hover:bg-emerald-950/70 hover:border-emerald-700/60 border border-surface-border text-gray-300 hover:text-emerald-300 px-3 py-1.5 rounded-lg font-medium transition-colors cursor-pointer"
                   >
                     👤 {name}
                   </button>
@@ -545,7 +650,7 @@ export const App: React.FC = () => {
       <PublicCraftsModal
         isOpen={isPublicModalOpen}
         onClose={() => setIsPublicModalOpen(false)}
-        onSelectCraft={(craft) => setCustomCraft(craft)}
+        onSelectCraft={(craft) => handleSelectCustomCraft(craft)}
       />
 
       {/* Embedded App Version & Footer */}

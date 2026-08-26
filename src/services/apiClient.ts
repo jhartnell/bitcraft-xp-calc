@@ -300,6 +300,51 @@ class PoliteApiClient {
     );
     return res.contributions || [];
   }
+
+  // Get active crafts in player's region ranked by Euclidean distance (meters)
+  public async getNearbyActiveCrafts(
+    regionId: number,
+    playerX?: number,
+    playerZ?: number,
+    maxDistanceMeters = 500,
+    forceFresh = false
+  ): Promise<{ craft: CraftResult; distanceMeters: number }[]> {
+    if (!regionId) return [];
+
+    const res = await this.fetchWithCache<{ craftResults: CraftResult[] }>(
+      `/crafts?completed=false&regionId=${regionId}&limit=100`,
+      20000,
+      forceFresh
+    );
+
+    if (!res || !res.craftResults) return [];
+
+    // Cache recipe XP metadata
+    for (const c of res.craftResults) {
+      if (c.recipeId && c.experiencePerProgress && c.experiencePerProgress.length > 0) {
+        this.recipeXpMap.set(c.recipeId, c.experiencePerProgress);
+      }
+    }
+
+    const nearbyList: { craft: CraftResult; distanceMeters: number }[] = [];
+
+    for (const c of res.craftResults) {
+      const cx = c.claimLocationX !== undefined ? c.claimLocationX : c.claimLocationX;
+      const cz = c.claimLocationZ !== undefined ? c.claimLocationZ : c.claimLocationZ;
+
+      let distance = 0;
+      if (playerX !== undefined && playerZ !== undefined && cx !== undefined && cz !== undefined) {
+        distance = Math.round(Math.sqrt(Math.pow(playerX - cx, 2) + Math.pow(playerZ - cz, 2)));
+      }
+
+      if (distance <= maxDistanceMeters || (cx === undefined && cz === undefined)) {
+        nearbyList.push({ craft: c, distanceMeters: distance });
+      }
+    }
+
+    nearbyList.sort((a, b) => a.distanceMeters - b.distanceMeters);
+    return nearbyList;
+  }
 }
 
 export const bitjitaApi = new PoliteApiClient();
