@@ -273,11 +273,20 @@ export function calculateCraftXp(
   const secondsPerAction = BASE_ACTION_DURATION_SECONDS / totalCraftingSpeedMultiplier;
   const effectiveActionsPerSecond = 1.0 / secondsPerAction;
 
-  // 9. XP Multiplier
-  let xpMultiplier = 1.0 + equipExpRateBonus + buffExpRateBonus;
-  for (const slot of equipment) {
-    if (slot.primary.includes('instrument') && slot.item) {
-      xpMultiplier += 0.05;
+  // 9. XP Multiplier (Server authoritative or equipment + buffs)
+  let xpMultiplier = 1.0;
+  if (stats && stats.values && typeof stats.values[50] === 'number' && stats.values[50] > 0) {
+    // Server stat 50 is total experience rate percentage (e.g. 108 = 1.08x)
+    xpMultiplier = Math.max(1.0, stats.values[50] / 100.0);
+  } else {
+    xpMultiplier = 1.0 + equipExpRateBonus + buffExpRateBonus;
+    const skillNameLower = skillDef.name.toLowerCase();
+    for (const slot of equipment) {
+      if (slot.primary.includes('instrument') && slot.item) {
+        if (slot.primary.includes(skillNameLower) || slot.item.name.toLowerCase().includes(skillNameLower)) {
+          xpMultiplier += 0.05;
+        }
+      }
     }
   }
 
