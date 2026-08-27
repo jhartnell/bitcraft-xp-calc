@@ -560,11 +560,21 @@ export const App: React.FC = () => {
     : null;
 
   // Live Session XP Tracker (Measured vs Theoretical Rate)
+  // Track strictly the active player's personal progress to isolate individual rate from other helpers!
+  const activeUserContrib = contributions.find(
+    (c) =>
+      c.contributorEntityId === selectedPlayer?.entityId ||
+      c.contributorUsername?.toLowerCase() === selectedPlayer?.username.toLowerCase()
+  );
+  const trackedPlayerProgress = activeUserContrib
+    ? activeUserContrib.totalProgressContributed
+    : calcResult?.completedProgress;
+
   const { sessionStats } = useSessionXpTracker(
     selectedPlayer?.entityId,
     calcResult?.skillId,
     activeCraft?.entityId,
-    calcResult?.completedProgress,
+    trackedPlayerProgress,
     calcResult?.effectiveXpPerAction,
     calcResult?.xpPerHour
   );

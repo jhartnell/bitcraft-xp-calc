@@ -309,11 +309,20 @@ class PoliteApiClient {
     craftId: string,
     forceFresh = false
   ): Promise<{ craft: CraftResult; items?: ItemMetadata[]; cargos?: ItemMetadata[] }> {
-    return this.fetchWithCache<{ craft: CraftResult; items?: ItemMetadata[]; cargos?: ItemMetadata[] }>(
+    const res = await this.fetchWithCache<{ craft: CraftResult; items?: ItemMetadata[]; cargos?: ItemMetadata[] }>(
       `/crafts/${craftId}`,
       10000,
       forceFresh
     );
+    if (res?.craft) {
+      if ((!res.craft.experiencePerProgress || res.craft.experiencePerProgress.length === 0) && res.craft.recipeId) {
+        const cachedXp = this.recipeXpMap.get(res.craft.recipeId);
+        if (cachedXp) {
+          res.craft.experiencePerProgress = cachedXp;
+        }
+      }
+    }
+    return res;
   }
 
   // Get craft contributions (history of player actions and progress per action)
