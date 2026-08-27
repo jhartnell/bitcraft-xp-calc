@@ -71,16 +71,16 @@ export const Header: React.FC<HeaderProps> = ({ apiStatus, onClearCache }) => {
           <div className="flex items-center gap-1">
             <button
               onClick={onClearCache}
-              title="Clear API Cache"
-              className="text-gray-400 hover:text-gray-200 transition-colors p-1 rounded hover:bg-surface"
+              title="Clear API Cache & Fetch Fresh Data"
+              className="text-gray-400 hover:text-emerald-400 transition-colors p-1 rounded hover:bg-surface cursor-pointer"
             >
-              <RefreshCw className="w-3.5 h-3.5" />
+              <RefreshCw className={`w-3.5 h-3.5 ${apiStatus.isFetching ? 'animate-spin text-emerald-400' : ''}`} />
             </button>
 
             <button
               onClick={handleOpenInNewTab}
               title="Open Calculator in New Tab"
-              className="text-emerald-400 hover:text-emerald-300 transition-colors p-1 rounded hover:bg-surface flex items-center gap-1"
+              className="text-emerald-400 hover:text-emerald-300 transition-colors p-1 rounded hover:bg-surface flex items-center gap-1 cursor-pointer"
             >
               <ExternalLink className="w-3.5 h-3.5" />
               <span className="hidden md:inline text-[11px] font-medium">New Tab</span>

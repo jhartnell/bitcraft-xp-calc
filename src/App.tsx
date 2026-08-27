@@ -109,10 +109,19 @@ export const App: React.FC = () => {
   const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
   const selectedCraftIdRef = useRef<string | null>(null);
 
-  // Clear cache handler
+  // Subscribe to live API client status (cache size, latency, fetching state)
+  useEffect(() => {
+    return bitjitaApi.subscribe((status) => {
+      setApiStatus(status);
+    });
+  }, []);
+
+  // Clear cache handler: clears in-memory network cache and immediately re-fetches fresh data
   const handleClearCache = () => {
     bitjitaApi.clearCache();
-    setApiStatus((prev) => ({ ...prev, cachedEntriesCount: 0 }));
+    if (selectedPlayer) {
+      loadPlayerData(selectedPlayer, true);
+    }
   };
 
   // Primary player toggle
