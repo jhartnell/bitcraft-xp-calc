@@ -217,6 +217,29 @@ export const App: React.FC = () => {
     setContributions([]);
     setContributorPayloads([]);
 
+    // Fetch craft details to cache any item or cargo metadata
+    bitjitaApi
+      .getCraft(craft.entityId, true)
+      .then((res) => {
+        if (res?.items || res?.cargos) {
+          setItemMetadataMap((prev) => {
+            const next = new Map(prev);
+            if (res.items) {
+              for (const itm of res.items) {
+                next.set(Number(itm.id), itm);
+              }
+            }
+            if (res.cargos) {
+              for (const crg of res.cargos) {
+                next.set(Number(crg.id), crg);
+              }
+            }
+            return next;
+          });
+        }
+      })
+      .catch(() => {});
+
     bitjitaApi
       .getCraftContributions(craft.entityId, true)
       .then((cb) => {
@@ -295,11 +318,18 @@ export const App: React.FC = () => {
               if (isStillOngoing) {
                 setCustomCraft(res!.craft);
                 isCraftResolved = true;
-                if (res!.items) {
+                if (res!.items || res!.cargos) {
                   setItemMetadataMap((prev) => {
                     const next = new Map(prev);
-                    for (const itm of res!.items!) {
-                      next.set(Number(itm.id), itm);
+                    if (res!.items) {
+                      for (const itm of res!.items!) {
+                        next.set(Number(itm.id), itm);
+                      }
+                    }
+                    if (res!.cargos) {
+                      for (const crg of res!.cargos!) {
+                        next.set(Number(crg.id), crg);
+                      }
                     }
                     return next;
                   });
@@ -415,11 +445,16 @@ export const App: React.FC = () => {
           setNearbyCrafts([]);
         }
 
-        // Map item metadata
+        // Map item and cargo metadata
         const metaMap = new Map<number, ItemMetadata>();
         if (craftsRes?.items) {
           for (const item of craftsRes.items) {
             metaMap.set(Number(item.id), item);
+          }
+        }
+        if (craftsRes?.cargos) {
+          for (const cargo of craftsRes.cargos) {
+            metaMap.set(Number(cargo.id), cargo);
           }
         }
         setItemMetadataMap(metaMap);

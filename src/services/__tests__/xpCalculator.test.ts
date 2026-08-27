@@ -383,5 +383,43 @@ describe('Level Milestone Timing & Multi-Level Forecast Engine', () => {
     expect(firstMilestone.estimatedSecondsFromNow).toBeGreaterThan(0);
     expect(firstMilestone.itemsFinishedAtMilestone).toBeGreaterThanOrEqual(0);
   });
+
+  it('correctly calculates XP and items for cargo crafts', () => {
+    const cargoCraft: CraftResult = {
+      entityId: '576460755398775900',
+      buildingEntityId: '576460752349010670',
+      ownerEntityId: '1224979098660021941',
+      regionId: 8,
+      progress: 5000,
+      recipeId: 601004,
+      craftCount: 50,
+      lockExpiration: '2026-08-27T00:00:00Z',
+      actionsRequiredPerItem: 100,
+      totalActionsRequired: 5000,
+      craftedItem: [
+        {
+          item_id: 302152262,
+          quantity: 1,
+          item_type: 'cargo',
+          durability: 0,
+        },
+      ],
+      experiencePerProgress: [{ quantity: 2.24, skill_id: 2 }],
+      completed: false,
+    };
+
+    const mockPlayer: PlayerDetails = {
+      entityId: '1224979098660021941',
+      username: 'Ikuria',
+      experience: [{ skill_id: 2, quantity: 50000 }],
+    };
+
+    const result = calculateCraftXp(cargoCraft, mockPlayer, [], [], null, [], 25);
+
+    expect(result.itemsTotal).toBe(50);
+    expect(result.itemsCompleted).toBe(50);
+    expect(result.itemsRemaining).toBe(0);
+    expect(result.totalCraftXp).toBe(11200);
+  });
 });
 

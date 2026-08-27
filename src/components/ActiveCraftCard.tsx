@@ -65,7 +65,11 @@ export const ActiveCraftCard: React.FC<ActiveCraftCardProps> = ({
 
   const itemName =
     itemMetadata?.name ||
-    (craft.craftedItem && craft.craftedItem.length > 0 ? `Item #${craft.craftedItem[0].item_id}` : 'Craft Item');
+    (craft.craftedItem && craft.craftedItem.length > 0
+      ? craft.craftedItem[0].item_type === 'cargo'
+        ? `Cargo #${craft.craftedItem[0].item_id}`
+        : `Item #${craft.craftedItem[0].item_id}`
+      : 'Craft Item');
   const itemTier = itemMetadata?.tier || 1;
   const itemRarity = itemMetadata?.rarityStr || itemMetadata?.rarityString || 'Common';
 

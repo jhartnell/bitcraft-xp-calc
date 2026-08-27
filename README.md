@@ -80,13 +80,14 @@ A high-performance, real-time web application to track active crafting progress,
     - **Lifecycle Completion & Active Task Rollover (v1.3.4):** Automatically detects when a currently tracked craft completes, discards stale identifiers, and transitions seamlessly to newly started owned crafts or active helper stations without requiring manual user refresh.
     - **Selection Persistence:** Seamlessly retains chosen station selections and live progress during background auto-refresh cycles while a craft is ongoing.
 
-11. **Compact Station Dropdown & Clean UI Controls (v1.3.0):**
-    - **Real Item & Recipe Name Resolution:** Resolves and displays human-readable item names and tiers (e.g. `📦 Cedar Planks (T2)`, `📦 Pyrelite Ore Concentrate`) instead of numeric recipe IDs.
+11. **Item & Cargo Metadata Resolution (v1.3.0, v1.3.5):**
+    - **Unified Item & Cargo Resolution:** Seamlessly ingests both `items` and `cargos` collections from BitJita API endpoints, resolving real names and tiers for both inventory items (e.g. `📦 Cedar Planks (T2)`) and heavy cargo items (e.g. `📦 Ornate Brick Slab (T7)`, `📦 Fine Brick Slab (T4)`).
     - **Nearby Station Dropdown Drawer:** Tucks idle claim stations into a compact `[📍 +X Nearby Stations ▾]` menu to keep the main view clean and focused.
     - **Independent Show / Hide Panel Controls:** Provides dedicated collapse toggles for Modifiers & Buffs, Skills Matrix, and Contributors Panel to minimize screen clutter during active grinding.
 
-12. **Public Crafts Explorer:**
+12. **Public Crafts Explorer (v1.3.0, v1.3.5):**
     - Search and inspect global in-progress crafts across the realm to test character stats and hypothetical XP gains.
+    - Displays produced item and cargo badges (`📦 Name (Tier)`) directly on public craft tiles with instant item search filtering.
 
 13. **Auto-Deployment Version Detection & Toast Notification (v1.3.3):**
     - **Background Manifest Polling:** Periodically checks `/version.json` with cache-busting headers on tab focus and background intervals.

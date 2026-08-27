@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Globe, X, Search, Loader2, MapPin, Hammer, ArrowRight } from 'lucide-react';
-import { CraftResult } from '../types/api';
+import { CraftResult, ItemMetadata } from '../types/api';
 import { bitjitaApi } from '../services/apiClient';
 import { SKILL_DEFINITIONS } from '../services/bitcraftData';
 
@@ -16,6 +16,7 @@ export const PublicCraftsModal: React.FC<PublicCraftsModalProps> = ({
   onSelectCraft,
 }) => {
   const [crafts, setCrafts] = useState<CraftResult[]>([]);
+  const [itemsMap, setItemsMap] = useState<Map<number, ItemMetadata>>(new Map());
   const [isLoading, setIsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -26,7 +27,16 @@ export const PublicCraftsModal: React.FC<PublicCraftsModalProps> = ({
       try {
         setIsLoading(true);
         const results = await bitjitaApi.getPublicActiveCrafts(true);
-        setCrafts(results);
+        setCrafts(results.craftResults);
+
+        const map = new Map<number, ItemMetadata>();
+        for (const itm of results.items) {
+          map.set(Number(itm.id), itm);
+        }
+        for (const crg of results.cargos) {
+          map.set(Number(crg.id), crg);
+        }
+        setItemsMap(map);
       } catch (err) {
         console.error('Failed to load public crafts:', err);
       } finally {
@@ -42,11 +52,15 @@ export const PublicCraftsModal: React.FC<PublicCraftsModalProps> = ({
   const filteredCrafts = crafts.filter((c) => {
     if (!searchTerm) return true;
     const term = searchTerm.toLowerCase();
+    const targetId = c.craftedItem?.[0]?.item_id;
+    const itemMeta = targetId ? itemsMap.get(Number(targetId)) : undefined;
+
     return (
       (c.buildingName && c.buildingName.toLowerCase().includes(term)) ||
       (c.claimName && c.claimName.toLowerCase().includes(term)) ||
       (c.ownerUsername && c.ownerUsername.toLowerCase().includes(term)) ||
-      (c.regionName && c.regionName.toLowerCase().includes(term))
+      (c.regionName && c.regionName.toLowerCase().includes(term)) ||
+      (itemMeta && itemMeta.name.toLowerCase().includes(term))
     );
   });
 
@@ -104,6 +118,8 @@ export const PublicCraftsModal: React.FC<PublicCraftsModalProps> = ({
               const skillId = c.levelRequirements?.[0]?.skill_id || c.experiencePerProgress?.[0]?.skill_id || 1;
               const skill = SKILL_DEFINITIONS[skillId];
               const pct = c.totalActionsRequired > 0 ? (c.progress / c.totalActionsRequired) * 100 : 0;
+              const targetId = c.craftedItem?.[0]?.item_id;
+              const itemMeta = targetId ? itemsMap.get(Number(targetId)) : undefined;
 
               return (
                 <div
@@ -111,9 +127,14 @@ export const PublicCraftsModal: React.FC<PublicCraftsModalProps> = ({
                   className="p-3 bg-surface-subtle hover:bg-surface-border/40 rounded-lg border border-surface-border transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
                 >
                   <div className="space-y-1">
-                    <div className="font-semibold text-gray-100 flex items-center gap-2">
+                    <div className="font-semibold text-gray-100 flex items-center flex-wrap gap-2">
                       <Hammer className="w-4 h-4 text-emerald-400" />
                       <span>{c.buildingName || 'Crafting Station'}</span>
+                      {itemMeta && (
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-amber-950/70 text-amber-300 border border-amber-800/60 font-medium">
+                          📦 {itemMeta.name} {itemMeta.tier ? `(T${itemMeta.tier})` : ''}
+                        </span>
+                      )}
                       {skill && (
                         <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-400 border border-emerald-800/60 font-normal">
                           {skill.icon} {skill.name} (Req Lvl {c.levelRequirements?.[0]?.level || 1})

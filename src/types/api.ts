@@ -185,7 +185,7 @@ export interface SkillsApiResponse {
 export interface PlayerCraftsApiResponse {
   craftResults: CraftResult[];
   items?: ItemMetadata[];
-  cargos?: unknown[];
+  cargos?: ItemMetadata[];
   count: number;
 }
 

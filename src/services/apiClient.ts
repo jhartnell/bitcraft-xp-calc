@@ -273,9 +273,17 @@ class PoliteApiClient {
     return this.fetchWithCache<SkillsApiResponse>(`/skills`, 3600000);
   }
 
-  // Get global public incomplete crafts and seed recipe XP cache
-  public async getPublicActiveCrafts(forceFresh = false): Promise<CraftResult[]> {
-    const res = await this.fetchWithCache<{ craftResults: CraftResult[] }>(
+  // Get global public incomplete crafts, items, cargos, and seed recipe XP cache
+  public async getPublicActiveCrafts(forceFresh = false): Promise<{
+    craftResults: CraftResult[];
+    items: ItemMetadata[];
+    cargos: ItemMetadata[];
+  }> {
+    const res = await this.fetchWithCache<{
+      craftResults: CraftResult[];
+      items?: ItemMetadata[];
+      cargos?: ItemMetadata[];
+    }>(
       `/crafts?completed=false&limit=100`,
       20000,
       forceFresh
@@ -289,12 +297,19 @@ class PoliteApiClient {
       }
     }
 
-    return res.craftResults || [];
+    return {
+      craftResults: res?.craftResults || [],
+      items: res?.items || [],
+      cargos: res?.cargos || [],
+    };
   }
 
   // Get single craft details and metadata
-  public async getCraft(craftId: string, forceFresh = false): Promise<{ craft: CraftResult; items?: ItemMetadata[] }> {
-    return this.fetchWithCache<{ craft: CraftResult; items?: ItemMetadata[] }>(
+  public async getCraft(
+    craftId: string,
+    forceFresh = false
+  ): Promise<{ craft: CraftResult; items?: ItemMetadata[]; cargos?: ItemMetadata[] }> {
+    return this.fetchWithCache<{ craft: CraftResult; items?: ItemMetadata[]; cargos?: ItemMetadata[] }>(
       `/crafts/${craftId}`,
       10000,
       forceFresh
@@ -327,7 +342,11 @@ class PoliteApiClient {
   }[]> {
     if (!regionId) return [];
 
-    const res = await this.fetchWithCache<{ craftResults: CraftResult[]; items?: ItemMetadata[] }>(
+    const res = await this.fetchWithCache<{
+      craftResults: CraftResult[];
+      items?: ItemMetadata[];
+      cargos?: ItemMetadata[];
+    }>(
       `/crafts?completed=false&regionId=${regionId}&limit=100`,
       20000,
       forceFresh
@@ -339,6 +358,11 @@ class PoliteApiClient {
     if (res.items) {
       for (const itm of res.items) {
         itemsMap.set(Number(itm.id), itm);
+      }
+    }
+    if (res.cargos) {
+      for (const crg of res.cargos) {
+        itemsMap.set(Number(crg.id), crg);
       }
     }
 
