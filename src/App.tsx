@@ -579,7 +579,7 @@ export const App: React.FC = () => {
     ? activeUserContrib.totalProgressContributed
     : calcResult?.completedProgress;
 
-  const { sessionStats } = useSessionXpTracker(
+  const { sessionStats, resetSession } = useSessionXpTracker(
     selectedPlayer?.entityId,
     calcResult?.skillId,
     activeCraft?.entityId,
@@ -727,6 +727,7 @@ export const App: React.FC = () => {
                   itemMetadata={activeCraftMetadata}
                   onOverrideProgressPerAction={(val) => setCustomProgressPerAction(val)}
                   onOpenPublicModal={() => setIsPublicModalOpen(true)}
+                  onResetSession={resetSession}
                 />
 
                 {/* Craft Contributors & Projections Panel */}
@@ -741,7 +742,7 @@ export const App: React.FC = () => {
                 )}
 
                 {/* Projections & XP Calculations */}
-                <XpProjections calc={calcResult} />
+                <XpProjections calc={calcResult} onResetSession={resetSession} />
 
                 {/* Modifiers (Food buffs & Equipment) */}
                 <ModifiersPanel calc={calcResult} />

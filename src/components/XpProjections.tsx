@@ -19,9 +19,10 @@ import { LiveRateGraphPopover } from './LiveRateGraphPopover';
 
 interface XpProjectionsProps {
   calc: XpCalculationResult;
+  onResetSession?: () => void;
 }
 
-export const XpProjections: React.FC<XpProjectionsProps> = ({ calc }) => {
+export const XpProjections: React.FC<XpProjectionsProps> = ({ calc, onResetSession }) => {
   const [isMilestonesExpanded, setIsMilestonesExpanded] = useState(false);
   const { levelForecast } = calc;
 
@@ -69,6 +70,7 @@ export const XpProjections: React.FC<XpProjectionsProps> = ({ calc }) => {
             <LiveRateGraphPopover
               sessionStats={calc.sessionStats}
               theoreticalXpPerHour={calc.xpPerHour}
+              onResetSession={onResetSession}
             >
               <div className="flex items-center justify-between pt-1 border-t border-surface-border/50 hover:bg-surface-subtle/50 -mx-1 px-1 rounded transition-colors">
                 {calc.sessionStats && !calc.sessionStats.isWarmingUp && calc.sessionStats.measuredXpPerHour !== null ? (

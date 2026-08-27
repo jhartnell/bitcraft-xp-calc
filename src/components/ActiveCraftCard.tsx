@@ -38,6 +38,7 @@ interface ActiveCraftCardProps {
   itemMetadata?: ItemMetadata | null;
   onOverrideProgressPerAction?: (val: number | null) => void;
   onOpenPublicModal?: () => void;
+  onResetSession?: () => void;
 }
 
 export const ActiveCraftCard: React.FC<ActiveCraftCardProps> = ({
@@ -52,6 +53,7 @@ export const ActiveCraftCard: React.FC<ActiveCraftCardProps> = ({
   itemMetadata,
   onOverrideProgressPerAction,
   onOpenPublicModal,
+  onResetSession,
 }) => {
   const [isEditingEffort, setIsEditingEffort] = useState(false);
   const [effortInput, setEffortInput] = useState<string>(String(calc.progressPerAction));
@@ -407,6 +409,7 @@ export const ActiveCraftCard: React.FC<ActiveCraftCardProps> = ({
                 <LiveRateGraphPopover
                   sessionStats={calc.sessionStats}
                   theoreticalXpPerHour={calc.xpPerHour}
+                  onResetSession={onResetSession}
                 >
                   <span
                     className="text-[11px] font-bold px-2 py-0.5 rounded bg-indigo-950/80 text-indigo-300 border border-indigo-700/60 font-mono flex items-center gap-1 hover:bg-indigo-900/80 transition-colors"

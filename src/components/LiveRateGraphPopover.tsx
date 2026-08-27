@@ -145,19 +145,19 @@ export const LiveRateGraphPopover: React.FC<LiveRateGraphPopoverProps> = ({
                 <p className="text-[10px] text-gray-400">Real-time throughput plotted with theoretical ceiling</p>
               </div>
             </div>
-            {onResetSession && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (onResetSession) {
                   onResetSession();
-                }}
-                className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-indigo-300 bg-surface-subtle hover:bg-surface border border-surface-border px-2 py-1 rounded transition-colors"
-                title="Reset session timer and trend history"
-              >
-                <RotateCcw className="w-3 h-3" />
-                <span>Reset</span>
-              </button>
-            )}
+                }
+              }}
+              className="flex items-center gap-1.5 text-[11px] font-medium text-gray-300 hover:text-white bg-surface-subtle hover:bg-surface border border-surface-border hover:border-indigo-500/60 px-2.5 py-1 rounded-lg transition-colors cursor-pointer shadow-sm"
+              title="Reset session timer and trend history"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Reset</span>
+            </button>
           </div>
 
           {/* Session Stats Matrix */}
