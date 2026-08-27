@@ -138,11 +138,25 @@ npm run preview
 ```
 
 ### Docker Deployment (Containerized with Reverse Proxy)
-```bash
-# Build and run with Docker Compose
-docker compose up -d
 
-# Or build and run with Docker directly
+#### Option A: Pull & Run Official Image (GitHub Container Registry)
+```bash
+# Pull and run the pre-built multi-arch image (no login required)
+docker run -d \
+  -p 8080:80 \
+  --name bitcraft-xp-calc \
+  --restart unless-stopped \
+  ghcr.io/jhartnell/bitcraft-xp-calc:latest
+```
+
+#### Option B: Run with Docker Compose
+```bash
+# Pulls published image or builds locally
+docker compose up -d
+```
+
+#### Option C: Build from Source
+```bash
 docker build -t bitcraft-xp-calc:latest .
 docker run -d -p 8080:80 --name bitcraft-xp-calc bitcraft-xp-calc:latest
 ```

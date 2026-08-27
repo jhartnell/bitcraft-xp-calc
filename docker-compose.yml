@@ -1,5 +1,6 @@
 services:
   bitcraft-xp-calc:
+    image: ghcr.io/jhartnell/bitcraft-xp-calc:latest
     build:
       context: .
       dockerfile: Dockerfile
