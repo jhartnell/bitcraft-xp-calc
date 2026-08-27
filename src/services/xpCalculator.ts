@@ -29,6 +29,24 @@ import {
 // BitCraft Online base crafting station action tick duration is exactly 1.6 seconds
 export const BASE_ACTION_DURATION_SECONDS = 1.6;
 
+// BitCraft Profession-Specific Speed Multiplier Stat IDs (Stats 21 to 33 in SpacetimeDB)
+export const PROFESSION_SPEED_STAT_IDS: Record<number, number> = {
+  2: 21,  // Forestry Speed
+  3: 22,  // Carpentry Speed
+  4: 23,  // Masonry Speed
+  5: 24,  // Mining Speed
+  6: 25,  // Smithing Speed
+  7: 26,  // Scholar Speed
+  8: 27,  // Leatherworking Speed
+  9: 28,  // Hunting Speed
+  10: 29, // Tailoring Speed
+  11: 30, // Farming Speed
+  12: 31, // Fishing Speed
+  13: 32, // Cooking Speed
+  14: 33, // Foraging Speed
+  15: 17, // Construction / Building Speed
+};
+
 export interface ContributorDetailPayload {
   contribution: CraftContribution;
   playerDetails?: PlayerDetails | null;
@@ -257,13 +275,19 @@ export function calculateCraftXp(
     });
   }
 
-  // 8. Total Crafting Speed Multiplier
+  // 8. Total Crafting Speed Multiplier (General Crafting Speed + Profession Skill Speed)
   let totalCraftingSpeedMultiplier: number;
 
+  const profStatId = PROFESSION_SPEED_STAT_IDS[skillId];
+  let professionSkillSpeedBonus = 0;
+  if (profStatId && stats && stats.values && typeof stats.values[profStatId] === 'number' && stats.values[profStatId] > 0) {
+    professionSkillSpeedBonus = stats.values[profStatId] - 1.0;
+  }
+
   if (stats && stats.values && typeof stats.values[15] === 'number' && stats.values[15] > 0) {
-    totalCraftingSpeedMultiplier = stats.values[15];
+    totalCraftingSpeedMultiplier = stats.values[15] + professionSkillSpeedBonus;
   } else {
-    const calculatedSum = 1.0 + equipCraftingSpeedBonus + buffCraftingSpeedBonus;
+    const calculatedSum = 1.0 + equipCraftingSpeedBonus + buffCraftingSpeedBonus + professionSkillSpeedBonus;
     totalCraftingSpeedMultiplier = Math.max(0.1, calculatedSum);
   }
 
