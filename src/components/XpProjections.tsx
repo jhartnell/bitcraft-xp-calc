@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { XpCalculationResult } from '../types/calculator';
 import { formatXp, formatTimeSeconds } from '../services/bitcraftData';
+import { LiveRateGraphPopover } from './LiveRateGraphPopover';
 
 interface XpProjectionsProps {
   calc: XpCalculationResult;
@@ -26,9 +27,9 @@ export const XpProjections: React.FC<XpProjectionsProps> = ({ calc }) => {
 
   return (
     <div className="space-y-4">
-      {/* 4 Clean Top Stat Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {/* Total XP */}
+      {/* 5 Clean Top Stat Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        {/* Card 1: Total Craft XP */}
         <div className="bg-surface rounded-xl p-4 border border-surface-border shadow-md">
           <div className="flex items-center justify-between text-xs text-gray-400 mb-1">
             <span>Total Craft XP</span>
@@ -38,14 +39,66 @@ export const XpProjections: React.FC<XpProjectionsProps> = ({ calc }) => {
             {calc.totalCraftXp.toLocaleString()}
           </div>
           <div className="text-[11px] text-emerald-400/90 mt-1 flex items-center gap-1 font-medium">
-            <span>{calc.baseXpPerAction.toFixed(2)} Base XP/effort</span>
+            <span>{calc.baseXpPerAction.toFixed(2)} Base XP/eff</span>
             {calc.xpMultiplier > 1 && (
               <span className="text-indigo-400 font-mono">({calc.xpMultiplier.toFixed(2)}x)</span>
             )}
           </div>
         </div>
 
-        {/* XP Left to Get */}
+        {/* Card 2: Hourly XP Rates (Dual Stack with Hover Popover) */}
+        <div className="bg-surface rounded-xl p-4 border border-surface-border shadow-md flex flex-col justify-between">
+          <div className="flex items-center justify-between text-xs text-gray-400 mb-1">
+            <span>Hourly XP Rates</span>
+            <Zap className="w-4 h-4 text-amber-400" />
+          </div>
+
+          <div className="space-y-1.5 font-mono text-xs my-auto">
+            {/* Theoretical Row */}
+            <div className="flex items-center justify-between">
+              <span className="text-amber-400 font-bold text-sm flex items-center gap-1">
+                <Zap className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+                {calc.xpPerHour.toLocaleString()}
+              </span>
+              <span className="text-[10px] text-gray-400 font-sans font-medium px-1.5 py-0.5 rounded bg-surface-subtle border border-surface-border">
+                Theoretical
+              </span>
+            </div>
+
+            {/* Live Session Row (Hoverable Popover Graph) */}
+            <LiveRateGraphPopover
+              sessionStats={calc.sessionStats}
+              theoreticalXpPerHour={calc.xpPerHour}
+            >
+              <div className="flex items-center justify-between pt-1 border-t border-surface-border/50 hover:bg-surface-subtle/50 -mx-1 px-1 rounded transition-colors">
+                {calc.sessionStats && !calc.sessionStats.isWarmingUp && calc.sessionStats.measuredXpPerHour !== null ? (
+                  <>
+                    <span className="text-indigo-300 font-bold text-sm flex items-center gap-1">
+                      <TrendingUp className="w-3.5 h-3.5 text-indigo-400" />
+                      {calc.sessionStats.measuredXpPerHour.toLocaleString()}
+                    </span>
+                    <span className="text-[10px] text-indigo-300 font-sans font-medium px-1.5 py-0.5 rounded bg-indigo-950/80 border border-indigo-700/60 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      Live ({calc.sessionStats.efficiencyPercent}%)
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-gray-500 text-xs font-sans italic flex items-center gap-1">
+                      <TrendingUp className="w-3 h-3 text-gray-600" />
+                      Calibrating...
+                    </span>
+                    <span className="text-[10px] text-gray-500 font-sans">
+                      Live Session ▾
+                    </span>
+                  </>
+                )}
+              </div>
+            </LiveRateGraphPopover>
+          </div>
+        </div>
+
+        {/* Card 3: XP Left to Get */}
         <div className="bg-surface rounded-xl p-4 border border-surface-border shadow-md">
           <div className="flex items-center justify-between text-xs text-gray-400 mb-1">
             <span>XP Left to Gain</span>
@@ -55,35 +108,35 @@ export const XpProjections: React.FC<XpProjectionsProps> = ({ calc }) => {
             {calc.remainingXp.toLocaleString()}
           </div>
           <div className="text-[11px] text-gray-400 mt-1 font-mono">
-            {calc.remainingProgress.toLocaleString()} effort remaining
+            {calc.remainingProgress.toLocaleString()} effort left
           </div>
         </div>
 
-        {/* Earned XP */}
+        {/* Card 4: Earned XP */}
         <div className="bg-surface rounded-xl p-4 border border-surface-border shadow-md">
           <div className="flex items-center justify-between text-xs text-gray-400 mb-1">
             <span>XP Already Earned</span>
-            <Zap className="w-4 h-4 text-indigo-400" />
+            <Sparkles className="w-4 h-4 text-indigo-400" />
           </div>
           <div className="text-xl font-bold text-indigo-300 font-mono">
             {calc.earnedXp.toLocaleString()}
           </div>
           <div className="text-[11px] text-gray-400 mt-1 font-mono">
-            {calc.completedProgress.toLocaleString()} effort finished
+            {calc.completedProgress.toLocaleString()} effort done
           </div>
         </div>
 
-        {/* Estimated Time Remaining (Clean Craft Duration Only) */}
-        <div className="bg-surface rounded-xl p-4 border border-surface-border shadow-md">
+        {/* Card 5: Estimated Time Remaining */}
+        <div className="bg-surface rounded-xl p-4 border border-surface-border shadow-md col-span-2 sm:col-span-1 lg:col-span-1">
           <div className="flex items-center justify-between text-xs text-gray-400 mb-1">
-            <span>Craft Time Remaining</span>
+            <span>Time Remaining</span>
             <Clock className="w-4 h-4 text-teal-400" />
           </div>
           <div className="text-xl font-bold text-teal-300 font-mono">
             {formatTimeSeconds(calc.estimatedSecondsRemaining)}
           </div>
           <div className="text-[11px] text-gray-400 mt-1">
-            ETA: <strong className="text-gray-200">{calc.estimatedCompletionTime || 'N/A'}</strong> ({calc.physicalActionsRemaining.toLocaleString()} actions)
+            ETA: <strong className="text-gray-200">{calc.estimatedCompletionTime || 'N/A'}</strong> ({calc.physicalActionsRemaining.toLocaleString()} acts)
           </div>
         </div>
       </div>

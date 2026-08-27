@@ -347,7 +347,7 @@ class PoliteApiClient {
       items?: ItemMetadata[];
       cargos?: ItemMetadata[];
     }>(
-      `/crafts?completed=false&regionId=${regionId}&limit=100`,
+      `/crafts?completed=false&region_id=${regionId}&limit=100`,
       20000,
       forceFresh
     );

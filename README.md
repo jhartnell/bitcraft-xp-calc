@@ -85,14 +85,31 @@ A high-performance, real-time web application to track active crafting progress,
     - **Nearby Station Dropdown Drawer:** Tucks idle claim stations into a compact `[📍 +X Nearby Stations ▾]` menu to keep the main view clean and focused.
     - **Independent Show / Hide Panel Controls:** Provides dedicated collapse toggles for Modifiers & Buffs, Skills Matrix, and Contributors Panel to minimize screen clutter during active grinding.
 
-12. **Public Crafts Explorer (v1.3.0, v1.3.5):**
+12. **Public Crafts Explorer (v1.3.0, v1.3.5, v1.4.0):**
     - Search and inspect global in-progress crafts across the realm to test character stats and hypothetical XP gains.
     - Displays produced item and cargo badges (`📦 Name (Tier)`) directly on public craft tiles with instant item search filtering.
+    - **Assisted Stations Pinned to Top (v1.4.0):** Automatically remembers stations where you've contributed and pins them to the very top with a gold `⭐ Tracked Station` badge and quick filter pill (`[ ⭐ My Assisted Stations ]`).
+    - **1-Click Header Shortcut (v1.4.0):** Direct `[ 🌐 Search Public Stations ]` button in the active craft header and empty state for instant access.
 
 13. **Auto-Deployment Version Detection & Toast Notification (v1.3.3):**
     - **Background Manifest Polling:** Periodically checks `/version.json` with cache-busting headers on tab focus and background intervals.
     - **Interactive Update Toast:** Displays a floating alert (`🚀 New Version Available! (vX.X.X)`) with a 30-second auto-reload countdown (pauses on hover) and instant `[ Reload Now ]` / `[ Later ]` controls.
     - **Stale Chunk Preload Trap:** Listens for Vite dynamic chunk errors (`vite:preloadError`) to automatically reload stale sessions after new server deployments.
+
+14. **Real-Time Rolling XP Rates & Outlier Filtering (v1.4.0):**
+    - **Dedicated Hourly XP Rates Grid Card:** Features side-by-side metric display with Theoretical Max Rate on top and Live Measured Speed on the bottom.
+    - **Active Snapshot Tracking Engine:** Computes measured speed directly from real action progress deltas ($\Delta \text{progress} \times \text{effectiveXpPerAction}$) across verified polling intervals, eliminating database synchronization delays and idle clock decay.
+    - **Catch-Up & Outlier Filter:** Automatically detects and clamps SpacetimeDB database backlog flushes to a plausible ceiling (max 125% of theoretical speed), preventing multi-action spikes from distorting speed graphs and peak stats.
+
+15. **Dual Trendline HUD & SVG Interactive Popover (v1.4.0):**
+    - **Dual Curve Visualization:** Plots Live Measured Rate (solid indigo spline with area gradient) against the Theoretical Ceiling (dashed emerald line reflecting mid-flight food buff or tool changes) on the exact same coordinate system.
+    - **Y-Axis Metric Scale:** Clear left-column XP/hr labels (`200k`, `150k`, `100k`, `50k`, `0`) with horizontal guidelines for effortless visual gauging.
+    - **Interactive Hover Crosshair:** Real-time scrubber inspecting historical timestamps, live speed, theoretical speed, and efficiency percentage.
+    - **Session HUD Matrix:** Summarizes Current Live, Theoretical, Session Peak, and Session Total XP gained with persistent `sessionStorage`.
+
+16. **Privacy Coordinate Resilience & Smart Station Switching (v1.4.0):**
+    - **BitJita Privacy Fallback:** Ingests active region IDs from `/players/{id}/buffs` when public player coordinates are masked, ensuring uninterrupted regional scans.
+    - **Owned Craft Priority:** Automatically detects when a player starts an owned craft and immediately prioritizes it over any previously viewed helper station.
 
 ---
 

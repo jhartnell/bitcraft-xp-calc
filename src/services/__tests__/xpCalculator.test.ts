@@ -59,6 +59,8 @@ describe('Bitcraft XP Calculation Engine', () => {
     // Physical Actions (4000 / 20 = 200 actions)
     expect(result.physicalActionsRemaining).toBe(200);
     expect(result.baseActionDurationSeconds).toBe(1.6);
+    expect(result.effortPerHour).toBe(45000);
+    expect(result.xpPerHour).toBe(112500);
   });
 
   it('computes items completed and remaining accurately', () => {

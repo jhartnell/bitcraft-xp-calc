@@ -337,6 +337,10 @@ export const ContributorsPanel: React.FC<ContributorsPanelProps> = ({
                       <span className="text-indigo-300">
                         {p.progressPerAction.toFixed(1)} effort/click ({p.effortPerSecond.toFixed(1)} eff/s)
                       </span>
+                      <span>•</span>
+                      <span className="text-emerald-300 font-bold">
+                        ⚡ {p.xpPerHour.toLocaleString()} XP/hr
+                      </span>
                       {p.xpMultiplier > 1 && (
                         <>
                           <span>•</span>

@@ -54,6 +54,7 @@ export interface ParticipantContributionSummary {
   craftingSpeedBonusPercent: number;
   secondsPerAction: number;
   effortPerSecond: number;
+  xpPerHour: number;
   xpMultiplier: number;
   earnedXp: number;
   projectedRemainingEffort: number;
@@ -109,6 +110,24 @@ export interface LevelProgressForecast {
   milestones: LevelMilestone[];
 }
 
+export interface SessionRatePoint {
+  timestamp: number;
+  timeLabel: string;
+  xpPerHour: number;
+  theoreticalXpPerHour: number;
+  deltaXp: number;
+}
+
+export interface SessionRateStats {
+  sessionXpGained: number;
+  sessionDurationSeconds: number;
+  measuredXpPerHour: number | null;
+  peakXpPerHour: number | null;
+  efficiencyPercent: number | null;
+  isWarmingUp: boolean;
+  history: SessionRatePoint[];
+}
+
 export interface XpCalculationResult {
   skillId: number;
   skillName: string;
@@ -151,6 +170,8 @@ export interface XpCalculationResult {
   totalCraftingSpeedMultiplier: number;
   craftingSpeedBonusPercent: number;
   effectiveActionsPerSecond: number;
+  effortPerHour: number;
+  xpPerHour: number;
   estimatedSecondsRemaining: number;
   estimatedCompletionTime: string | null;
   
@@ -160,6 +181,7 @@ export interface XpCalculationResult {
   
   multiUserProjection?: MultiUserCraftProjection | null;
   levelForecast: LevelProgressForecast;
+  sessionStats?: SessionRateStats | null;
 }
 
 export interface ApiClientStatus {

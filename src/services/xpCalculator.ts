@@ -300,8 +300,12 @@ export function calculateCraftXp(
   const projectedLevelProgress = getXpProgressForLevel(projectedSkillXp);
   const levelsGained = Math.max(0, projectedLevelProgress.level - currentLevelProgress.level);
 
-  // 11. Exact In-Game Matched ETA & Completion Time
+  // 11. Exact In-Game Matched ETA, Hourly Rate & Completion Time
   const estimatedSecondsRemaining = Math.round(physicalActionsRemaining * secondsPerAction);
+  const effortPerSecond = secondsPerAction > 0 ? progressPerAction / secondsPerAction : 0;
+  const effortPerHour = Math.round(effortPerSecond * 3600);
+  const xpPerSecond = effortPerSecond * effectiveXpPerAction;
+  const xpPerHour = Math.round(xpPerSecond * 3600);
 
   let estimatedCompletionTime: string | null = null;
   if (estimatedSecondsRemaining > 0 && isFinite(estimatedSecondsRemaining)) {
@@ -355,6 +359,8 @@ export function calculateCraftXp(
     totalCraftingSpeedMultiplier,
     craftingSpeedBonusPercent,
     effectiveActionsPerSecond,
+    effortPerHour,
+    xpPerHour,
     estimatedSecondsRemaining,
     estimatedCompletionTime,
     
@@ -599,6 +605,7 @@ export function calculateMultiUserCraftProjection(
     }
 
     const effortPerSecond = secondsPerAction > 0 ? ppa / secondsPerAction : 0;
+    const xpPerHour = Math.round(effortPerSecond * primaryCalc.baseXpPerAction * xpMultiplier * 3600);
     const earnedXp = Math.round(cb.totalProgressContributed * primaryCalc.baseXpPerAction * xpMultiplier);
 
     participants.push({
@@ -619,6 +626,7 @@ export function calculateMultiUserCraftProjection(
       craftingSpeedBonusPercent,
       secondsPerAction,
       effortPerSecond,
+      xpPerHour,
       xpMultiplier,
       earnedXp,
       projectedRemainingEffort: 0,

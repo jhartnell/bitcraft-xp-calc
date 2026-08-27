@@ -23,6 +23,7 @@ import { PublicCraftsModal } from './components/PublicCraftsModal';
 import { Footer } from './components/Footer';
 import { UpdateNotificationToast } from './components/UpdateNotificationToast';
 import { useVersionUpdateChecker } from './hooks/useVersionUpdateChecker';
+import { useSessionXpTracker } from './hooks/useSessionXpTracker';
 import { Hammer, Globe, AlertCircle, Info, Star, MapPin } from 'lucide-react';
 
 const RECENT_PLAYERS_KEY = 'bitcraft_xp_recent_players';
@@ -240,6 +241,18 @@ export const App: React.FC = () => {
       })
       .catch(() => {});
 
+    if (selectedPlayer?.entityId) {
+      try {
+        const key = `bitcraft_assisted_crafts_${selectedPlayer.entityId}`;
+        const raw = localStorage.getItem(key);
+        const set = new Set<string>(raw ? JSON.parse(raw) : []);
+        set.add(craft.entityId);
+        localStorage.setItem(key, JSON.stringify(Array.from(set)));
+      } catch {
+        // ignore
+      }
+    }
+
     bitjitaApi
       .getCraftContributions(craft.entityId, true)
       .then((cb) => {
@@ -316,28 +329,35 @@ export const App: React.FC = () => {
                 (res!.craft.progress ?? 0) < (res!.craft.totalActionsRequired || Infinity);
 
               if (isStillOngoing) {
-                setCustomCraft(res!.craft);
-                isCraftResolved = true;
-                if (res!.items || res!.cargos) {
-                  setItemMetadataMap((prev) => {
-                    const next = new Map(prev);
-                    if (res!.items) {
-                      for (const itm of res!.items!) {
-                        next.set(Number(itm.id), itm);
+                // If player has an owned active craft, owned crafts ALWAYS take priority over custom/helper stations!
+                if (activeCrafts.length > 0) {
+                  selectedCraftIdRef.current = null;
+                  setCustomCraft(null);
+                  isCraftResolved = false;
+                } else {
+                  const cb = await bitjitaApi.getCraftContributions(currentTargetCraftId, forceFresh).catch(() => []);
+                  setCustomCraft(res!.craft);
+                  isCraftResolved = true;
+                  if (res!.items || res!.cargos) {
+                    setItemMetadataMap((prev) => {
+                      const next = new Map(prev);
+                      if (res!.items) {
+                        for (const itm of res!.items!) {
+                          next.set(Number(itm.id), itm);
+                        }
                       }
-                    }
-                    if (res!.cargos) {
-                      for (const crg of res!.cargos!) {
-                        next.set(Number(crg.id), crg);
+                      if (res!.cargos) {
+                        for (const crg of res!.cargos!) {
+                          next.set(Number(crg.id), crg);
+                        }
                       }
-                    }
-                    return next;
-                  });
-                }
+                      return next;
+                    });
+                  }
 
-                const cb = await bitjitaApi.getCraftContributions(currentTargetCraftId, forceFresh).catch(() => []);
-                setContributions(cb);
-                loadContributorPayloads(cb, player.entityId);
+                  setContributions(cb);
+                  loadContributorPayloads(cb, player.entityId);
+                }
               } else {
                 // The targeted craft has completed or is no longer active! Clear it to auto-pick the new craft.
                 selectedCraftIdRef.current = null;
@@ -386,12 +406,13 @@ export const App: React.FC = () => {
         }
 
         // Spatial Proximity: Find nearby stations in the player's region (< 500m)
-        if (detailsRes?.regionId) {
+        const activeRegionId = detailsRes?.regionId || buffsRes?.regionId;
+        if (activeRegionId) {
           bitjitaApi
             .getNearbyActiveCrafts(
-              detailsRes.regionId,
-              detailsRes.locationX,
-              detailsRes.locationZ,
+              activeRegionId,
+              detailsRes?.locationX,
+              detailsRes?.locationZ,
               500,
               forceFresh
             )
@@ -432,11 +453,13 @@ export const App: React.FC = () => {
 
               setNearbyCrafts(enhancedNearby);
 
-              // If player has NO owned active crafts and NO active craft is selected, auto-select helper station!
-              if (!selectedCraftIdRef.current && activeCrafts.length === 0 && enhancedNearby.length > 0) {
-                const bestCandidate = enhancedNearby.find((n) => n.isHelper && !n.craft.completed) || enhancedNearby[0];
-                if (bestCandidate && !bestCandidate.craft.completed) {
-                  handleSelectCustomCraft(bestCandidate.craft);
+              // If player has NO owned active crafts and is assisting on a station, auto-switch to it!
+              if (activeCrafts.length === 0 && enhancedNearby.length > 0) {
+                const helperCandidate = enhancedNearby.find((n) => n.isHelper && !n.craft.completed);
+                if (helperCandidate) {
+                  if (selectedCraftIdRef.current !== helperCandidate.craft.entityId) {
+                    handleSelectCustomCraft(helperCandidate.craft);
+                  }
                 }
               }
             })
@@ -535,6 +558,20 @@ export const App: React.FC = () => {
         customProgressPerAction
       )
     : null;
+
+  // Live Session XP Tracker (Measured vs Theoretical Rate)
+  const { sessionStats } = useSessionXpTracker(
+    selectedPlayer?.entityId,
+    calcResult?.skillId,
+    activeCraft?.entityId,
+    calcResult?.completedProgress,
+    calcResult?.effectiveXpPerAction,
+    calcResult?.xpPerHour
+  );
+
+  if (calcResult) {
+    calcResult.sessionStats = sessionStats;
+  }
 
   // Multi-User Collaborative Crafting Projection
   const multiUserProjection =
@@ -670,6 +707,7 @@ export const App: React.FC = () => {
                   calc={calcResult}
                   itemMetadata={activeCraftMetadata}
                   onOverrideProgressPerAction={(val) => setCustomProgressPerAction(val)}
+                  onOpenPublicModal={() => setIsPublicModalOpen(true)}
                 />
 
                 {/* Craft Contributors & Projections Panel */}
@@ -800,6 +838,8 @@ export const App: React.FC = () => {
         isOpen={isPublicModalOpen}
         onClose={() => setIsPublicModalOpen(false)}
         onSelectCraft={(craft) => handleSelectCustomCraft(craft)}
+        playerId={selectedPlayer?.entityId}
+        playerUsername={selectedPlayer?.username}
       />
 
       {/* Floating Update Notification Toast */}

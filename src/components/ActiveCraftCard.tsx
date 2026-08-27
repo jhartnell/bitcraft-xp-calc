@@ -9,9 +9,13 @@ import {
   Star,
   Compass,
   ChevronDown,
+  Zap,
+  TrendingUp,
+  Globe,
 } from 'lucide-react';
 import { CraftResult, ItemMetadata } from '../types/api';
 import { XpCalculationResult } from '../types/calculator';
+import { LiveRateGraphPopover } from './LiveRateGraphPopover';
 
 export interface NearbyCraftItem {
   craft: CraftResult;
@@ -33,6 +37,7 @@ interface ActiveCraftCardProps {
   calc: XpCalculationResult;
   itemMetadata?: ItemMetadata | null;
   onOverrideProgressPerAction?: (val: number | null) => void;
+  onOpenPublicModal?: () => void;
 }
 
 export const ActiveCraftCard: React.FC<ActiveCraftCardProps> = ({
@@ -46,6 +51,7 @@ export const ActiveCraftCard: React.FC<ActiveCraftCardProps> = ({
   calc,
   itemMetadata,
   onOverrideProgressPerAction,
+  onOpenPublicModal,
 }) => {
   const [isEditingEffort, setIsEditingEffort] = useState(false);
   const [effortInput, setEffortInput] = useState<string>(String(calc.progressPerAction));
@@ -157,6 +163,18 @@ export const ActiveCraftCard: React.FC<ActiveCraftCardProps> = ({
               </p>
             </div>
           </div>
+
+          {/* Quick Search Public Stations Action */}
+          {onOpenPublicModal && (
+            <button
+              onClick={onOpenPublicModal}
+              className="px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 font-medium bg-surface-subtle hover:bg-surface-border text-teal-300 hover:text-teal-200 border border-surface-border cursor-pointer text-xs shadow-sm"
+              title="Search and browse all active crafting stations across the server"
+            >
+              <Globe className="w-3.5 h-3.5 text-teal-400" />
+              <span>Search Public Stations</span>
+            </button>
+          )}
         </div>
 
         {/* Compact & Clean Station Tabs (Own Crafts + Active Helper Stations + Compact Nearby Dropdown) */}
@@ -359,22 +377,47 @@ export const ActiveCraftCard: React.FC<ActiveCraftCardProps> = ({
 
       {/* Effort Pacing & Override Control */}
       <div className="bg-surface-subtle p-3 rounded-lg border border-surface-border flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center flex-wrap gap-2">
           <Wrench className="w-4 h-4 text-indigo-400" />
-          <div>
-            <span className="text-gray-300 font-medium">Calculated Effort Pace:</span>{' '}
-            <strong className="text-emerald-400 font-mono text-sm">
-              {calc.progressPerAction.toFixed(1)} effort / action
-            </strong>
-            {calc.isMeasuredProgressPerAction ? (
-              <span className="text-[10px] text-indigo-300 ml-2 bg-indigo-950/80 border border-indigo-700/60 px-1.5 py-0.5 rounded font-mono">
-                Historical Calibration
+          <div className="flex items-center flex-wrap gap-2">
+            <div>
+              <span className="text-gray-300 font-medium">Calculated Effort Pace:</span>{' '}
+              <strong className="text-emerald-400 font-mono text-sm">
+                {calc.progressPerAction.toFixed(1)} effort / action
+              </strong>
+              {calc.isMeasuredProgressPerAction ? (
+                <span className="text-[10px] text-indigo-300 ml-2 bg-indigo-950/80 border border-indigo-700/60 px-1.5 py-0.5 rounded font-mono">
+                  Historical Calibration
+                </span>
+              ) : (
+                <span className="text-[10px] text-gray-400 ml-2 font-mono">
+                  (Default 1.0)
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span
+                className="text-[11px] font-bold px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-800/60 font-mono flex items-center gap-1"
+                title="Continuous casting theoretical ceiling"
+              >
+                <Zap className="w-3 h-3 text-emerald-400 fill-emerald-400" />
+                {calc.xpPerHour.toLocaleString()} Theo
               </span>
-            ) : (
-              <span className="text-[10px] text-gray-400 ml-2 font-mono">
-                (Default 1.0)
-              </span>
-            )}
+              {calc.sessionStats && !calc.sessionStats.isWarmingUp && calc.sessionStats.measuredXpPerHour !== null && (
+                <LiveRateGraphPopover
+                  sessionStats={calc.sessionStats}
+                  theoreticalXpPerHour={calc.xpPerHour}
+                >
+                  <span
+                    className="text-[11px] font-bold px-2 py-0.5 rounded bg-indigo-950/80 text-indigo-300 border border-indigo-700/60 font-mono flex items-center gap-1 hover:bg-indigo-900/80 transition-colors"
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    <TrendingUp className="w-3 h-3 text-indigo-400" />
+                    {calc.sessionStats.measuredXpPerHour.toLocaleString()} Live ({calc.sessionStats.efficiencyPercent}%)
+                  </span>
+                </LiveRateGraphPopover>
+              )}
+            </div>
           </div>
         </div>
 
