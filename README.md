@@ -111,6 +111,11 @@ A high-performance, real-time web application to track active crafting progress,
     - **BitJita Privacy Fallback:** Ingests active region IDs from `/players/{id}/buffs` when public player coordinates are masked, ensuring uninterrupted regional scans.
     - **Owned Craft Priority:** Automatically detects when a player starts an owned craft and immediately prioritizes it over any previously viewed helper station.
 
+17. **Multi-Helper Isolation & Profession Skill Speed Calibration (v1.4.1):**
+    - **Multi-Helper Progress Isolation:** Isolate personal contributed progress on collaborative stations from other players' actions, preventing multi-helper progress bundling.
+    - **Profession Skill Speed Multipliers:** Ingests character profession skill level speed bonuses (SpacetimeDB stats 21–33) alongside general crafting speed (Stat 15), matching exact in-game action durations (e.g. 1.13s) and closing theoretical vs. live calibration to $\approx 100\%$.
+    - **Live API Status & Reset Session Wiring:** Subscribed `App.tsx` directly to live API client status events, wired the popover `[ 🔄 Reset ]` button, and enabled immediate un-cached refresh upon clearing the API cache.
+
 ---
 
 ## 🛠️ Architecture & Tech Stack
