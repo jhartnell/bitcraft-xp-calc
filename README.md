@@ -116,6 +116,10 @@ A high-performance, real-time web application to track active crafting progress,
     - **Profession Skill Speed Multipliers:** Ingests character profession skill level speed bonuses (SpacetimeDB stats 21–33) alongside general crafting speed (Stat 15), matching exact in-game action durations (e.g. 1.13s) and closing theoretical vs. live calibration to $\approx 100\%$.
     - **Live API Status & Reset Session Wiring:** Subscribed `App.tsx` directly to live API client status events, wired the popover `[ 🔄 Reset ]` button, and enabled immediate un-cached refresh upon clearing the API cache.
 
+18. **Persistent Item Metadata Caching & Catalog Auto-Fetch (v1.4.2):**
+    - **Metadata Retention Across Polls:** Preserves and merges discovered item & cargo metadata across background poll cycles instead of wiping cache when viewing assisted crafts.
+    - **Catalog Auto-Fetch Fallback:** Automatically queries `/api/items/{id}` or `/api/cargos/{id}` if an active craft item is ever missing from memory, guaranteeing item names, tiers, and icons remain visible.
+
 ---
 
 ## 🛠️ Architecture & Tech Stack
