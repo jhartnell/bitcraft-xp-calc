@@ -125,7 +125,7 @@ export function useSessionXpTracker(
     setTracker((prev) => {
       const now = Date.now();
 
-      // If switching character or skill, try to hydrate from sessionStorage or start fresh
+      // If switching character or skill, try to hydrate cumulative totals but start rolling rate snapshots fresh
       if (!prev || prev.characterId !== characterId || prev.skillId !== skillId) {
         const persisted = loadPersistedSession(characterId, skillId);
         const newState: SessionTrackerState = {
@@ -136,7 +136,7 @@ export function useSessionXpTracker(
           lastProgressTimestamp: now,
           effectiveXpPerAction,
           cumulativeXp: persisted?.cumulativeXp ?? 0,
-          snapshots: persisted?.snapshots ?? [],
+          snapshots: [],
           history: persisted?.history ?? [],
           peakXpPerHour: persisted?.peakXpPerHour ?? null,
           sessionStartTime: persisted?.sessionStartTime ?? now,
@@ -144,7 +144,7 @@ export function useSessionXpTracker(
         return newState;
       }
 
-      // If switching craft on the same skill/character, retain cumulative XP
+      // If switching craft on the same skill/character, retain cumulative XP but calibrate rolling rate cleanly
       if (prev.craftId !== craftId) {
         const updated: SessionTrackerState = {
           ...prev,
@@ -152,6 +152,7 @@ export function useSessionXpTracker(
           lastProgress: currentProgress,
           lastProgressTimestamp: now,
           effectiveXpPerAction,
+          snapshots: [],
         };
         savePersistedSession(updated);
         return updated;

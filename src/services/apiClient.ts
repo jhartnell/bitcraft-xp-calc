@@ -213,6 +213,11 @@ class PoliteApiClient {
 
   private recipeXpMap = new Map<number, { quantity: number; skill_id: number }[]>();
 
+  public getRecipeExperience(recipeId?: number): { quantity: number; skill_id: number }[] | null {
+    if (!recipeId) return null;
+    return this.recipeXpMap.get(recipeId) || null;
+  }
+
   // Get player active and completed crafts
   public async getPlayerCrafts(entityId: string, forceFresh = false): Promise<PlayerCraftsApiResponse> {
     const res = await this.fetchWithCache<PlayerCraftsApiResponse>(

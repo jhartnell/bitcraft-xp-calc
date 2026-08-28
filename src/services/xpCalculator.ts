@@ -25,6 +25,7 @@ import {
   calculateXpForLevel,
   getXpProgressForLevel,
 } from './bitcraftData';
+import { bitjitaApi } from './apiClient';
 
 // BitCraft Online base crafting station action tick duration is exactly 1.6 seconds
 export const BASE_ACTION_DURATION_SECONDS = 1.6;
@@ -84,11 +85,16 @@ export function calculateCraftXp(
 
   // 2. Base XP per progress unit
   let baseXpPerAction = DEFAULT_SKILL_BASE_XP[skillId] || 1.6;
+  const recipeExp =
+    craft.experiencePerProgress && craft.experiencePerProgress.length > 0
+      ? craft.experiencePerProgress
+      : bitjitaApi.getRecipeExperience(craft.recipeId);
+
   if (overrideBaseXp && overrideBaseXp > 0) {
     baseXpPerAction = overrideBaseXp;
-  } else if (craft.experiencePerProgress && craft.experiencePerProgress.length > 0) {
-    const matched = craft.experiencePerProgress.find((ep) => ep.skill_id === skillId);
-    baseXpPerAction = matched ? matched.quantity : craft.experiencePerProgress[0].quantity;
+  } else if (recipeExp && recipeExp.length > 0) {
+    const matched = recipeExp.find((ep) => ep.skill_id === skillId);
+    baseXpPerAction = matched ? matched.quantity : recipeExp[0].quantity;
   }
 
   // 3. Progress and Items Breakdown

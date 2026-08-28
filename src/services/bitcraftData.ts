@@ -52,7 +52,7 @@ export const TOOL_TYPE_NAMES: Record<number, string> = {
 export const DEFAULT_SKILL_BASE_XP: Record<number, number> = {
   2: 2.24,  // Forestry
   3: 2.08,  // Carpentry
-  4: 1.6,   // Masonry (Unfired bricks & stone)
+  4: 2.08,  // Masonry (Standard refined recipes)
   5: 2.56,  // Mining
   6: 2.0,   // Smithing
   7: 1.76,  // Scholar
