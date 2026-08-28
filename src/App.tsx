@@ -279,10 +279,13 @@ export const App: React.FC = () => {
     setContributions([]);
     setContributorPayloads([]);
 
-    // Fetch craft details to cache any item or cargo metadata
+    // Fetch craft details to cache any item or cargo metadata and update with full craft payload
     bitjitaApi
       .getCraft(craft.entityId, true)
       .then((res) => {
+        if (res?.craft) {
+          setCustomCraft(res.craft);
+        }
         if (res?.items || res?.cargos) {
           setItemMetadataMap((prev) => {
             const next = new Map(prev);

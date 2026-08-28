@@ -60,6 +60,25 @@ export interface ContributorDetailPayload {
   isIncluded?: boolean;
 }
 
+export function getSkillIdFromBuildingName(buildingName?: string): number | null {
+  if (!buildingName) return null;
+  const lower = buildingName.toLowerCase();
+  if (lower.includes('carpentry')) return 3;
+  if (lower.includes('masonry') || lower.includes('stone') || lower.includes('brick')) return 4;
+  if (lower.includes('smith') || lower.includes('forge') || lower.includes('anvil')) return 6;
+  if (lower.includes('cook') || lower.includes('kitchen') || lower.includes('oven') || lower.includes('stove')) return 13;
+  if (lower.includes('tailor') || lower.includes('loom') || lower.includes('spinning')) return 10;
+  if (lower.includes('leather') || lower.includes('tannery')) return 8;
+  if (lower.includes('forestry') || lower.includes('wood') || lower.includes('lumber')) return 2;
+  if (lower.includes('mining') || lower.includes('smelter') || lower.includes('furnace')) return 5;
+  if (lower.includes('scholar') || lower.includes('scribe') || lower.includes('research') || lower.includes('desk')) return 7;
+  if (lower.includes('farm') || lower.includes('agriculture')) return 11;
+  if (lower.includes('fish')) return 12;
+  if (lower.includes('forag')) return 14;
+  if (lower.includes('construct') || lower.includes('build')) return 15;
+  return null;
+}
+
 export function calculateCraftXp(
   craft: CraftResult,
   player: PlayerDetails | null,
@@ -72,11 +91,23 @@ export function calculateCraftXp(
   foodBuffOverride: FoodBuffOverride | null = null
 ): XpCalculationResult {
   // 1. Identify primary skill for the craft
-  let skillId = 4; // default masonry
+  const recipeExp =
+    craft.experiencePerProgress && craft.experiencePerProgress.length > 0
+      ? craft.experiencePerProgress
+      : bitjitaApi.getRecipeExperience(craft.recipeId);
+
+  let skillId = 4; // default masonry fallback
   if (craft.experiencePerProgress && craft.experiencePerProgress.length > 0) {
     skillId = craft.experiencePerProgress[0].skill_id;
   } else if (craft.levelRequirements && craft.levelRequirements.length > 0) {
     skillId = craft.levelRequirements[0].skill_id;
+  } else if (recipeExp && recipeExp.length > 0) {
+    skillId = recipeExp[0].skill_id;
+  } else {
+    const buildingSkill = getSkillIdFromBuildingName(craft.buildingName);
+    if (buildingSkill) {
+      skillId = buildingSkill;
+    }
   }
 
   const skillDef = SKILL_DEFINITIONS[skillId] || {
@@ -89,10 +120,6 @@ export function calculateCraftXp(
 
   // 2. Base XP per progress unit
   let baseXpPerAction = DEFAULT_SKILL_BASE_XP[skillId] || 1.6;
-  const recipeExp =
-    craft.experiencePerProgress && craft.experiencePerProgress.length > 0
-      ? craft.experiencePerProgress
-      : bitjitaApi.getRecipeExperience(craft.recipeId);
 
   if (overrideBaseXp && overrideBaseXp > 0) {
     baseXpPerAction = overrideBaseXp;
