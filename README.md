@@ -125,6 +125,10 @@ A high-performance, real-time web application to track active crafting progress,
     - **Instant Modifier Transition Capture:** Immediately registers timeline event transitions whenever modifiers change, even while resting or paused for stamina.
     - **Point-by-Point Efficiency Scrubber:** Interactive hover scrubber displays the exact historical theoretical target and individual point efficiency percentage for every recorded moment in the timeline.
 
+20. **Uniform Rate Badge Alignment & Full Width Stacking (v1.5.1):**
+    - **Fixed Column Width Badges:** Standardized right-side status badges (`Theoretical` and `Live X%`) with fixed column widths (`w-[82px] shrink-0 text-center`), ensuring vertical alignment remains flush regardless of single, double, or triple-digit efficiency values.
+    - **Border & Padding Standardization:** Cleaned up internal padding and negative margins in the hourly rate card for consistent spacing and alignment.
+
 ---
 
 ## 🛠️ Architecture & Tech Stack
