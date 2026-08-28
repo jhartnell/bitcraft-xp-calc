@@ -61,43 +61,45 @@ export const XpProjections: React.FC<XpProjectionsProps> = ({ calc, onResetSessi
                 <Zap className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
                 {calc.xpPerHour.toLocaleString()}
               </span>
-              <span className="text-[10px] text-gray-400 font-sans font-medium px-1.5 py-0.5 rounded bg-surface-subtle border border-surface-border">
+              <span className="text-[10px] text-gray-400 font-sans font-medium px-2 py-0.5 rounded bg-surface-subtle border border-surface-border w-[82px] text-center shrink-0">
                 Theoretical
               </span>
             </div>
 
             {/* Live Session Row (Hoverable Popover Graph) */}
-            <LiveRateGraphPopover
-              sessionStats={calc.sessionStats}
-              theoreticalXpPerHour={calc.xpPerHour}
-              onResetSession={onResetSession}
-              className="block w-full"
-            >
-              <div className="flex items-center justify-between pt-1 border-t border-surface-border/50 hover:bg-surface-subtle/50 -mx-1 px-1 rounded transition-colors w-full">
-                {calc.sessionStats && !calc.sessionStats.isWarmingUp && calc.sessionStats.measuredXpPerHour !== null ? (
-                  <>
-                    <span className="text-indigo-300 font-bold text-sm flex items-center gap-1">
-                      <TrendingUp className="w-3.5 h-3.5 text-indigo-400" />
-                      {calc.sessionStats.measuredXpPerHour.toLocaleString()}
-                    </span>
-                    <span className="text-[10px] text-indigo-300 font-sans font-medium px-1.5 py-0.5 rounded bg-indigo-950/80 border border-indigo-700/60 flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                      Live ({calc.sessionStats.efficiencyPercent}%)
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <span className="text-gray-500 text-xs font-sans italic flex items-center gap-1">
-                      <TrendingUp className="w-3 h-3 text-gray-600" />
-                      Calibrating...
-                    </span>
-                    <span className="text-[10px] text-gray-400 font-sans font-medium px-1.5 py-0.5 rounded bg-surface-subtle border border-surface-border">
-                      Live Session ▾
-                    </span>
-                  </>
-                )}
-              </div>
-            </LiveRateGraphPopover>
+            <div className="pt-1 border-t border-surface-border/50">
+              <LiveRateGraphPopover
+                sessionStats={calc.sessionStats}
+                theoreticalXpPerHour={calc.xpPerHour}
+                onResetSession={onResetSession}
+                className="block w-full"
+              >
+                <div className="flex items-center justify-between hover:bg-surface-subtle/40 rounded transition-colors w-full">
+                  {calc.sessionStats && !calc.sessionStats.isWarmingUp && calc.sessionStats.measuredXpPerHour !== null ? (
+                    <>
+                      <span className="text-indigo-300 font-bold text-sm flex items-center gap-1">
+                        <TrendingUp className="w-3.5 h-3.5 text-indigo-400" />
+                        {calc.sessionStats.measuredXpPerHour.toLocaleString()}
+                      </span>
+                      <span className="text-[10px] text-indigo-300 font-sans font-medium px-2 py-0.5 rounded bg-indigo-950/80 border border-indigo-700/60 flex items-center justify-center gap-1 w-[82px] shrink-0 font-mono">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                        Live {calc.sessionStats.efficiencyPercent}%
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-gray-500 text-xs font-sans italic flex items-center gap-1">
+                        <TrendingUp className="w-3 h-3 text-gray-600" />
+                        Calibrating...
+                      </span>
+                      <span className="text-[10px] text-gray-400 font-sans font-medium px-2 py-0.5 rounded bg-surface-subtle border border-surface-border w-[82px] text-center shrink-0">
+                        Live ▾
+                      </span>
+                    </>
+                  )}
+                </div>
+              </LiveRateGraphPopover>
+            </div>
           </div>
         </div>
 
