@@ -13,6 +13,7 @@ interface SessionTrackerState {
   lastProgress: number;
   lastProgressTimestamp: number;
   effectiveXpPerAction: number;
+  lastTheoreticalXpPerHour: number;
   cumulativeXp: number;
   snapshots: ProgressSnapshot[];
   history: SessionRatePoint[];
@@ -135,6 +136,7 @@ export function useSessionXpTracker(
           lastProgress: currentProgress,
           lastProgressTimestamp: now,
           effectiveXpPerAction,
+          lastTheoreticalXpPerHour: theoreticalXpPerHour || 0,
           cumulativeXp: persisted?.cumulativeXp ?? 0,
           snapshots: [],
           history: persisted?.history ?? [],
@@ -152,6 +154,7 @@ export function useSessionXpTracker(
           lastProgress: currentProgress,
           lastProgressTimestamp: now,
           effectiveXpPerAction,
+          lastTheoreticalXpPerHour: theoreticalXpPerHour || 0,
           snapshots: [],
         };
         savePersistedSession(updated);
@@ -214,6 +217,7 @@ export function useSessionXpTracker(
           lastProgress: currentProgress,
           lastProgressTimestamp: now,
           effectiveXpPerAction,
+          lastTheoreticalXpPerHour: theoreticalXpPerHour || 0,
           cumulativeXp: newCumulativeXp,
           snapshots: updatedSnapshots,
           history: updatedHistory,
@@ -222,6 +226,42 @@ export function useSessionXpTracker(
 
         savePersistedSession(newState);
         return newState;
+      }
+
+      // No progress change, but theoretical rate changed (e.g. food eaten, buff expired, or gear changed while resting)
+      const currentTheo = theoreticalXpPerHour || 0;
+      const prevTheo = prev.lastTheoreticalXpPerHour || 0;
+      if (currentTheo > 0 && prevTheo > 0 && Math.abs(currentTheo - prevTheo) >= 50 && prev.history.length > 0) {
+        const lastPt = prev.history[prev.history.length - 1];
+        // Only append transition if at least 3 seconds have passed since last point
+        if (now - lastPt.timestamp >= 3000) {
+          const timeLabel = new Date(now).toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+          });
+
+          const updatedHistory = [
+            ...prev.history,
+            {
+              timestamp: now,
+              timeLabel,
+              xpPerHour: lastPt.xpPerHour,
+              theoreticalXpPerHour: currentTheo,
+              deltaXp: 0,
+            },
+          ].slice(-50);
+
+          const newState: SessionTrackerState = {
+            ...prev,
+            effectiveXpPerAction,
+            lastTheoreticalXpPerHour: currentTheo,
+            history: updatedHistory,
+          };
+
+          savePersistedSession(newState);
+          return newState;
+        }
       }
 
       // No progress change: keep existing state
@@ -247,13 +287,14 @@ export function useSessionXpTracker(
       lastProgress: currentProgress,
       lastProgressTimestamp: now,
       effectiveXpPerAction,
+      lastTheoreticalXpPerHour: theoreticalXpPerHour || 0,
       cumulativeXp: 0,
       snapshots: [],
       history: [],
       peakXpPerHour: null,
       sessionStartTime: now,
     });
-  }, [characterId, skillId, craftId, currentProgress, effectiveXpPerAction]);
+  }, [characterId, skillId, craftId, currentProgress, effectiveXpPerAction, theoreticalXpPerHour]);
 
   // Compute live session stats
   if (!tracker || tracker.characterId !== characterId || tracker.skillId !== skillId) {

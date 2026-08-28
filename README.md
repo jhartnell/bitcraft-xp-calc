@@ -120,6 +120,11 @@ A high-performance, real-time web application to track active crafting progress,
     - **Metadata Retention Across Polls:** Preserves and merges discovered item & cargo metadata across background poll cycles instead of wiping cache when viewing assisted crafts.
     - **Catalog Auto-Fetch Fallback:** Automatically queries `/api/items/{id}` or `/api/cargos/{id}` if an active craft item is ever missing from memory, guaranteeing item names, tiers, and icons remain visible.
 
+19. **Point-in-Time Dynamic Theoretical Rate Curve & Modifier Logging (v1.5.0):**
+    - **Historical Point-in-Time Theoretical Ceiling:** Every historical data point permanently records the exact theoretical rate at that specific second, plotting a true stepped curve across gear changes, food buff expirations, or tool swaps rather than a static horizontal line.
+    - **Instant Modifier Transition Capture:** Immediately registers timeline event transitions whenever modifiers change, even while resting or paused for stamina.
+    - **Point-by-Point Efficiency Scrubber:** Interactive hover scrubber displays the exact historical theoretical target and individual point efficiency percentage for every recorded moment in the timeline.
+
 ---
 
 ## 🛠️ Architecture & Tech Stack

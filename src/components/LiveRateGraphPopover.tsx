@@ -223,13 +223,16 @@ export const LiveRateGraphPopover: React.FC<LiveRateGraphPopoverProps> = ({
               </div>
 
               {hoveredPoint ? (
-                <div className="flex items-center gap-2 text-gray-200">
+                <div className="flex items-center gap-1.5 sm:gap-2 text-gray-200 text-[11px]">
                   <span className="text-gray-400">{hoveredPoint.timeLabel}:</span>
                   <strong className="text-indigo-300 font-bold">
                     {hoveredPoint.xpPerHour.toLocaleString()} XP/h
                   </strong>
                   <span className="text-emerald-400 font-mono text-[10px]">
                     (Theo: {(hoveredPoint.theoreticalXpPerHour || theoreticalXpPerHour).toLocaleString()})
+                  </span>
+                  <span className="text-indigo-200 font-mono text-[10px] bg-indigo-950/80 px-1.5 py-0.2 rounded border border-indigo-700/60 font-semibold">
+                    {Math.round((hoveredPoint.xpPerHour / (hoveredPoint.theoreticalXpPerHour || theoreticalXpPerHour || 1)) * 100)}% Eff
                   </span>
                 </div>
               ) : (
