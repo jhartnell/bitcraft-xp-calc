@@ -477,19 +477,21 @@ export const App: React.FC = () => {
           setNearbyCrafts([]);
         }
 
-        // Map item and cargo metadata
-        const metaMap = new Map<number, ItemMetadata>();
-        if (craftsRes?.items) {
-          for (const item of craftsRes.items) {
-            metaMap.set(Number(item.id), item);
+        // Map item and cargo metadata (merge into existing cache so assisted/custom craft items are preserved)
+        setItemMetadataMap((prev) => {
+          const next = new Map(prev);
+          if (craftsRes?.items) {
+            for (const item of craftsRes.items) {
+              next.set(Number(item.id), item);
+            }
           }
-        }
-        if (craftsRes?.cargos) {
-          for (const cargo of craftsRes.cargos) {
-            metaMap.set(Number(cargo.id), cargo);
+          if (craftsRes?.cargos) {
+            for (const cargo of craftsRes.cargos) {
+              next.set(Number(cargo.id), cargo);
+            }
           }
-        }
-        setItemMetadataMap(metaMap);
+          return next;
+        });
 
         setLastUpdated(new Date());
         saveRecentPlayer(player);
@@ -550,10 +552,45 @@ export const App: React.FC = () => {
 
   // Active craft to calculate
   const activeCraft = customCraft || (crafts.length > 0 ? crafts[selectedCraftIndex] : null);
-  const activeCraftMetadata =
+  const activeCraftItemId =
     activeCraft && activeCraft.craftedItem && activeCraft.craftedItem.length > 0
-      ? itemMetadataMap.get(activeCraft.craftedItem[0].item_id) || null
+      ? Number(activeCraft.craftedItem[0].item_id)
       : null;
+  const activeCraftItemType = activeCraft?.craftedItem?.[0]?.item_type;
+  const activeCraftMetadata = activeCraftItemId ? itemMetadataMap.get(activeCraftItemId) || null : null;
+
+  // Fallback: if active craft's item metadata is not in cache, fetch it automatically!
+  useEffect(() => {
+    if (activeCraftItemId && !itemMetadataMap.has(activeCraftItemId)) {
+      if (activeCraftItemType === 'cargo') {
+        bitjitaApi
+          .getCargo(activeCraftItemId)
+          .then((crg) => {
+            if (crg) {
+              setItemMetadataMap((prev) => {
+                const next = new Map(prev);
+                next.set(activeCraftItemId, crg);
+                return next;
+              });
+            }
+          })
+          .catch(() => {});
+      } else {
+        bitjitaApi
+          .getItem(activeCraftItemId)
+          .then((itm) => {
+            if (itm) {
+              setItemMetadataMap((prev) => {
+                const next = new Map(prev);
+                next.set(activeCraftItemId, itm);
+                return next;
+              });
+            }
+          })
+          .catch(() => {});
+      }
+    }
+  }, [activeCraftItemId, activeCraftItemType, itemMetadataMap]);
 
   // XP & Modifiers calculation result
   const calcResult = activeCraft

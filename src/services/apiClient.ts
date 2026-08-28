@@ -416,6 +416,41 @@ class PoliteApiClient {
     nearbyList.sort((a, b) => a.distanceMeters - b.distanceMeters);
     return nearbyList;
   }
+
+  // Get item metadata by ID (caches for 1 hour)
+  public async getItem(itemId: number, forceFresh = false): Promise<ItemMetadata | null> {
+    try {
+      const res = await this.fetchWithCache<{
+        item: ItemMetadata;
+        craftingRecipes?: Array<{
+          id: number;
+          experiencePerProgress?: { quantity: number; skill_id: number }[];
+        }>;
+      }>(`/items/${itemId}`, 3600000, forceFresh);
+
+      if (res?.craftingRecipes) {
+        for (const r of res.craftingRecipes) {
+          if (r.id && r.experiencePerProgress && r.experiencePerProgress.length > 0) {
+            this.recipeXpMap.set(r.id, r.experiencePerProgress);
+          }
+        }
+      }
+
+      return res?.item || null;
+    } catch {
+      return null;
+    }
+  }
+
+  // Get cargo metadata by ID (caches for 1 hour)
+  public async getCargo(cargoId: number, forceFresh = false): Promise<ItemMetadata | null> {
+    try {
+      const res = await this.fetchWithCache<{ cargo: ItemMetadata }>(`/cargos/${cargoId}`, 3600000, forceFresh);
+      return res?.cargo || null;
+    } catch {
+      return null;
+    }
+  }
 }
 
 export const bitjitaApi = new PoliteApiClient();
