@@ -71,8 +71,9 @@ export const XpProjections: React.FC<XpProjectionsProps> = ({ calc, onResetSessi
               sessionStats={calc.sessionStats}
               theoreticalXpPerHour={calc.xpPerHour}
               onResetSession={onResetSession}
+              className="block w-full"
             >
-              <div className="flex items-center justify-between pt-1 border-t border-surface-border/50 hover:bg-surface-subtle/50 -mx-1 px-1 rounded transition-colors">
+              <div className="flex items-center justify-between pt-1 border-t border-surface-border/50 hover:bg-surface-subtle/50 -mx-1 px-1 rounded transition-colors w-full">
                 {calc.sessionStats && !calc.sessionStats.isWarmingUp && calc.sessionStats.measuredXpPerHour !== null ? (
                   <>
                     <span className="text-indigo-300 font-bold text-sm flex items-center gap-1">
@@ -90,7 +91,7 @@ export const XpProjections: React.FC<XpProjectionsProps> = ({ calc, onResetSessi
                       <TrendingUp className="w-3 h-3 text-gray-600" />
                       Calibrating...
                     </span>
-                    <span className="text-[10px] text-gray-500 font-sans">
+                    <span className="text-[10px] text-gray-400 font-sans font-medium px-1.5 py-0.5 rounded bg-surface-subtle border border-surface-border">
                       Live Session ▾
                     </span>
                   </>

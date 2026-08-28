@@ -7,6 +7,7 @@ interface LiveRateGraphPopoverProps {
   sessionStats?: SessionRateStats | null;
   theoreticalXpPerHour: number;
   onResetSession?: () => void;
+  className?: string;
   children: React.ReactNode;
 }
 
@@ -14,6 +15,7 @@ export const LiveRateGraphPopover: React.FC<LiveRateGraphPopoverProps> = ({
   sessionStats,
   theoreticalXpPerHour,
   onResetSession,
+  className = 'inline-block',
   children,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -119,13 +121,13 @@ export const LiveRateGraphPopover: React.FC<LiveRateGraphPopoverProps> = ({
 
   return (
     <div
-      className="relative inline-block"
+      className={`relative ${className}`}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       ref={popoverRef}
     >
       {/* Trigger children badge */}
-      <div className="cursor-pointer select-none">
+      <div className="cursor-pointer select-none w-full">
         {children}
       </div>
 
