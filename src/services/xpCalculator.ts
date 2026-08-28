@@ -118,6 +118,16 @@ export function calculateCraftXp(
     color: '#10b981',
   };
 
+  // Current Player Level Progress for the Craft's Skill
+  let currentSkillXp = 0;
+  if (player && player.experience) {
+    const expObj = player.experience.find((e) => e.skill_id === skillId);
+    if (expObj) {
+      currentSkillXp = expObj.quantity;
+    }
+  }
+  const currentLevelProgress = getXpProgressForLevel(currentSkillXp);
+
   // 2. Base XP per progress unit
   let baseXpPerAction = DEFAULT_SKILL_BASE_XP[skillId] || 1.6;
 
@@ -360,6 +370,24 @@ export function calculateCraftXp(
   let professionSkillSpeedBonus = 0;
   if (profStatId && stats && stats.values && typeof stats.values[profStatId] === 'number' && stats.values[profStatId] > 0) {
     professionSkillSpeedBonus = stats.values[profStatId] - 1.0;
+  } else if (
+    currentLevelProgress.level > 1 &&
+    (skillId === 2 ||
+      skillId === 3 ||
+      skillId === 4 ||
+      skillId === 5 ||
+      skillId === 6 ||
+      skillId === 7 ||
+      skillId === 8 ||
+      skillId === 9 ||
+      skillId === 10 ||
+      skillId === 11 ||
+      skillId === 12 ||
+      skillId === 14)
+  ) {
+    // In BitCraft, crafting and gathering professions grant +0.05% speed per skill level (+3.6% at Lvl 72 Carpentry)
+    // Cooking (13) and Construction (15) do not have separate profession level speed scaling
+    professionSkillSpeedBonus = (currentLevelProgress.level * 0.05) / 100.0;
   }
 
   // Equipment speed: compute directly from all equipped gear pieces (ground truth item stats)
@@ -480,16 +508,7 @@ export function calculateCraftXp(
   const earnedXp = Math.round(completedProgress * effectiveXpPerAction);
   const remainingXp = Math.max(0, totalCraftXp - earnedXp);
 
-  // 10. Current & Projected Player Level Progress
-  let currentSkillXp = 0;
-  if (player && player.experience) {
-    const expObj = player.experience.find((e) => e.skill_id === skillId);
-    if (expObj) {
-      currentSkillXp = expObj.quantity;
-    }
-  }
-
-  const currentLevelProgress = getXpProgressForLevel(currentSkillXp);
+  // 10. Projected Player Level Progress
   const projectedSkillXp = currentSkillXp + remainingXp;
   const projectedLevelProgress = getXpProgressForLevel(projectedSkillXp);
   const levelsGained = Math.max(0, projectedLevelProgress.level - currentLevelProgress.level);
