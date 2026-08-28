@@ -135,6 +135,10 @@ A high-performance, real-time web application to track active crafting progress,
     - **True Ground-Truth Equipment Engine:** Calculates gear bonuses directly from all individual equipped pieces, preventing double-counting when SpacetimeDB composite stats have food buffs baked into server stat #15.
     - **Full Debuff & Negative Value Support:** Fully supports negative speed and XP rate overrides (e.g. `-20%` speed or `-10%` XP) for exhaustion, encumbrance, or rez sickness with dedicated red debuff styling.
 
+22. **Resilient Profession Skill Speed & Craft Station Hydration (v1.6.1):**
+    - **Offline-Resilient Profession Speed Engine:** Computes exact profession skill speed bonuses directly from verified player skill levels ($+0.05\%$ speed per level, e.g. $+3.6\%$ at Level 72 Carpentry) when BitJita's SpacetimeDB server stats table is unreachable or 404s.
+    - **Full Craft Station Hydration:** Automatically hydrates incomplete craft records from station names (*Ornate Carpentry Station* $\to$ Carpentry) and level requirement skill IDs, ensuring profession-specific speed bonuses are applied accurately on all owned and assisted crafts.
+
 ---
 
 ## 🛠️ Architecture & Tech Stack
