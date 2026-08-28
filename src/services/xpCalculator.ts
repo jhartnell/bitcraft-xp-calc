@@ -13,6 +13,9 @@ import {
   ToolStatusInfo,
   ActiveBuffModifier,
   EquipmentModifier,
+  FoodBuffOverride,
+  SpeedBreakdownInfo,
+  SpeedContributorItem,
   ParticipantContributionSummary,
   MultiUserCraftProjection,
   LevelMilestone,
@@ -65,7 +68,8 @@ export function calculateCraftXp(
   stats: PlayerStatsData | null = null,
   contributions: CraftContribution[] = [],
   overrideProgressPerAction: number | null = null,
-  overrideBaseXp: number | null = null
+  overrideBaseXp: number | null = null,
+  foodBuffOverride: FoodBuffOverride | null = null
 ): XpCalculationResult {
   // 1. Identify primary skill for the craft
   let skillId = 4; // default masonry
@@ -244,6 +248,7 @@ export function calculateCraftXp(
     let buffCraftSpeed = 0;
     let buffGatherSpeed = 0;
     let buffStaminaRegen = 0;
+    let buffExpRate = 0;
 
     if (buff.stats) {
       for (const st of buff.stats) {
@@ -257,6 +262,7 @@ export function calculateCraftXp(
           buffStaminaRegen += st.value;
         }
         if (st.id === 50 || st.name.toLowerCase().includes('experience rate')) {
+          buffExpRate += st.value;
           buffExpRateBonus += st.value;
         }
       }
@@ -274,6 +280,7 @@ export function calculateCraftXp(
       craftingSpeedBonus: buffCraftSpeed,
       gatheringSpeedBonus: buffGatherSpeed,
       staminaRegenBonus: buffStaminaRegen,
+      xpRateBonus: buffExpRate,
       durationSeconds: buff.buffDuration || 0,
       remainingSeconds: remainingSecs,
       isExpiringSoon: remainingSecs > 0 && remainingSecs < 120,
@@ -281,21 +288,64 @@ export function calculateCraftXp(
     });
   }
 
-  // 8. Total Crafting Speed Multiplier (General Crafting Speed + Profession Skill Speed)
-  let totalCraftingSpeedMultiplier: number;
+  // Inject user active food buff override if enabled and valid
+  let manualFoodSpeedBonus = 0;
+  let manualFoodXpBonus = 0;
 
+  if (foodBuffOverride && foodBuffOverride.enabled) {
+    const elapsedSecs = Math.max(0, (Date.now() - foodBuffOverride.startedAt) / 1000);
+    const remainingSecs = Math.max(0, Math.round(foodBuffOverride.durationSeconds - elapsedSecs));
+
+    if (remainingSecs > 0) {
+      manualFoodSpeedBonus = foodBuffOverride.craftingSpeedBonus || 0;
+      manualFoodXpBonus = foodBuffOverride.xpRateBonus || 0;
+
+      // If server does not already have an active crafting speed buff from food
+      if (buffCraftingSpeedBonus === 0 && manualFoodSpeedBonus !== 0) {
+        buffCraftingSpeedBonus += manualFoodSpeedBonus;
+      }
+      if (buffExpRateBonus === 0 && manualFoodXpBonus !== 0) {
+        buffExpRateBonus += manualFoodXpBonus;
+      }
+      if (buffStaminaRegenBonus === 0 && foodBuffOverride.staminaRegenBonus !== 0) {
+        buffStaminaRegenBonus += foodBuffOverride.staminaRegenBonus;
+      }
+
+      const isDebuff = manualFoodSpeedBonus < 0 || manualFoodXpBonus < 0;
+
+      activeBuffModifiers.push({
+        name: `${foodBuffOverride.name} (Active Override)`,
+        category: isDebuff ? 'Debuff' : 'Food Buff',
+        craftingSpeedBonus: manualFoodSpeedBonus,
+        gatheringSpeedBonus: foodBuffOverride.gatheringSpeedBonus || 0,
+        staminaRegenBonus: foodBuffOverride.staminaRegenBonus,
+        xpRateBonus: manualFoodXpBonus,
+        durationSeconds: foodBuffOverride.durationSeconds,
+        remainingSeconds: remainingSecs,
+        isExpiringSoon: remainingSecs < 120,
+        isDebuff,
+      });
+    }
+  }
+
+  // 8. Total Crafting Speed Multiplier (General Crafting Speed + Profession Skill Speed)
   const profStatId = PROFESSION_SPEED_STAT_IDS[skillId];
   let professionSkillSpeedBonus = 0;
   if (profStatId && stats && stats.values && typeof stats.values[profStatId] === 'number' && stats.values[profStatId] > 0) {
     professionSkillSpeedBonus = stats.values[profStatId] - 1.0;
   }
 
-  if (stats && stats.values && typeof stats.values[15] === 'number' && stats.values[15] > 0) {
-    totalCraftingSpeedMultiplier = stats.values[15] + professionSkillSpeedBonus;
-  } else {
-    const calculatedSum = 1.0 + equipCraftingSpeedBonus + buffCraftingSpeedBonus + professionSkillSpeedBonus;
-    totalCraftingSpeedMultiplier = Math.max(0.1, calculatedSum);
-  }
+  // Equipment speed: compute directly from all equipped gear pieces (ground truth item stats)
+  // Fall back to server stat 15 only if equipment data is not available
+  const effectiveEquipmentSpeedBonus =
+    equipmentModifiers.length > 0 || equipCraftingSpeedBonus > 0
+      ? equipCraftingSpeedBonus
+      : (stats && stats.values && typeof stats.values[15] === 'number' && stats.values[15] > 0
+          ? stats.values[15] - 1.0
+          : 0);
+
+  const calculatedSum = 1.0 + effectiveEquipmentSpeedBonus + buffCraftingSpeedBonus + professionSkillSpeedBonus;
+  const totalCraftingSpeedMultiplier = Math.max(0.1, calculatedSum);
 
   const craftingSpeedBonusPercent = Math.round((totalCraftingSpeedMultiplier - 1.0) * 100 * 10) / 10;
 
@@ -303,11 +353,89 @@ export function calculateCraftXp(
   const secondsPerAction = BASE_ACTION_DURATION_SECONDS / totalCraftingSpeedMultiplier;
   const effectiveActionsPerSecond = 1.0 / secondsPerAction;
 
+  // 8.1 Detailed Speed Contributor Breakdown
+  const equipmentItemsWithSpeed = equipmentModifiers
+    .filter((e) => e.craftingSpeedBonus > 0)
+    .map((e) => ({
+      slot: e.slot.replace('_', ' '),
+      name: e.itemName,
+      bonusPercent: Math.round(e.craftingSpeedBonus * 100 * 10) / 10,
+    }));
+
+  const equipmentBonusPercent = Math.round(effectiveEquipmentSpeedBonus * 100 * 10) / 10;
+
+  const buffItemsWithSpeed = activeBuffModifiers
+    .filter((b) => b.craftingSpeedBonus !== 0)
+    .map((b) => ({
+      name: b.name,
+      bonusPercent: Math.round(b.craftingSpeedBonus * 100 * 10) / 10,
+      isOverride: b.name.includes('Override'),
+    }));
+
+  const buffBonusPercent = Math.round(buffCraftingSpeedBonus * 100 * 10) / 10;
+  const professionSkillBonusPercent = Math.round(professionSkillSpeedBonus * 100 * 10) / 10;
+
+  const speedContributors: SpeedContributorItem[] = [
+    {
+      label: 'Base Station',
+      category: 'base',
+      bonusPercent: 0,
+      multiplierDelta: 1.0,
+      detail: 'Base crafting tick is 1.60s (1.000x)',
+    },
+  ];
+
+  if (equipmentBonusPercent !== 0) {
+    speedContributors.push({
+      label: 'Equipment & Gear',
+      category: 'equipment',
+      bonusPercent: equipmentBonusPercent,
+      multiplierDelta: equipmentBonusPercent / 100,
+      detail: equipmentItemsWithSpeed.map((e) => `${e.name} (+${e.bonusPercent}%)`).join(', ') || 'Gear Stat #15',
+    });
+  }
+
+  if (buffBonusPercent !== 0) {
+    speedContributors.push({
+      label: 'Food Buffs & Potions',
+      category: 'buff',
+      bonusPercent: buffBonusPercent,
+      multiplierDelta: buffBonusPercent / 100,
+      detail: buffItemsWithSpeed.map((b) => `${b.name} (${b.bonusPercent >= 0 ? '+' : ''}${b.bonusPercent}%)`).join(', '),
+    });
+  }
+
+  if (professionSkillBonusPercent !== 0) {
+    speedContributors.push({
+      label: `${skillDef.name} Skill Level`,
+      category: 'skill',
+      bonusPercent: professionSkillBonusPercent,
+      multiplierDelta: professionSkillSpeedBonus,
+      detail: `Profession Level Stat #${profStatId || ''}`,
+    });
+  }
+
+  const speedBreakdown: SpeedBreakdownInfo = {
+    baseActionDurationSeconds: BASE_ACTION_DURATION_SECONDS,
+    baseMultiplier: 1.0,
+    equipmentBonusPercent,
+    equipmentItems: equipmentItemsWithSpeed,
+    buffBonusPercent,
+    buffItems: buffItemsWithSpeed,
+    professionSkillBonusPercent,
+    professionSkillName: skillDef.name,
+    totalMultiplier: totalCraftingSpeedMultiplier,
+    totalBonusPercent: craftingSpeedBonusPercent,
+    finalSecondsPerAction: secondsPerAction,
+    effectiveActionsPerSecond,
+    contributors: speedContributors,
+  };
+
   // 9. XP Multiplier (Server authoritative or equipment + buffs)
   let xpMultiplier = 1.0;
   if (stats && stats.values && typeof stats.values[50] === 'number' && stats.values[50] > 0) {
     // Server stat 50 is total experience rate percentage (e.g. 108 = 1.08x)
-    xpMultiplier = Math.max(1.0, stats.values[50] / 100.0);
+    xpMultiplier = Math.max(1.0, stats.values[50] / 100.0) + manualFoodXpBonus;
   } else {
     xpMultiplier = 1.0 + equipExpRateBonus + buffExpRateBonus;
     const skillNameLower = skillDef.name.toLowerCase();
@@ -339,22 +467,18 @@ export function calculateCraftXp(
   const projectedLevelProgress = getXpProgressForLevel(projectedSkillXp);
   const levelsGained = Math.max(0, projectedLevelProgress.level - currentLevelProgress.level);
 
-  // 11. Exact In-Game Matched ETA, Hourly Rate & Completion Time
-  const estimatedSecondsRemaining = Math.round(physicalActionsRemaining * secondsPerAction);
-  const effortPerSecond = secondsPerAction > 0 ? progressPerAction / secondsPerAction : 0;
-  const effortPerHour = Math.round(effortPerSecond * 3600);
-  const xpPerSecond = effortPerSecond * effectiveXpPerAction;
-  const xpPerHour = Math.round(xpPerSecond * 3600);
+  // 11. Rates and Completion Forecast
+  const effortPerHour = effectiveActionsPerSecond * progressPerAction * 3600;
+  const xpPerHour = Math.round(effortPerHour * effectiveXpPerAction);
 
-  let estimatedCompletionTime: string | null = null;
-  if (estimatedSecondsRemaining > 0 && isFinite(estimatedSecondsRemaining)) {
-    const completionDate = new Date(Date.now() + estimatedSecondsRemaining * 1000);
-    estimatedCompletionTime = completionDate.toLocaleTimeString([], {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    });
-  }
+  const estimatedSecondsRemaining = physicalActionsRemaining * secondsPerAction;
+  const estimatedCompletionTime =
+    estimatedSecondsRemaining > 0
+      ? new Date(Date.now() + estimatedSecondsRemaining * 1000).toLocaleTimeString([], {
+          hour: '2-digit',
+          minute: '2-digit',
+        })
+      : null;
 
   return {
     skillId,
@@ -406,6 +530,8 @@ export function calculateCraftXp(
     toolStatus,
     activeBuffModifiers,
     equipmentModifiers,
+    activeFoodOverride: foodBuffOverride,
+    speedBreakdown,
     levelForecast: calculateLevelProgressForecast(
       currentSkillXp,
       remainingProgress,

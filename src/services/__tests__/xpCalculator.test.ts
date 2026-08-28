@@ -423,5 +423,219 @@ describe('Level Milestone Timing & Multi-Level Forecast Engine', () => {
     expect(result.itemsRemaining).toBe(0);
     expect(result.totalCraftXp).toBe(11200);
   });
+
+  it('correctly applies active food buff overrides when server buffs are absent', () => {
+    const testCraft: CraftResult = {
+      entityId: '576460755568594225',
+      buildingEntityId: '576460752317788935',
+      ownerEntityId: '1224979098660021941',
+      regionId: 8,
+      progress: 1000,
+      recipeId: 1632810221,
+      craftCount: 100,
+      actionsRequiredPerItem: 50,
+      totalActionsRequired: 5000,
+      craftedItem: [{ item_id: 102576945, quantity: 1, item_type: 'item', durability: 0 }],
+      experiencePerProgress: [{ quantity: 2.0, skill_id: 13 }],
+      lockExpiration: '2026-08-28T20:00:00Z',
+      completed: false,
+    };
+
+    const testPlayer: PlayerDetails = {
+      entityId: '1224979098660021941',
+      username: 'Ikuria',
+      experience: [{ skill_id: 13, quantity: 100000 }],
+    };
+
+    const mockOverride = {
+      id: 'food_1',
+      name: 'Fine Crafting Feast (+9.4%)',
+      craftingSpeedBonus: 0.094,
+      xpRateBonus: 0.05,
+      staminaRegenBonus: 10,
+      durationSeconds: 3600,
+      startedAt: Date.now() - 600000, // 10 minutes ago
+      remainingSeconds: 3000,
+      enabled: true,
+    };
+
+    const result = calculateCraftXp(
+      testCraft,
+      testPlayer,
+      [],
+      [], // no server buffs
+      null,
+      [],
+      20,
+      null,
+      mockOverride
+    );
+
+    expect(result.activeBuffModifiers.length).toBe(1);
+    expect(result.activeBuffModifiers[0].name).toContain('Fine Crafting Feast');
+    expect(result.activeBuffModifiers[0].craftingSpeedBonus).toBe(0.094);
+    expect(result.activeBuffModifiers[0].xpRateBonus).toBe(0.05);
+    expect(result.craftingSpeedBonusPercent).toBe(9.4);
+    expect(result.xpMultiplier).toBe(1.05);
+
+    // Verify speedBreakdown is accurately populated
+    expect(result.speedBreakdown).toBeDefined();
+    expect(result.speedBreakdown.baseMultiplier).toBe(1.0);
+    expect(result.speedBreakdown.buffBonusPercent).toBe(9.4);
+    expect(result.speedBreakdown.totalMultiplier).toBeCloseTo(1.094, 3);
+    expect(result.speedBreakdown.finalSecondsPerAction).toBeCloseTo(1.6 / 1.094, 3);
+    expect(result.speedBreakdown.contributors.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('generates itemized speedBreakdown across equipment, food, and profession skill stats', () => {
+    const testCraft: CraftResult = {
+      entityId: '576460755568594225',
+      buildingEntityId: '576460752317788935',
+      ownerEntityId: '1224979098660021941',
+      regionId: 8,
+      progress: 1000,
+      recipeId: 1632810221,
+      craftCount: 100,
+      actionsRequiredPerItem: 50,
+      totalActionsRequired: 5000,
+      craftedItem: [{ item_id: 102576945, quantity: 1, item_type: 'item', durability: 0 }],
+      experiencePerProgress: [{ quantity: 2.0, skill_id: 13 }],
+      lockExpiration: '2026-08-28T20:00:00Z',
+      completed: false,
+    };
+
+    const testPlayer: PlayerDetails = {
+      entityId: '1224979098660021941',
+      username: 'Ikuria',
+      experience: [{ skill_id: 13, quantity: 100000 }],
+    };
+
+    const mockEquipment: EquipmentSlot[] = [
+      {
+        primary: 'torso_clothing',
+        item: {
+          id: 2001,
+          name: 'Crafter Shirt',
+          tier: 3,
+          rarityString: 'Rare',
+          stats: [{ id: 15, name: 'Crafting Speed', value: 0.0528, is_pct: true }],
+        },
+      },
+      {
+        primary: 'hand_artifact_1',
+        item: {
+          id: 2002,
+          name: 'Silver Band',
+          tier: 4,
+          rarityString: 'Epic',
+          stats: [{ id: 15, name: 'Crafting Speed', value: 0.088, is_pct: true }],
+        },
+      },
+    ];
+
+    const mockStatsValues: number[] = Array(60).fill(0);
+    mockStatsValues[15] = 1.182; // General Crafting Speed (+18.2%)
+    mockStatsValues[32] = 1.040; // Cooking Skill Speed Stat (+4.0%)
+
+    const mockStats = {
+      entityId: '1224979098660021941',
+      values: mockStatsValues,
+    };
+
+    const mockOverride = {
+      id: 'food_1',
+      name: 'Fine Feast (+9.4%)',
+      craftingSpeedBonus: 0.094,
+      xpRateBonus: 0,
+      staminaRegenBonus: 0,
+      durationSeconds: 3600,
+      startedAt: Date.now(),
+      remainingSeconds: 3600,
+      enabled: true,
+    };
+
+    const result = calculateCraftXp(
+      testCraft,
+      testPlayer,
+      mockEquipment,
+      [],
+      mockStats,
+      [],
+      20,
+      null,
+      mockOverride
+    );
+
+    expect(result.speedBreakdown).toBeDefined();
+    expect(result.speedBreakdown.equipmentBonusPercent).toBe(14.1);
+    expect(result.speedBreakdown.equipmentItems.length).toBe(2);
+    expect(result.speedBreakdown.equipmentItems[0].name).toBe('Crafter Shirt');
+    expect(result.speedBreakdown.equipmentItems[0].bonusPercent).toBe(5.3);
+    expect(result.speedBreakdown.buffBonusPercent).toBe(9.4);
+    expect(result.speedBreakdown.professionSkillBonusPercent).toBe(4.0);
+    expect(result.speedBreakdown.professionSkillName).toBe('Cooking');
+    // Total multiplier = 1.0 + 0.1408 (gear) + 0.040 (skill) + 0.094 (food) = 1.2748
+    expect(result.speedBreakdown.totalMultiplier).toBeCloseTo(1.275, 3);
+    expect(result.speedBreakdown.totalBonusPercent).toBe(27.5);
+    expect(result.speedBreakdown.finalSecondsPerAction).toBeCloseTo(1.6 / 1.2748, 2);
+  });
+
+  it('correctly applies negative speed and XP rate debuff overrides', () => {
+    const testCraft: CraftResult = {
+      entityId: '576460755568594225',
+      buildingEntityId: '576460752317788935',
+      ownerEntityId: '1224979098660021941',
+      regionId: 8,
+      progress: 1000,
+      recipeId: 1632810221,
+      craftCount: 100,
+      actionsRequiredPerItem: 50,
+      totalActionsRequired: 5000,
+      craftedItem: [{ item_id: 102576945, quantity: 1, item_type: 'item', durability: 0 }],
+      experiencePerProgress: [{ quantity: 2.0, skill_id: 13 }],
+      lockExpiration: '2026-08-28T20:00:00Z',
+      completed: false,
+    };
+
+    const testPlayer: PlayerDetails = {
+      entityId: '1224979098660021941',
+      username: 'Ikuria',
+      experience: [{ skill_id: 13, quantity: 100000 }],
+    };
+
+    const mockDebuffOverride = {
+      id: 'debuff_1',
+      name: 'Exhausted & Encumbered',
+      craftingSpeedBonus: -0.20, // -20% speed
+      xpRateBonus: -0.10,        // -10% XP
+      staminaRegenBonus: 0,
+      durationSeconds: 1800,
+      startedAt: Date.now(),
+      remainingSeconds: 1800,
+      enabled: true,
+    };
+
+    const result = calculateCraftXp(
+      testCraft,
+      testPlayer,
+      [],
+      [],
+      null,
+      [],
+      20,
+      null,
+      mockDebuffOverride
+    );
+
+    expect(result.activeBuffModifiers.length).toBe(1);
+    expect(result.activeBuffModifiers[0].isDebuff).toBe(true);
+    expect(result.activeBuffModifiers[0].category).toBe('Debuff');
+    expect(result.activeBuffModifiers[0].craftingSpeedBonus).toBe(-0.20);
+    expect(result.activeBuffModifiers[0].xpRateBonus).toBe(-0.10);
+    expect(result.craftingSpeedBonusPercent).toBe(-20);
+    expect(result.totalCraftingSpeedMultiplier).toBeCloseTo(0.80, 2);
+    expect(result.secondsPerAction).toBeCloseTo(1.6 / 0.8, 2); // 2.0s per action
+    expect(result.xpMultiplier).toBeCloseTo(0.90, 2);
+  });
 });
 

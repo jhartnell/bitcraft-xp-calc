@@ -129,6 +129,12 @@ A high-performance, real-time web application to track active crafting progress,
     - **Fixed Column Width Badges:** Standardized right-side status badges (`Theoretical` and `Live X%`) with fixed column widths (`w-[82px] shrink-0 text-center`), ensuring vertical alignment remains flush regardless of single, double, or triple-digit efficiency values.
     - **Border & Padding Standardization:** Cleaned up internal padding and negative margins in the hourly rate card for consistent spacing and alignment.
 
+21. **Food Buff Override, Interactive Speed Breakdown Popover & True Equipment Ground-Truth (v1.6.0):**
+    - **Food Buff Override & Resilience System:** Allows active food buffs to be applied directly in calculations with 1-click presets (`🥧 +9.4% (60m)`, `🍞 +8.2% (30m)`, `🍲 +4.2% (30m)`, `🌟 +10% & +5% XP`, `📜 +5% XP (30m)`) or customizable food/XP inputs even when BitJita's SpacetimeDB ingestor drops or delays player buff table syncs.
+    - **Interactive Speed Breakdown Popover:** Interactive floating hover card on all Speed badges exposing the complete formula ($1.60\text{s} \div \text{Total Multiplier} = \text{Action Duration}$) and itemized contributor hierarchy across Base Station (`1.000x`), individual equipped clothing pieces/rings (`+28.4%`), active food buffs (`+9.4%`), and profession skill speed.
+    - **True Ground-Truth Equipment Engine:** Calculates gear bonuses directly from all individual equipped pieces, preventing double-counting when SpacetimeDB composite stats have food buffs baked into server stat #15.
+    - **Full Debuff & Negative Value Support:** Fully supports negative speed and XP rate overrides (e.g. `-20%` speed or `-10%` XP) for exhaustion, encumbrance, or rez sickness with dedicated red debuff styling.
+
 ---
 
 ## 🛠️ Architecture & Tech Stack

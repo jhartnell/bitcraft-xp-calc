@@ -20,10 +20,48 @@ export interface ActiveBuffModifier {
   craftingSpeedBonus: number; // e.g. +0.2 for +20%, -0.2 for -20%
   gatheringSpeedBonus: number;
   staminaRegenBonus: number;
+  xpRateBonus?: number;       // e.g. +0.05 for +5% XP rate
   durationSeconds: number;
   remainingSeconds: number;
   isExpiringSoon: boolean;
   isDebuff: boolean;
+}
+
+export interface FoodBuffOverride {
+  id: string;
+  name: string;
+  craftingSpeedBonus: number; // e.g. 0.094 for +9.4%
+  gatheringSpeedBonus?: number;
+  xpRateBonus: number;        // e.g. 0.05 for +5%
+  staminaRegenBonus: number;  // e.g. 19 for +19 stamina regen
+  durationSeconds: number;    // e.g. 3600
+  startedAt: number;          // timestamp in ms
+  remainingSeconds: number;
+  enabled: boolean;
+}
+
+export interface SpeedContributorItem {
+  label: string;
+  category: 'base' | 'equipment' | 'buff' | 'skill' | 'override';
+  bonusPercent: number; // e.g. 18.2 for +18.2%
+  multiplierDelta: number; // e.g. 0.182
+  detail?: string;
+}
+
+export interface SpeedBreakdownInfo {
+  baseActionDurationSeconds: number; // 1.60s
+  baseMultiplier: number; // 1.00
+  equipmentBonusPercent: number; // e.g. +18.2%
+  equipmentItems: { slot: string; name: string; bonusPercent: number }[];
+  buffBonusPercent: number; // e.g. +9.4%
+  buffItems: { name: string; bonusPercent: number; isOverride?: boolean }[];
+  professionSkillBonusPercent: number; // e.g. +4.0%
+  professionSkillName: string;
+  totalMultiplier: number; // 1.418
+  totalBonusPercent: number; // +41.8%
+  finalSecondsPerAction: number; // 1.13
+  effectiveActionsPerSecond: number; // 0.89
+  contributors: SpeedContributorItem[];
 }
 
 export interface EquipmentModifier {
@@ -178,6 +216,8 @@ export interface XpCalculationResult {
   toolStatus: ToolStatusInfo;
   activeBuffModifiers: ActiveBuffModifier[];
   equipmentModifiers: EquipmentModifier[];
+  activeFoodOverride?: FoodBuffOverride | null;
+  speedBreakdown: SpeedBreakdownInfo;
   
   multiUserProjection?: MultiUserCraftProjection | null;
   levelForecast: LevelProgressForecast;

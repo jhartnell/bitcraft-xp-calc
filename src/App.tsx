@@ -8,7 +8,7 @@ import {
   PlayerStatsData,
   ItemMetadata,
 } from './types/api';
-import { ApiClientStatus } from './types/calculator';
+import { ApiClientStatus, FoodBuffOverride } from './types/calculator';
 import { bitjitaApi } from './services/apiClient';
 import { calculateCraftXp, calculateMultiUserCraftProjection } from './services/xpCalculator';
 import { Header } from './components/Header';
@@ -73,6 +73,58 @@ export const App: React.FC = () => {
   const [includedContributors, setIncludedContributors] = useState<Record<string, boolean>>({});
   const [itemMetadataMap, setItemMetadataMap] = useState<Map<number, ItemMetadata>>(new Map());
   const [customProgressPerAction, setCustomProgressPerAction] = useState<number | null>(null);
+  
+  const [foodBuffOverride, setFoodBuffOverride] = useState<FoodBuffOverride | null>(() => {
+    try {
+      const saved = sessionStorage.getItem('bitcraft_food_buff_override');
+      if (!saved) return null;
+      const parsed: FoodBuffOverride = JSON.parse(saved);
+      const elapsed = (Date.now() - parsed.startedAt) / 1000;
+      if (elapsed < parsed.durationSeconds) {
+        return {
+          ...parsed,
+          remainingSeconds: Math.max(0, Math.round(parsed.durationSeconds - elapsed)),
+        };
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  });
+
+  const handleSetFoodBuffOverride = useCallback((override: FoodBuffOverride | null) => {
+    setFoodBuffOverride(override);
+    try {
+      if (override) {
+        sessionStorage.setItem('bitcraft_food_buff_override', JSON.stringify(override));
+      } else {
+        sessionStorage.removeItem('bitcraft_food_buff_override');
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // Ticking countdown effect for active food override
+  useEffect(() => {
+    if (!foodBuffOverride || !foodBuffOverride.enabled) return;
+    const timer = setInterval(() => {
+      const elapsed = (Date.now() - foodBuffOverride.startedAt) / 1000;
+      if (elapsed >= foodBuffOverride.durationSeconds) {
+        handleSetFoodBuffOverride(null);
+      } else {
+        setFoodBuffOverride((prev) =>
+          prev
+            ? {
+                ...prev,
+                remainingSeconds: Math.max(0, Math.round(prev.durationSeconds - elapsed)),
+              }
+            : null
+        );
+      }
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [foodBuffOverride?.startedAt, foodBuffOverride?.durationSeconds, foodBuffOverride?.enabled, handleSetFoodBuffOverride]);
   
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -601,7 +653,9 @@ export const App: React.FC = () => {
         buffs,
         stats,
         contributions,
-        customProgressPerAction
+        customProgressPerAction,
+        null,
+        foodBuffOverride
       )
     : null;
 
@@ -782,7 +836,11 @@ export const App: React.FC = () => {
                 <XpProjections calc={calcResult} onResetSession={resetSession} />
 
                 {/* Modifiers (Food buffs & Equipment) */}
-                <ModifiersPanel calc={calcResult} />
+                <ModifiersPanel
+                  calc={calcResult}
+                  foodBuffOverride={foodBuffOverride}
+                  onSetFoodBuffOverride={handleSetFoodBuffOverride}
+                />
               </div>
             ) : (
               /* No In-Progress Craft Empty State */

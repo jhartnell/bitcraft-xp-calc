@@ -3,28 +3,85 @@ import {
   Utensils,
   Shield,
   Gauge,
-  Zap,
   AlertTriangle,
-  ArrowDownRight,
   ChevronDown,
   ChevronUp,
   Eye,
   EyeOff,
+  X,
+  Sparkles,
+  Clock,
+  CheckCircle,
 } from 'lucide-react';
-import { XpCalculationResult } from '../types/calculator';
+import { XpCalculationResult, FoodBuffOverride } from '../types/calculator';
 import { formatTimeSeconds } from '../services/bitcraftData';
+import { SpeedBreakdownPopover } from './SpeedBreakdownPopover';
 
 interface ModifiersPanelProps {
   calc: XpCalculationResult;
   isInitiallyCollapsed?: boolean;
+  foodBuffOverride?: FoodBuffOverride | null;
+  onSetFoodBuffOverride?: (override: FoodBuffOverride | null) => void;
 }
 
 export const ModifiersPanel: React.FC<ModifiersPanelProps> = ({
   calc,
   isInitiallyCollapsed = false,
+  foodBuffOverride,
+  onSetFoodBuffOverride,
 }) => {
   const [activeTab, setActiveTab] = useState<'buffs' | 'equipment'>('buffs');
   const [isCollapsed, setIsCollapsed] = useState(isInitiallyCollapsed);
+  const [showOverrideForm, setShowOverrideForm] = useState(false);
+  const [customSpeedPct, setCustomSpeedPct] = useState('9.4');
+  const [customXpPct, setCustomXpPct] = useState('0');
+  const [customDurationMin, setCustomDurationMin] = useState('50');
+  const [customName, setCustomName] = useState('Crafting Food Buff');
+
+  const FOOD_PRESETS = [
+    { name: 'Fine Crafting Feast (+9.4%)', speed: 0.094, xp: 0, duration: 3600, label: '🥧 +9.4% (60m)' },
+    { name: 'Refined Crafting Ration (+8.2%)', speed: 0.082, xp: 0, duration: 1800, label: '🍞 +8.2% (30m)' },
+    { name: 'Standard Crafting Stew (+4.2%)', speed: 0.042, xp: 0, duration: 1800, label: '🍲 +4.2% (30m)' },
+    { name: 'Grand Feast (+10% / +5% XP)', speed: 0.10, xp: 0.05, duration: 3600, label: '🌟 +10% & +5% XP' },
+    { name: "Scholar's Wisdom (+5% XP)", speed: 0, xp: 0.05, duration: 1800, label: '📜 +5% XP (30m)' },
+  ];
+
+  const handleApplyPreset = (preset: typeof FOOD_PRESETS[0]) => {
+    if (!onSetFoodBuffOverride) return;
+    onSetFoodBuffOverride({
+      id: `food_${Date.now()}`,
+      name: preset.name,
+      craftingSpeedBonus: preset.speed,
+      xpRateBonus: preset.xp,
+      staminaRegenBonus: 0,
+      durationSeconds: preset.duration,
+      startedAt: Date.now(),
+      remainingSeconds: preset.duration,
+      enabled: true,
+    });
+  };
+
+  const handleApplyCustom = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!onSetFoodBuffOverride) return;
+    const speed = parseFloat(customSpeedPct) / 100 || 0;
+    const xp = parseFloat(customXpPct) / 100 || 0;
+    const mins = parseFloat(customDurationMin) || 60;
+    const durSecs = Math.round(mins * 60);
+
+    onSetFoodBuffOverride({
+      id: `food_${Date.now()}`,
+      name: customName || 'Custom Food Buff',
+      craftingSpeedBonus: speed,
+      xpRateBonus: xp,
+      staminaRegenBonus: 0,
+      durationSeconds: durSecs,
+      startedAt: Date.now(),
+      remainingSeconds: durSecs,
+      enabled: true,
+    });
+    setShowOverrideForm(false);
+  };
 
   useEffect(() => {
     setIsCollapsed(isInitiallyCollapsed);
@@ -44,15 +101,29 @@ export const ModifiersPanel: React.FC<ModifiersPanelProps> = ({
           </div>
           <div className="flex flex-wrap items-center gap-2 font-mono">
             <span className="font-semibold text-gray-200 font-sans">Modifiers:</span>
-            <span
-              className={`px-2 py-0.5 rounded text-[11px] font-bold border ${
-                isSpeedDebuffed
-                  ? 'bg-amber-950/70 border-amber-700/60 text-amber-300'
-                  : 'bg-emerald-950/70 border-emerald-800/60 text-emerald-300'
-              }`}
-            >
-              Speed: {calc.craftingSpeedBonusPercent >= 0 ? `+${calc.craftingSpeedBonusPercent}%` : `${calc.craftingSpeedBonusPercent}%`} ({calc.secondsPerAction.toFixed(2)}s/act)
-            </span>
+            {calc.speedBreakdown ? (
+              <SpeedBreakdownPopover speedBreakdown={calc.speedBreakdown}>
+                <span
+                  className={`px-2 py-0.5 rounded text-[11px] font-bold border inline-flex items-center gap-1 cursor-help ${
+                    isSpeedDebuffed
+                      ? 'bg-amber-950/70 border-amber-700/60 text-amber-300'
+                      : 'bg-emerald-950/70 border-emerald-800/60 text-emerald-300'
+                  }`}
+                >
+                  Speed: {calc.craftingSpeedBonusPercent >= 0 ? `+${calc.craftingSpeedBonusPercent}%` : `${calc.craftingSpeedBonusPercent}%`} ({calc.secondsPerAction.toFixed(2)}s/act)
+                </span>
+              </SpeedBreakdownPopover>
+            ) : (
+              <span
+                className={`px-2 py-0.5 rounded text-[11px] font-bold border ${
+                  isSpeedDebuffed
+                    ? 'bg-amber-950/70 border-amber-700/60 text-amber-300'
+                    : 'bg-emerald-950/70 border-emerald-800/60 text-emerald-300'
+                }`}
+              >
+                Speed: {calc.craftingSpeedBonusPercent >= 0 ? `+${calc.craftingSpeedBonusPercent}%` : `${calc.craftingSpeedBonusPercent}%`} ({calc.secondsPerAction.toFixed(2)}s/act)
+              </span>
+            )}
             {activeBuffsCount > 0 && (
               <span className="text-indigo-300 text-[11px] font-sans">
                 • {activeBuffsCount} Active {activeBuffsCount === 1 ? 'Buff' : 'Buffs'}
@@ -94,25 +165,37 @@ export const ModifiersPanel: React.FC<ModifiersPanelProps> = ({
 
         <div className="flex flex-wrap items-center gap-2">
           {/* Speed Multiplier & Action Duration Highlight Badge */}
-          <div
-            className={`border px-3 py-1.5 rounded-lg text-xs font-mono font-semibold flex items-center gap-1.5 ${
-              isSpeedDebuffed
-                ? 'bg-amber-950/70 border-amber-700/60 text-amber-300'
-                : 'bg-emerald-950/70 border-emerald-800/60 text-emerald-300'
-            }`}
-          >
-            {isSpeedDebuffed ? (
-              <ArrowDownRight className="w-3.5 h-3.5 text-amber-400" />
-            ) : (
-              <Zap className="w-3.5 h-3.5 text-emerald-400" />
-            )}
-            <span>
-              Speed: {calc.craftingSpeedBonusPercent >= 0 ? `+${calc.craftingSpeedBonusPercent}%` : `${calc.craftingSpeedBonusPercent}%`}
-            </span>
-            <span className="text-gray-400 font-normal">
-              ({calc.secondsPerAction.toFixed(2)}s/action • {calc.effectiveActionsPerSecond.toFixed(2)} act/s)
-            </span>
-          </div>
+          {calc.speedBreakdown ? (
+            <SpeedBreakdownPopover speedBreakdown={calc.speedBreakdown}>
+              <div
+                className={`border px-3 py-1.5 rounded-lg text-xs font-mono font-semibold flex items-center gap-1.5 cursor-help ${
+                  isSpeedDebuffed
+                    ? 'bg-amber-950/70 border-amber-700/60 text-amber-300'
+                    : 'bg-emerald-950/70 border-emerald-800/60 text-emerald-300'
+                }`}
+              >
+                <Gauge className="w-3.5 h-3.5" />
+                <span>
+                  {calc.craftingSpeedBonusPercent >= 0 ? `+${calc.craftingSpeedBonusPercent}%` : `${calc.craftingSpeedBonusPercent}%`}
+                </span>
+                <span className="text-gray-400 font-sans">({calc.secondsPerAction.toFixed(2)}s/act)</span>
+              </div>
+            </SpeedBreakdownPopover>
+          ) : (
+            <div
+              className={`border px-3 py-1.5 rounded-lg text-xs font-mono font-semibold flex items-center gap-1.5 ${
+                isSpeedDebuffed
+                  ? 'bg-amber-950/70 border-amber-700/60 text-amber-300'
+                  : 'bg-emerald-950/70 border-emerald-800/60 text-emerald-300'
+              }`}
+            >
+              <Gauge className="w-3.5 h-3.5" />
+              <span>
+                {calc.craftingSpeedBonusPercent >= 0 ? `+${calc.craftingSpeedBonusPercent}%` : `${calc.craftingSpeedBonusPercent}%`}
+              </span>
+              <span className="text-gray-400 font-sans">({calc.secondsPerAction.toFixed(2)}s/act)</span>
+            </div>
+          )}
 
           {/* Navigation Tabs */}
           <div className="flex items-center bg-surface-subtle p-1 rounded-lg border border-surface-border text-xs">
@@ -155,10 +238,12 @@ export const ModifiersPanel: React.FC<ModifiersPanelProps> = ({
 
       {/* Tab Content: Active Food & Potion Buffs */}
       {activeTab === 'buffs' && (
-        <div className="space-y-3">
+        <div className="space-y-4">
+          {/* Active Buffs Grid */}
           {calc.activeBuffModifiers.length === 0 ? (
-            <div className="text-center py-8 text-xs text-gray-500 bg-surface-subtle/30 rounded-lg border border-surface-border/40">
-              No active food or potion buffs detected for this character.
+            <div className="text-center py-6 text-xs text-gray-400 bg-surface-subtle/30 rounded-lg border border-surface-border/40 space-y-1">
+              <p>No active food or potion buffs currently returned by BitJita API for this character.</p>
+              <p className="text-[11px] text-gray-500">If you ate food in-game and BitJita has not synced yet, click a quick preset below to activate it!</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -168,18 +253,31 @@ export const ModifiersPanel: React.FC<ModifiersPanelProps> = ({
                   className={`p-3 rounded-lg border text-xs space-y-1.5 ${
                     buff.isDebuff
                       ? 'bg-red-950/40 border-red-800/60 text-red-200'
+                      : buff.name.includes('Override')
+                      ? 'bg-indigo-950/40 border-indigo-700/60 text-indigo-200'
                       : buff.isExpiringSoon
                       ? 'bg-amber-950/40 border-amber-800/60 text-amber-200'
                       : 'bg-surface-subtle border-surface-border text-gray-200'
                   }`}
                 >
                   <div className="flex items-center justify-between font-semibold">
-                    <span className="truncate">{buff.name}</span>
-                    {buff.isDebuff && (
+                    <span className="truncate flex items-center gap-1">
+                      {buff.name.includes('Override') && <Sparkles className="w-3 h-3 text-indigo-400" />}
+                      {buff.name}
+                    </span>
+                    {buff.isDebuff ? (
                       <span className="flex items-center gap-1 text-[10px] text-red-400 font-normal">
                         <AlertTriangle className="w-3 h-3" /> Debuff
                       </span>
-                    )}
+                    ) : buff.name.includes('Override') ? (
+                      <button
+                        onClick={() => onSetFoodBuffOverride && onSetFoodBuffOverride(null)}
+                        className="text-[10px] text-red-400 hover:text-red-300 font-sans flex items-center gap-0.5 hover:underline cursor-pointer"
+                        title="Remove manual override"
+                      >
+                        <X className="w-3 h-3" /> Clear
+                      </button>
+                    ) : null}
                   </div>
 
                   <div className="font-mono text-[11px] space-y-0.5">
@@ -187,6 +285,11 @@ export const ModifiersPanel: React.FC<ModifiersPanelProps> = ({
                       <div className={buff.craftingSpeedBonus < 0 ? 'text-red-400 font-bold' : 'text-emerald-400 font-bold'}>
                         Crafting Speed: {buff.craftingSpeedBonus > 0 ? '+' : ''}
                         {(buff.craftingSpeedBonus * 100).toFixed(1)}%
+                      </div>
+                    )}
+                    {buff.xpRateBonus !== undefined && buff.xpRateBonus !== 0 && (
+                      <div className="text-purple-300 font-bold">
+                        XP Rate: +{(buff.xpRateBonus * 100).toFixed(1)}%
                       </div>
                     )}
                     {buff.staminaRegenBonus !== 0 && (
@@ -197,9 +300,11 @@ export const ModifiersPanel: React.FC<ModifiersPanelProps> = ({
                   </div>
 
                   {buff.remainingSeconds > 0 && (
-                    <div className="text-[10px] text-gray-400 font-mono pt-0.5 border-t border-surface-border/40 flex justify-between">
-                      <span>Expires in:</span>
-                      <span className={buff.isExpiringSoon ? 'text-amber-400 font-bold' : 'text-gray-300'}>
+                    <div className="text-[10px] text-gray-400 font-mono pt-0.5 border-t border-surface-border/40 flex justify-between items-center">
+                      <span className="flex items-center gap-1">
+                        <Clock className="w-3 h-3 text-gray-500" /> Expires in:
+                      </span>
+                      <span className={buff.isExpiringSoon ? 'text-amber-400 font-bold' : 'text-gray-300 font-medium'}>
                         {formatTimeSeconds(buff.remainingSeconds)}
                       </span>
                     </div>
@@ -208,6 +313,98 @@ export const ModifiersPanel: React.FC<ModifiersPanelProps> = ({
               ))}
             </div>
           )}
+
+          {/* Quick Presets & Manual Override Bar */}
+          <div className="bg-surface-subtle/50 rounded-lg p-3 border border-surface-border/60 text-xs space-y-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="font-semibold text-gray-200 flex items-center gap-1.5">
+                <Utensils className="w-3.5 h-3.5 text-amber-400" />
+                <span>Quick Food Buff Presets:</span>
+              </span>
+              <button
+                onClick={() => setShowOverrideForm(!showOverrideForm)}
+                className="text-[11px] text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-medium hover:underline cursor-pointer"
+              >
+                {showOverrideForm ? 'Hide Custom Input' : '+ Custom Food / Duration / XP'}
+              </button>
+            </div>
+
+            <div className="flex flex-wrap gap-1.5">
+              {FOOD_PRESETS.map((preset, pIdx) => {
+                const isActive = foodBuffOverride?.enabled && foodBuffOverride.name === preset.name;
+                return (
+                  <button
+                    key={pIdx}
+                    onClick={() => handleApplyPreset(preset)}
+                    className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-all flex items-center gap-1 cursor-pointer border ${
+                      isActive
+                        ? 'bg-indigo-900/80 border-indigo-500 text-white shadow-sm ring-1 ring-indigo-400'
+                        : 'bg-surface hover:bg-surface-border/60 border-surface-border text-gray-300 hover:text-white'
+                    }`}
+                  >
+                    <span>{preset.label}</span>
+                    {isActive && <CheckCircle className="w-3 h-3 text-emerald-400" />}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Collapsible Custom Input Form */}
+            {showOverrideForm && (
+              <form onSubmit={handleApplyCustom} className="pt-2 border-t border-surface-border/60 grid grid-cols-1 sm:grid-cols-5 gap-2 text-xs">
+                <div>
+                  <label className="text-[10px] text-gray-400 block mb-0.5">Food / Buff Name</label>
+                  <input
+                    type="text"
+                    value={customName}
+                    onChange={(e) => setCustomName(e.target.value)}
+                    className="w-full bg-surface border border-surface-border rounded px-2 py-1 text-gray-200 focus:outline-none focus:border-indigo-500"
+                    placeholder="e.g. High-Quality Pie"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-gray-400 block mb-0.5">Speed Bonus (%)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={customSpeedPct}
+                    onChange={(e) => setCustomSpeedPct(e.target.value)}
+                    className="w-full bg-surface border border-surface-border rounded px-2 py-1 text-gray-200 font-mono focus:outline-none focus:border-indigo-500"
+                    placeholder="9.4"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-gray-400 block mb-0.5">XP Rate Bonus (%)</label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    value={customXpPct}
+                    onChange={(e) => setCustomXpPct(e.target.value)}
+                    className="w-full bg-surface border border-surface-border rounded px-2 py-1 text-gray-200 font-mono focus:outline-none focus:border-indigo-500"
+                    placeholder="5.0"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-gray-400 block mb-0.5">Duration (Minutes)</label>
+                  <input
+                    type="number"
+                    value={customDurationMin}
+                    onChange={(e) => setCustomDurationMin(e.target.value)}
+                    className="w-full bg-surface border border-surface-border rounded px-2 py-1 text-gray-200 font-mono focus:outline-none focus:border-indigo-500"
+                    placeholder="50"
+                  />
+                </div>
+                <div className="flex items-end">
+                  <button
+                    type="submit"
+                    className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-1 px-3 rounded transition-colors cursor-pointer"
+                  >
+                    Activate Override
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
         </div>
       )}
 
