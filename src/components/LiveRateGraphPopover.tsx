@@ -11,6 +11,14 @@ interface LiveRateGraphPopoverProps {
   children: React.ReactNode;
 }
 
+function buildSvgPath(points: { x: number; y: number }[]): string {
+  if (points.length <= 1) return '';
+  return points.reduce(
+    (acc, p, idx) => `${acc} ${idx === 0 ? 'M' : 'L'} ${p.x.toFixed(1)},${p.y.toFixed(1)}`,
+    ''
+  );
+}
+
 export const LiveRateGraphPopover: React.FC<LiveRateGraphPopoverProps> = ({
   sessionStats,
   theoreticalXpPerHour,
@@ -82,26 +90,14 @@ export const LiveRateGraphPopover: React.FC<LiveRateGraphPopoverProps> = ({
     return { x, y, val: theoVal };
   });
 
-  const livePathD =
-    livePoints.length > 1
-      ? livePoints.reduce(
-          (acc, p, idx) => `${acc} ${idx === 0 ? 'M' : 'L'} ${p.x.toFixed(1)},${p.y.toFixed(1)}`,
-          ''
-        )
-      : '';
+  const livePathD = buildSvgPath(livePoints);
 
   const liveAreaD =
     livePoints.length > 1
       ? `${livePathD} L ${livePoints[livePoints.length - 1].x.toFixed(1)},${(paddingTop + graphHeight).toFixed(1)} L ${livePoints[0].x.toFixed(1)},${(paddingTop + graphHeight).toFixed(1)} Z`
       : '';
 
-  const theoPathD =
-    theoPoints.length > 1
-      ? theoPoints.reduce(
-          (acc, p, idx) => `${acc} ${idx === 0 ? 'M' : 'L'} ${p.x.toFixed(1)},${p.y.toFixed(1)}`,
-          ''
-        )
-      : '';
+  const theoPathD = buildSvgPath(theoPoints);
 
   // Static fallback horizontal Y for theoretical ceiling when 0 or 1 point
   const fallbackTheoNormY = (theoreticalXpPerHour - minRate) / Math.max(1, maxRate - minRate);
