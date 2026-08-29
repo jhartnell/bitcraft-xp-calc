@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 
-export interface VersionInfo {
+interface VersionInfo {
   version: string;
   buildTime?: number;
   builtAt?: string;

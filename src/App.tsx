@@ -272,6 +272,41 @@ export const App: React.FC = () => {
     setContributorPayloads(payloads);
   };
 
+  const updateItemMetadataMap = (items?: ItemMetadata[], cargos?: ItemMetadata[]) => {
+    if (!items && !cargos) return;
+    setItemMetadataMap((prev) => {
+      const next = new Map(prev);
+      if (items) {
+        for (const itm of items) {
+          next.set(Number(itm.id), itm);
+        }
+      }
+      if (cargos) {
+        for (const crg of cargos) {
+          next.set(Number(crg.id), crg);
+        }
+      }
+      return next;
+    });
+  };
+
+  const fetchCraftContributions = async (
+    craftId: string,
+    playerEntityId: string,
+    forceFresh = false
+  ) => {
+    try {
+      const cb = await bitjitaApi.getCraftContributions(craftId, forceFresh);
+      setContributions(cb);
+      loadContributorPayloads(cb, playerEntityId);
+      return cb;
+    } catch {
+      setContributions([]);
+      setContributorPayloads([]);
+      return [];
+    }
+  };
+
   const handleSelectCustomCraft = (craft: CraftResult) => {
     selectedCraftIdRef.current = craft.entityId;
     setCustomCraft(craft);
@@ -286,22 +321,7 @@ export const App: React.FC = () => {
         if (res?.craft) {
           setCustomCraft(res.craft);
         }
-        if (res?.items || res?.cargos) {
-          setItemMetadataMap((prev) => {
-            const next = new Map(prev);
-            if (res.items) {
-              for (const itm of res.items) {
-                next.set(Number(itm.id), itm);
-              }
-            }
-            if (res.cargos) {
-              for (const crg of res.cargos) {
-                next.set(Number(crg.id), crg);
-              }
-            }
-            return next;
-          });
-        }
+        updateItemMetadataMap(res?.items, res?.cargos);
       })
       .catch(() => {});
 
@@ -317,18 +337,9 @@ export const App: React.FC = () => {
       }
     }
 
-    bitjitaApi
-      .getCraftContributions(craft.entityId, true)
-      .then((cb) => {
-        setContributions(cb);
-        if (playerDetails) {
-          loadContributorPayloads(cb, playerDetails.entityId);
-        }
-      })
-      .catch(() => {
-        setContributions([]);
-        setContributorPayloads([]);
-      });
+    if (playerDetails) {
+      fetchCraftContributions(craft.entityId, playerDetails.entityId, true);
+    }
   };
 
   // Fetch full player data
@@ -372,16 +383,7 @@ export const App: React.FC = () => {
             setCustomCraft(null);
             isCraftResolved = true;
 
-            bitjitaApi
-              .getCraftContributions(activeCrafts[ownedIndex].entityId, forceFresh)
-              .then((cb) => {
-                setContributions(cb);
-                loadContributorPayloads(cb, player.entityId);
-              })
-              .catch(() => {
-                setContributions([]);
-                setContributorPayloads([]);
-              });
+            fetchCraftContributions(activeCrafts[ownedIndex].entityId, player.entityId, forceFresh);
           } else {
             // Check if the custom / helper craft is still ongoing
             try {
@@ -399,28 +401,10 @@ export const App: React.FC = () => {
                   setCustomCraft(null);
                   isCraftResolved = false;
                 } else {
-                  const cb = await bitjitaApi.getCraftContributions(currentTargetCraftId, forceFresh).catch(() => []);
+                  await fetchCraftContributions(currentTargetCraftId, player.entityId, forceFresh);
                   setCustomCraft(res!.craft);
                   isCraftResolved = true;
-                  if (res!.items || res!.cargos) {
-                    setItemMetadataMap((prev) => {
-                      const next = new Map(prev);
-                      if (res!.items) {
-                        for (const itm of res!.items!) {
-                          next.set(Number(itm.id), itm);
-                        }
-                      }
-                      if (res!.cargos) {
-                        for (const crg of res!.cargos!) {
-                          next.set(Number(crg.id), crg);
-                        }
-                      }
-                      return next;
-                    });
-                  }
-
-                  setContributions(cb);
-                  loadContributorPayloads(cb, player.entityId);
+                  updateItemMetadataMap(res!.items, res!.cargos);
                 }
               } else {
                 // The targeted craft has completed or is no longer active! Clear it to auto-pick the new craft.
@@ -452,16 +436,7 @@ export const App: React.FC = () => {
             setSelectedCraftIndex(bestIndex);
             setCustomCraft(null);
 
-            bitjitaApi
-              .getCraftContributions(activeCrafts[bestIndex].entityId, forceFresh)
-              .then((cb) => {
-                setContributions(cb);
-                loadContributorPayloads(cb, player.entityId);
-              })
-              .catch(() => {
-                setContributions([]);
-                setContributorPayloads([]);
-              });
+            fetchCraftContributions(activeCrafts[bestIndex].entityId, player.entityId, forceFresh);
           } else {
             setCustomCraft(null);
             setContributions([]);

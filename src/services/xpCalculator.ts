@@ -31,10 +31,10 @@ import {
 import { bitjitaApi } from './apiClient';
 
 // BitCraft Online base crafting station action tick duration is exactly 1.6 seconds
-export const BASE_ACTION_DURATION_SECONDS = 1.6;
+const BASE_ACTION_DURATION_SECONDS = 1.6;
 
 // BitCraft Profession-Specific Speed Multiplier Stat IDs (Stats 21 to 33 in SpacetimeDB)
-export const PROFESSION_SPEED_STAT_IDS: Record<number, number> = {
+const PROFESSION_SPEED_STAT_IDS: Record<number, number> = {
   2: 21,  // Forestry Speed
   3: 22,  // Carpentry Speed
   4: 23,  // Masonry Speed
@@ -60,7 +60,7 @@ export interface ContributorDetailPayload {
   isIncluded?: boolean;
 }
 
-export function getSkillIdFromBuildingName(buildingName?: string): number | null {
+function getSkillIdFromBuildingName(buildingName?: string): number | null {
   if (!buildingName) return null;
   const lower = buildingName.toLowerCase();
   if (lower.includes('carpentry')) return 3;
@@ -593,7 +593,7 @@ export function calculateCraftXp(
 }
 
 // Level Milestone and Progression Timing Calculator
-export function calculateLevelProgressForecast(
+function calculateLevelProgressForecast(
   currentSkillXp: number,
   remainingProgress: number,
   completedProgress: number,

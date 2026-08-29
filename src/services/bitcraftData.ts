@@ -69,7 +69,7 @@ export const DEFAULT_SKILL_BASE_XP: Record<number, number> = {
 };
 
 // Calibrated BitCraft incremental level delta XP (XP needed to complete level L and reach L + 1)
-export function calculateLevelDeltaXp(level: number): number {
+function calculateLevelDeltaXp(level: number): number {
   if (level <= 1) return 500;
   const rate = 1.115732232;
   const scale = 520.2624865;
@@ -78,7 +78,7 @@ export function calculateLevelDeltaXp(level: number): number {
 
 // Pre-computed cumulative lookup table for instant O(1) performance
 // LEVEL_XP_TABLE[L] = Cumulative lifetime XP required to reach Level L (Level 1 = 0 XP)
-export const LEVEL_XP_TABLE: number[] = (() => {
+const LEVEL_XP_TABLE: number[] = (() => {
   const table = new Array<number>(111).fill(0);
   table[0] = 0;
   table[1] = 0;
