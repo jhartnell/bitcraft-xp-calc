@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { PlayerDetails } from '../types/api';
 import { SKILL_DEFINITIONS, getXpProgressForLevel, formatXp } from '../services/bitcraftData';
-import { ChevronDown, ChevronUp, Eye, EyeOff } from 'lucide-react';
+import { ShowPanelButton, HidePanelButton } from './PanelToggleButtons';
 
 interface SkillListProps {
   player: PlayerDetails;
@@ -52,14 +52,10 @@ export const SkillList: React.FC<SkillListProps> = ({
           </div>
         </div>
 
-        <button
+        <ShowPanelButton
+          label="Show Skills Matrix"
           onClick={() => setIsCollapsed(false)}
-          className="flex items-center gap-1.5 bg-surface-subtle hover:bg-surface-border border border-surface-border text-gray-300 hover:text-white px-3 py-1 rounded-lg transition-colors font-medium cursor-pointer"
-        >
-          <Eye className="w-3.5 h-3.5 text-emerald-400" />
-          <span>Show Skills Matrix</span>
-          <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
-        </button>
+        />
       </div>
     );
   }
@@ -76,15 +72,10 @@ export const SkillList: React.FC<SkillListProps> = ({
           </p>
         </div>
 
-        <button
-          onClick={() => setIsCollapsed(true)}
-          className="flex items-center gap-1 text-gray-400 hover:text-gray-200 bg-surface-subtle border border-surface-border px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer text-xs"
+        <HidePanelButton
           title="Collapse Skills Overview"
-        >
-          <EyeOff className="w-3.5 h-3.5" />
-          <span className="hidden sm:inline">Hide</span>
-          <ChevronUp className="w-3.5 h-3.5" />
-        </button>
+          onClick={() => setIsCollapsed(true)}
+        />
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5 pt-1">

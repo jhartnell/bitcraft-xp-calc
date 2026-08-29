@@ -6,13 +6,10 @@ import {
   Activity,
   Sparkles,
   Timer,
-  ChevronDown,
-  ChevronUp,
-  Eye,
-  EyeOff,
 } from 'lucide-react';
 import { MultiUserCraftProjection } from '../types/calculator';
 import { formatTimeSeconds } from '../services/bitcraftData';
+import { ShowPanelButton, HidePanelButton } from './PanelToggleButtons';
 
 interface ContributorsPanelProps {
   projection: MultiUserCraftProjection;
@@ -81,14 +78,10 @@ export const ContributorsPanel: React.FC<ContributorsPanelProps> = ({
           </div>
         </div>
 
-        <button
+        <ShowPanelButton
+          label="Show Details"
           onClick={() => setIsCollapsed(false)}
-          className="flex items-center gap-1.5 bg-surface-subtle hover:bg-surface-border border border-surface-border text-gray-300 hover:text-white px-3 py-1 rounded-lg transition-colors font-medium cursor-pointer"
-        >
-          <Eye className="w-3.5 h-3.5 text-emerald-400" />
-          <span>Show Details</span>
-          <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
-        </button>
+        />
       </div>
     );
   }
@@ -155,15 +148,10 @@ export const ContributorsPanel: React.FC<ContributorsPanelProps> = ({
           )}
 
           {/* Collapse Button */}
-          <button
-            onClick={() => setIsCollapsed(true)}
-            className="flex items-center gap-1 text-gray-400 hover:text-gray-200 bg-surface-subtle border border-surface-border px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
+          <HidePanelButton
             title="Collapse contributors section"
-          >
-            <EyeOff className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Hide</span>
-            <ChevronUp className="w-3.5 h-3.5" />
-          </button>
+            onClick={() => setIsCollapsed(true)}
+          />
         </div>
       </div>
 

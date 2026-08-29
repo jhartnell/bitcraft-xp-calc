@@ -4,10 +4,6 @@ import {
   Shield,
   Gauge,
   AlertTriangle,
-  ChevronDown,
-  ChevronUp,
-  Eye,
-  EyeOff,
   X,
   Sparkles,
   Clock,
@@ -16,6 +12,7 @@ import {
 import { XpCalculationResult, FoodBuffOverride } from '../types/calculator';
 import { formatTimeSeconds } from '../services/bitcraftData';
 import { SpeedBreakdownPopover } from './SpeedBreakdownPopover';
+import { ShowPanelButton, HidePanelButton } from './PanelToggleButtons';
 
 interface ModifiersPanelProps {
   calc: XpCalculationResult;
@@ -23,6 +20,50 @@ interface ModifiersPanelProps {
   foodBuffOverride?: FoodBuffOverride | null;
   onSetFoodBuffOverride?: (override: FoodBuffOverride | null) => void;
 }
+
+interface SpeedBadgeProps {
+  calc: XpCalculationResult;
+  isCompact?: boolean;
+}
+
+const SpeedBadge: React.FC<SpeedBadgeProps> = ({ calc, isCompact = false }) => {
+  const isSpeedDebuffed = calc.craftingSpeedBonusPercent < 0;
+  const badgeContent = isCompact ? (
+    <span
+      className={`px-2 py-0.5 rounded text-[11px] font-bold border inline-flex items-center gap-1 cursor-help ${
+        isSpeedDebuffed
+          ? 'bg-amber-950/70 border-amber-700/60 text-amber-300'
+          : 'bg-emerald-950/70 border-emerald-800/60 text-emerald-300'
+      }`}
+    >
+      Speed: {calc.craftingSpeedBonusPercent >= 0 ? `+${calc.craftingSpeedBonusPercent}%` : `${calc.craftingSpeedBonusPercent}%`} ({calc.secondsPerAction.toFixed(2)}s/act)
+    </span>
+  ) : (
+    <div
+      className={`border px-3 py-1.5 rounded-lg text-xs font-mono font-semibold flex items-center gap-1.5 cursor-help ${
+        isSpeedDebuffed
+          ? 'bg-amber-950/70 border-amber-700/60 text-amber-300'
+          : 'bg-emerald-950/70 border-emerald-800/60 text-emerald-300'
+      }`}
+    >
+      <Gauge className="w-3.5 h-3.5" />
+      <span>
+        {calc.craftingSpeedBonusPercent >= 0 ? `+${calc.craftingSpeedBonusPercent}%` : `${calc.craftingSpeedBonusPercent}%`}
+      </span>
+      <span className="text-gray-400 font-sans">({calc.secondsPerAction.toFixed(2)}s/act)</span>
+    </div>
+  );
+
+  if (calc.speedBreakdown) {
+    return (
+      <SpeedBreakdownPopover speedBreakdown={calc.speedBreakdown}>
+        {badgeContent}
+      </SpeedBreakdownPopover>
+    );
+  }
+
+  return badgeContent;
+};
 
 export const ModifiersPanel: React.FC<ModifiersPanelProps> = ({
   calc,
@@ -87,7 +128,6 @@ export const ModifiersPanel: React.FC<ModifiersPanelProps> = ({
     setIsCollapsed(isInitiallyCollapsed);
   }, [isInitiallyCollapsed]);
 
-  const isSpeedDebuffed = calc.craftingSpeedBonusPercent < 0;
   const activeBuffsCount = calc.activeBuffModifiers.length;
   const equipCount = calc.equipmentModifiers.length;
 
@@ -101,29 +141,7 @@ export const ModifiersPanel: React.FC<ModifiersPanelProps> = ({
           </div>
           <div className="flex flex-wrap items-center gap-2 font-mono">
             <span className="font-semibold text-gray-200 font-sans">Modifiers:</span>
-            {calc.speedBreakdown ? (
-              <SpeedBreakdownPopover speedBreakdown={calc.speedBreakdown}>
-                <span
-                  className={`px-2 py-0.5 rounded text-[11px] font-bold border inline-flex items-center gap-1 cursor-help ${
-                    isSpeedDebuffed
-                      ? 'bg-amber-950/70 border-amber-700/60 text-amber-300'
-                      : 'bg-emerald-950/70 border-emerald-800/60 text-emerald-300'
-                  }`}
-                >
-                  Speed: {calc.craftingSpeedBonusPercent >= 0 ? `+${calc.craftingSpeedBonusPercent}%` : `${calc.craftingSpeedBonusPercent}%`} ({calc.secondsPerAction.toFixed(2)}s/act)
-                </span>
-              </SpeedBreakdownPopover>
-            ) : (
-              <span
-                className={`px-2 py-0.5 rounded text-[11px] font-bold border ${
-                  isSpeedDebuffed
-                    ? 'bg-amber-950/70 border-amber-700/60 text-amber-300'
-                    : 'bg-emerald-950/70 border-emerald-800/60 text-emerald-300'
-                }`}
-              >
-                Speed: {calc.craftingSpeedBonusPercent >= 0 ? `+${calc.craftingSpeedBonusPercent}%` : `${calc.craftingSpeedBonusPercent}%`} ({calc.secondsPerAction.toFixed(2)}s/act)
-              </span>
-            )}
+            <SpeedBadge calc={calc} isCompact />
             {activeBuffsCount > 0 && (
               <span className="text-indigo-300 text-[11px] font-sans">
                 • {activeBuffsCount} Active {activeBuffsCount === 1 ? 'Buff' : 'Buffs'}
@@ -137,14 +155,10 @@ export const ModifiersPanel: React.FC<ModifiersPanelProps> = ({
           </div>
         </div>
 
-        <button
+        <ShowPanelButton
+          label="Show Modifiers"
           onClick={() => setIsCollapsed(false)}
-          className="flex items-center gap-1.5 bg-surface-subtle hover:bg-surface-border border border-surface-border text-gray-300 hover:text-white px-3 py-1 rounded-lg transition-colors font-medium cursor-pointer"
-        >
-          <Eye className="w-3.5 h-3.5 text-emerald-400" />
-          <span>Show Modifiers</span>
-          <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
-        </button>
+        />
       </div>
     );
   }
@@ -165,37 +179,7 @@ export const ModifiersPanel: React.FC<ModifiersPanelProps> = ({
 
         <div className="flex flex-wrap items-center gap-2">
           {/* Speed Multiplier & Action Duration Highlight Badge */}
-          {calc.speedBreakdown ? (
-            <SpeedBreakdownPopover speedBreakdown={calc.speedBreakdown}>
-              <div
-                className={`border px-3 py-1.5 rounded-lg text-xs font-mono font-semibold flex items-center gap-1.5 cursor-help ${
-                  isSpeedDebuffed
-                    ? 'bg-amber-950/70 border-amber-700/60 text-amber-300'
-                    : 'bg-emerald-950/70 border-emerald-800/60 text-emerald-300'
-                }`}
-              >
-                <Gauge className="w-3.5 h-3.5" />
-                <span>
-                  {calc.craftingSpeedBonusPercent >= 0 ? `+${calc.craftingSpeedBonusPercent}%` : `${calc.craftingSpeedBonusPercent}%`}
-                </span>
-                <span className="text-gray-400 font-sans">({calc.secondsPerAction.toFixed(2)}s/act)</span>
-              </div>
-            </SpeedBreakdownPopover>
-          ) : (
-            <div
-              className={`border px-3 py-1.5 rounded-lg text-xs font-mono font-semibold flex items-center gap-1.5 ${
-                isSpeedDebuffed
-                  ? 'bg-amber-950/70 border-amber-700/60 text-amber-300'
-                  : 'bg-emerald-950/70 border-emerald-800/60 text-emerald-300'
-              }`}
-            >
-              <Gauge className="w-3.5 h-3.5" />
-              <span>
-                {calc.craftingSpeedBonusPercent >= 0 ? `+${calc.craftingSpeedBonusPercent}%` : `${calc.craftingSpeedBonusPercent}%`}
-              </span>
-              <span className="text-gray-400 font-sans">({calc.secondsPerAction.toFixed(2)}s/act)</span>
-            </div>
-          )}
+          <SpeedBadge calc={calc} />
 
           {/* Navigation Tabs */}
           <div className="flex items-center bg-surface-subtle p-1 rounded-lg border border-surface-border text-xs">
@@ -224,15 +208,10 @@ export const ModifiersPanel: React.FC<ModifiersPanelProps> = ({
           </div>
 
           {/* Collapse Button */}
-          <button
-            onClick={() => setIsCollapsed(true)}
-            className="flex items-center gap-1 text-gray-400 hover:text-gray-200 bg-surface-subtle border border-surface-border px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer text-xs"
+          <HidePanelButton
             title="Collapse Modifiers section"
-          >
-            <EyeOff className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Hide</span>
-            <ChevronUp className="w-3.5 h-3.5" />
-          </button>
+            onClick={() => setIsCollapsed(true)}
+          />
         </div>
       </div>
 
