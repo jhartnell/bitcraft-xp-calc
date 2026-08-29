@@ -24,7 +24,7 @@ import { Footer } from './components/Footer';
 import { UpdateNotificationToast } from './components/UpdateNotificationToast';
 import { useVersionUpdateChecker } from './hooks/useVersionUpdateChecker';
 import { useSessionXpTracker } from './hooks/useSessionXpTracker';
-import { Hammer, Globe, AlertCircle, Info, Star, MapPin } from 'lucide-react';
+import { Hammer, AlertCircle, Info, MapPin, Star, Globe } from 'lucide-react';
 
 const RECENT_PLAYERS_KEY = 'bitcraft_xp_recent_players';
 const REFRESH_INTERVAL_KEY = 'bitcraft_xp_refresh_interval';

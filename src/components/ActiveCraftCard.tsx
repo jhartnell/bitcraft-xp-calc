@@ -44,7 +44,6 @@ interface ActiveCraftCardProps {
 export const ActiveCraftCard: React.FC<ActiveCraftCardProps> = ({
   craft,
   craftsList,
-  selectedIndex: _selectedIndex,
   onSelectIndex,
   nearbyCrafts = [],
   onSelectNearbyCraft,
