@@ -4,6 +4,16 @@ All notable changes to the **BitCraft Online XP Calculator** project are documen
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.1] - 2026-08-30
+
+### Fixed
+- **Spatial Proximity & False 0m Distance Resolution:** Fixed the bug where distant or unindexed crafting stations from other regions (e.g. Region 19, Region 12) appeared at the top of the Nearby Stations (< 500m) list showing `0m away`.
+- **Client-Side Region Verification:** Added strict client-side region verification (`c.regionId === regionId`) because BitJita's backend `/api/crafts?region_id={r}` returns crafts across all regions globally.
+- **Strict Coordinate Validation:** Stations with missing or unindexed coordinates (`coords === null`) are excluded from proximity calculation so they no longer default to `0m`.
+- **Multi-Path Player Coordinate Resolution:** Added multi-path resolution across `player.locationX`, `player.location.locationX`, `player.teleportLocationX`, and fallback to the player's active craft station location.
+
+---
+
 ## [1.8.0] - 2026-08-30
 
 ### Added
