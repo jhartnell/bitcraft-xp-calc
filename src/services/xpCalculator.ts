@@ -176,23 +176,27 @@ export function calculateCraftXp(
   const profStatId = PROFESSION_SPEED_STAT_IDS[skillId];
   const isGatheringSkill = [2, 5, 11, 12, 14].includes(skillId);
 
+  // 4. Required Tool & Equipped Main Tool Matching (Strictly restricted to hand/tool slots)
+  const HAND_TOOL_SLOTS = new Set(['main_hand', 'off_hand', 'tool', 'tool_1', 'tool_2']);
   let equippedTool: EquipmentSlot['item'] = null;
   let isEquipped = false;
 
   for (const slot of equipment) {
-    if (slot.item) {
-      const isMainOrOff = slot.primary === 'main_hand' || slot.primary === 'off_hand';
+    if (slot.item && HAND_TOOL_SLOTS.has(slot.primary)) {
       const itemName = slot.item.name.toLowerCase();
       const itemTag = (slot.item.tag || slot.item.tags || '').toLowerCase();
       const targetToolName = reqToolName.toLowerCase();
 
       const matchesTool = itemName.includes(targetToolName) || itemTag.includes(targetToolName);
-      const matchesSkill = itemTag.includes(skillNameLower) || slot.primary.includes(skillNameLower);
+      const matchesSkill = itemTag.includes(skillNameLower);
 
-      if (isMainOrOff || matchesTool || matchesSkill) {
-        if (!equippedTool || matchesTool) {
-          equippedTool = slot.item;
-        }
+      if (matchesTool) {
+        // Highest priority: exact tool match in hand slot
+        equippedTool = slot.item;
+        break;
+      } else if (!equippedTool && (slot.primary === 'main_hand' || matchesSkill)) {
+        // Fallback: main hand item or tool matching the active skill
+        equippedTool = slot.item;
       }
     }
   }

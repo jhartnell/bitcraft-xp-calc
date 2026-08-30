@@ -716,6 +716,10 @@ describe('Level Milestone Timing & Multi-Level Forecast Engine', () => {
     expect(gearModifierNames).toContain('Charm of the Master Angler');
     expect(gearModifierNames).toContain('River Melody Flute');
 
+    // Main tool verification: equipped tool MUST be the main-hand tool, not the charm or instrument
+    expect(result.toolStatus.equippedTool?.name).toBe('Sturdy Fishing Rod');
+    expect(result.toolStatus.isEquipped).toBe(true);
+
     // Total multiplier = 1.0 + 0.13 (gear) + 0.0115 (Lvl 23 Fishing skill) = 1.1415
     expect(result.totalCraftingSpeedMultiplier).toBeCloseTo(1.1415, 3);
     expect(result.craftingSpeedBonusPercent).toBe(14.1); // +14.1% total speed
@@ -768,6 +772,71 @@ describe('Level Milestone Timing & Multi-Level Forecast Engine', () => {
     // Fishing speed & power should NOT apply to Smithing craft
     expect(result.equipmentModifiers.length).toBe(0);
     expect(result.toolStatus.effectivePower).toBe(1); // Default 1
+    expect(result.toolStatus.equippedTool).toBeNull();
+    expect(result.toolStatus.isEquipped).toBe(false);
+  });
+
+  it('ensures charms and instruments are never mistaken for the equipped main tool', () => {
+    const cookingCraft: CraftResult = {
+      entityId: 'kitchen_1',
+      buildingEntityId: 'b_3',
+      ownerEntityId: 'p_1',
+      regionId: 14,
+      progress: 0,
+      recipeId: 60001,
+      craftCount: 1,
+      lockExpiration: '2026-08-25T12:00:00Z',
+      actionsRequiredPerItem: 50,
+      totalActionsRequired: 50,
+      craftedItem: [{ item_id: 9999, quantity: 1, item_type: 'item', durability: 0 }],
+      levelRequirements: [{ level: 1, skill_id: 13, skillName: 'Cooking' }],
+      toolRequirements: [{ level: 1, power: 1, tool_type: 11, name: 'Pot' }],
+      experiencePerProgress: [{ quantity: 2.0, skill_id: 13 }],
+      buildingName: 'Cooking Station',
+      completed: false,
+    };
+
+    const player: PlayerDetails = {
+      entityId: 'p_1',
+      username: 'Chef',
+      experience: [{ skill_id: 13, quantity: 1000 }],
+    };
+
+    // Equipping a Cooking Charm and Instrument, but NO Pot in main_hand
+    const gearWithoutPot: EquipmentSlot[] = [
+      {
+        primary: 'charm_1',
+        item: {
+          id: 8001,
+          name: 'Gourmet Cooking Charm',
+          tier: 2,
+          stats: [
+            { id: 32, name: 'Cooking Speed', value: 0.05, is_pct: true },
+            { id: 2, name: 'Power', value: 1, is_pct: false },
+          ],
+        },
+      },
+      {
+        primary: 'instrument',
+        item: {
+          id: 8002,
+          name: 'Chef Flute',
+          tier: 1,
+          stats: [{ id: 15, name: 'Crafting Speed', value: 0.03, is_pct: true }],
+        },
+      },
+    ];
+
+    const result = calculateCraftXp(cookingCraft, player, gearWithoutPot, [], null, [], null);
+
+    // Equipped tool must NOT be set to the charm or instrument
+    expect(result.toolStatus.equippedTool).toBeNull();
+    expect(result.toolStatus.isEquipped).toBe(false);
+    expect(result.toolStatus.meetsLevelReq).toBe(false);
+
+    // But speed and power modifiers from the charm and instrument must still be ingested
+    expect(result.equipmentModifiers.length).toBe(2);
+    expect(result.craftingSpeedBonusPercent).toBe(8.0); // +5% + 3% = +8%
   });
 });
 
