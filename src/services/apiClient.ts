@@ -547,25 +547,36 @@ class PoliteApiClient {
     }[] = [];
 
     for (const c of res.craftResults) {
-      const coords = resolveCraftCoordinates(c as unknown as Record<string, unknown>);
+      // 1. Client-side region verification (BitJita backend query param does not filter server-side)
+      if (c.regionId && Number(c.regionId) !== Number(regionId)) {
+        continue;
+      }
 
+      // 2. Strict coordinate resolution (stations without coordinates cannot be verified as nearby)
+      const coords = resolveCraftCoordinates(c as unknown as Record<string, unknown>);
+      if (!coords) {
+        continue;
+      }
+
+      // 3. Euclidean distance calculation
       let distance = 0;
-      if (playerX !== undefined && playerZ !== undefined && coords) {
-        distance = Math.round(Math.sqrt(Math.pow(playerX - coords.x, 2) + Math.pow(playerZ - coords.z, 2)));
+      if (playerX !== undefined && playerZ !== undefined) {
+        distance = Math.round(Math.hypot(playerX - coords.x, playerZ - coords.z));
+        if (distance > maxDistanceMeters) {
+          continue;
+        }
       }
 
       const itemId = c.craftedItem?.[0]?.item_id;
       const itm = itemId ? itemsMap.get(Number(itemId)) : undefined;
 
-      if (distance <= maxDistanceMeters || !coords) {
-        nearbyList.push({
-          craft: c,
-          distanceMeters: distance,
-          itemName: itm?.name,
-          itemTier: itm?.tier,
-          itemMetadata: itm,
-        });
-      }
+      nearbyList.push({
+        craft: c,
+        distanceMeters: distance,
+        itemName: itm?.name,
+        itemTier: itm?.tier,
+        itemMetadata: itm,
+      });
     }
 
     nearbyList.sort((a, b) => a.distanceMeters - b.distanceMeters);

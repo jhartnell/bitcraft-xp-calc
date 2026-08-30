@@ -135,4 +135,34 @@ describe('PoliteApiClient Cache & Inspector', () => {
 
     vi.unstubAllGlobals();
   });
+
+  it('filters out crafts from different regions and unindexed coordinates in getNearbyActiveCrafts', async () => {
+    const fakeCraftsResponse = {
+      craftResults: [
+        // Craft 1: Region 19 (wrong region), no coords -> MUST be filtered out
+        { entityId: 'c1', regionId: 19, buildingName: 'Station 1' },
+        // Craft 2: Region 8 (correct region), no coords -> MUST be filtered out
+        { entityId: 'c2', regionId: 8, buildingName: 'Station 2' },
+        // Craft 3: Region 8 (correct region), coords at 17268, 10256 (31m from 17241, 10241) -> MUST be included
+        { entityId: 'c3', regionId: 8, buildingName: 'Nearby Station', claimLocationX: 17268, claimLocationZ: 10256 },
+        // Craft 4: Region 8 (correct region), coords at 25000, 20000 (> 500m away) -> MUST be filtered out
+        { entityId: 'c4', regionId: 8, buildingName: 'Far Station', claimLocationX: 25000, claimLocationZ: 20000 },
+      ],
+      items: [],
+      cargos: [],
+    };
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => fakeCraftsResponse,
+    }));
+
+    const nearby = await bitjitaApi.getNearbyActiveCrafts(8, 17241, 10241, 500, true);
+
+    expect(nearby.length).toBe(1);
+    expect(nearby[0].craft.entityId).toBe('c3');
+    expect(nearby[0].distanceMeters).toBe(31);
+
+    vi.unstubAllGlobals();
+  });
 });

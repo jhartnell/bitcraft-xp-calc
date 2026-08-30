@@ -11,6 +11,7 @@ import {
 } from './types/api';
 import { ApiClientStatus, FoodBuffOverride } from './types/calculator';
 import { bitjitaApi } from './services/apiClient';
+import { resolveCraftCoordinates } from './services/bitcraftData';
 import { calculateCraftXp, calculateMultiUserCraftProjection } from './services/xpCalculator';
 import { Header } from './components/Header';
 import { PlayerSearch } from './components/PlayerSearch';
@@ -502,11 +503,20 @@ export const App: React.FC = () => {
         // Spatial Proximity: Find nearby stations in the player's region (< 500m)
         const activeRegionId = detailsRes?.regionId || buffsRes?.regionId;
         if (activeRegionId) {
+          // Resolve player coordinates across root entity, nested location, and teleport locations
+          const rawPlayerX = detailsRes?.locationX ?? detailsRes?.location?.locationX ?? detailsRes?.teleportLocationX;
+          const rawPlayerZ = detailsRes?.locationZ ?? detailsRes?.location?.locationZ ?? detailsRes?.teleportLocationZ;
+
+          // Fallback to active craft station coordinates if player direct coords are absent
+          const activeCraftStationCoords = activeCrafts.length > 0 ? resolveCraftCoordinates(activeCrafts[0] as unknown as Record<string, unknown>) : null;
+          const effectivePlayerX = rawPlayerX !== undefined && rawPlayerX !== null && !isNaN(Number(rawPlayerX)) && Number(rawPlayerX) !== 0 ? Number(rawPlayerX) : activeCraftStationCoords?.x;
+          const effectivePlayerZ = rawPlayerZ !== undefined && rawPlayerZ !== null && !isNaN(Number(rawPlayerZ)) && Number(rawPlayerZ) !== 0 ? Number(rawPlayerZ) : activeCraftStationCoords?.z;
+
           bitjitaApi
             .getNearbyActiveCrafts(
               activeRegionId,
-              detailsRes?.locationX,
-              detailsRes?.locationZ,
+              effectivePlayerX,
+              effectivePlayerZ,
               500,
               forceFresh
             )
