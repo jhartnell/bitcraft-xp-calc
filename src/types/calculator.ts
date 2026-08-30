@@ -240,9 +240,34 @@ export interface SkillOverrideItem {
 
 export type SkillOverrideMap = Record<number, SkillOverrideItem>;
 
+export interface CachedEndpointInfo {
+  endpoint: string;
+  timestamp: number;
+  ttlMs: number;
+  expiresAt: number;
+  isExpired: boolean;
+  category: 'character' | 'craft' | 'metadata' | 'catalog';
+  categoryLabel: string;
+  method: string;
+}
+
+export interface EndpointAnomaly {
+  id: string;
+  endpoint: string;
+  method: string;
+  timestamp: number;
+  type: 'null_payload' | 'empty_data' | 'http_error' | 'rate_limited';
+  statusCode?: number;
+  message: string;
+  impact?: string;
+}
+
 export interface ApiClientStatus {
   lastFetchedAt: Date | null;
   cachedEntriesCount: number;
+  cachedEntries: CachedEndpointInfo[];
+  anomalies: EndpointAnomaly[];
+  activeRequestsCount: number;
   isFetching: boolean;
   lastResponseTimeMs: number | null;
   rateLimitBackoffMs: number;

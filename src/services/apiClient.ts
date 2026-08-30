@@ -12,7 +12,7 @@ import {
   CraftResult,
   ItemMetadata,
 } from '../types/api';
-import { ApiClientStatus } from '../types/calculator';
+import { ApiClientStatus, CachedEndpointInfo, EndpointAnomaly } from '../types/calculator';
 import { resolveCraftCoordinates } from './bitcraftData';
 
 interface CacheEntry<T> {
@@ -29,11 +29,15 @@ class PoliteApiClient {
   private minIntervalMs = 120; // 120ms minimum spacing between requests
   private lastRequestTime = 0;
   private backoffMs = 0;
+  private anomalies: EndpointAnomaly[] = [];
 
   // Status tracking
   public status: ApiClientStatus = {
     lastFetchedAt: null,
     cachedEntriesCount: 0,
+    cachedEntries: [],
+    anomalies: [],
+    activeRequestsCount: 0,
     isFetching: false,
     lastResponseTimeMs: null,
     rateLimitBackoffMs: 0,
@@ -52,6 +56,9 @@ class PoliteApiClient {
 
   private notifyStatus(): void {
     this.status.cachedEntriesCount = this.cache.size;
+    this.status.cachedEntries = this.getCachedEntries();
+    this.status.anomalies = [...this.anomalies];
+    this.status.activeRequestsCount = this.activeRequests.size;
     this.status.rateLimitBackoffMs = this.backoffMs;
     for (const listener of this.listeners) {
       listener({ ...this.status });
@@ -172,6 +179,16 @@ class PoliteApiClient {
 
     try {
       return await requestPromise;
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      this.recordAnomaly({
+        endpoint,
+        method: 'GET',
+        type: errorMsg.includes('429') ? 'rate_limited' : 'http_error',
+        message: errorMsg,
+        impact: 'Request failed; fallback or cached data will be used',
+      });
+      throw err;
     } finally {
       this.activeRequests.delete(endpoint);
     }
@@ -188,6 +205,76 @@ class PoliteApiClient {
       }
     }
     this.notifyStatus();
+  }
+
+  public evictEntry(endpoint: string): boolean {
+    const deleted = this.cache.delete(endpoint);
+    if (deleted) {
+      this.notifyStatus();
+    }
+    return deleted;
+  }
+
+  public getCachedEntries(): CachedEndpointInfo[] {
+    const now = Date.now();
+    const entries: CachedEndpointInfo[] = [];
+
+    for (const [endpoint, entry] of this.cache.entries()) {
+      const expiresAt = entry.timestamp + entry.ttlMs;
+      let category: CachedEndpointInfo['category'] = 'metadata';
+      let categoryLabel = 'Items & Cargo Metadata';
+
+      if (endpoint.includes('/players')) {
+        category = 'character';
+        categoryLabel = 'Character & Equipment';
+      } else if (endpoint.includes('/crafts')) {
+        category = 'craft';
+        categoryLabel = 'Crafting & Contributions';
+      } else if (endpoint.includes('/skills')) {
+        category = 'catalog';
+        categoryLabel = 'Master Catalogs';
+      }
+
+      entries.push({
+        endpoint,
+        timestamp: entry.timestamp,
+        ttlMs: entry.ttlMs,
+        expiresAt,
+        isExpired: now > expiresAt,
+        category,
+        categoryLabel,
+        method: 'GET',
+      });
+    }
+
+    return entries.sort((a, b) => b.timestamp - a.timestamp);
+  }
+
+  public recordAnomaly(anomaly: Omit<EndpointAnomaly, 'id' | 'timestamp'>): void {
+    const id = `${anomaly.endpoint}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    this.anomalies = [
+      {
+        ...anomaly,
+        id,
+        timestamp: Date.now(),
+      },
+      ...this.anomalies.filter((a) => a.endpoint !== anomaly.endpoint),
+    ].slice(0, 15);
+    this.notifyStatus();
+  }
+
+  public dismissAnomaly(id: string): void {
+    this.anomalies = this.anomalies.filter((a) => a.id !== id);
+    this.notifyStatus();
+  }
+
+  public clearAnomalies(): void {
+    this.anomalies = [];
+    this.notifyStatus();
+  }
+
+  public getAnomalies(): EndpointAnomaly[] {
+    return [...this.anomalies];
   }
 
   // --- API Endpoints ---
@@ -210,6 +297,23 @@ class PoliteApiClient {
       20000,
       forceFresh
     );
+    if (!res?.player) {
+      this.recordAnomaly({
+        endpoint: `/players/${entityId}`,
+        method: 'GET',
+        type: 'null_payload',
+        message: 'Player object returned null or undefined from BitJita',
+        impact: 'Character profile cannot be resolved',
+      });
+    } else if (!res.player.experience || res.player.experience.length === 0) {
+      this.recordAnomaly({
+        endpoint: `/players/${entityId}`,
+        method: 'GET',
+        type: 'null_payload',
+        message: 'player.experience array is null or empty in server response',
+        impact: 'Baseline skill level inferred from station/equipment requirements',
+      });
+    }
     return res.player;
   }
 
@@ -299,12 +403,25 @@ class PoliteApiClient {
 
   // Get player stats
   public async getPlayerStats(entityId: string, forceFresh = false): Promise<PlayerStatsData> {
-    const res = await this.fetchWithCache<{ stats: PlayerStatsData }>(
-      `/players/${entityId}/stats`,
-      30000,
-      forceFresh
-    );
-    return res.stats;
+    try {
+      const res = await this.fetchWithCache<{ stats: PlayerStatsData }>(
+        `/players/${entityId}/stats`,
+        30000,
+        forceFresh
+      );
+      if (!res?.stats) {
+        this.recordAnomaly({
+          endpoint: `/players/${entityId}/stats`,
+          method: 'GET',
+          type: 'null_payload',
+          message: 'Player stats object returned null or empty from BitJita',
+          impact: 'Speed bonuses derived from equipment and skill level fallback',
+        });
+      }
+      return res?.stats || ({} as PlayerStatsData);
+    } catch {
+      return {} as PlayerStatsData;
+    }
   }
 
   // Get all skills catalog (cached for 1 hour)

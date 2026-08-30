@@ -1,6 +1,7 @@
 import React from 'react';
-import { Sparkles, Database, Activity, ShieldCheck, RefreshCw, ExternalLink } from 'lucide-react';
+import { Sparkles, Database, Activity, ShieldCheck, RefreshCw, ExternalLink, ChevronDown } from 'lucide-react';
 import { ApiClientStatus } from '../types/calculator';
+import { CacheInspectorPopover } from './CacheInspectorPopover';
 
 interface HeaderProps {
   apiStatus: ApiClientStatus;
@@ -41,11 +42,28 @@ export const Header: React.FC<HeaderProps> = ({ apiStatus, onClearCache }) => {
 
         {/* API Health, Cache Status & Tab Expansion */}
         <div className="flex items-center gap-2 sm:gap-3 bg-surface-subtle/80 px-3 py-1.5 rounded-lg border border-surface-border text-xs">
-          {/* Caching Status */}
-          <div className="flex items-center gap-1.5 text-gray-300">
-            <Database className="w-3.5 h-3.5 text-indigo-400" />
-            <span>Cache: <strong className="text-gray-100">{apiStatus.cachedEntriesCount}</strong></span>
-          </div>
+          {/* Caching Status & Popover */}
+          <CacheInspectorPopover apiStatus={apiStatus} onClearCache={onClearCache}>
+            <div
+              className={`flex items-center gap-1.5 transition-colors cursor-pointer group px-1.5 py-0.5 rounded hover:bg-surface ${
+                apiStatus.anomalies && apiStatus.anomalies.length > 0
+                  ? 'text-amber-300 hover:text-amber-200 bg-amber-950/40 border border-amber-800/50'
+                  : 'text-gray-300 hover:text-indigo-300'
+              }`}
+              title="Click or hover to inspect cached URL endpoints & server data health"
+            >
+              <Database className={`w-3.5 h-3.5 ${apiStatus.anomalies && apiStatus.anomalies.length > 0 ? 'text-amber-400' : 'text-indigo-400 group-hover:text-indigo-300'}`} />
+              <span>
+                Cache: <strong className="text-gray-100 group-hover:text-indigo-200 underline decoration-dotted decoration-indigo-400/60">{apiStatus.cachedEntriesCount}</strong>
+              </span>
+              {apiStatus.anomalies && apiStatus.anomalies.length > 0 && (
+                <span className="text-[10px] text-amber-400 font-bold flex items-center gap-0.5 ml-0.5">
+                  <span>⚠️ {apiStatus.anomalies.length}</span>
+                </span>
+              )}
+              <ChevronDown className={`w-3 h-3 ${apiStatus.anomalies && apiStatus.anomalies.length > 0 ? 'text-amber-400' : 'text-indigo-400/70 group-hover:text-indigo-300'}`} />
+            </div>
+          </CacheInspectorPopover>
 
           <span className="text-gray-600">|</span>
 

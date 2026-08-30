@@ -141,6 +141,9 @@ export const App: React.FC = () => {
   const [apiStatus, setApiStatus] = useState<ApiClientStatus>({
     lastFetchedAt: null,
     cachedEntriesCount: 0,
+    cachedEntries: [],
+    anomalies: [],
+    activeRequestsCount: 0,
     isFetching: false,
     lastResponseTimeMs: null,
     rateLimitBackoffMs: 0,
