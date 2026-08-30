@@ -51,6 +51,23 @@ const PROFESSION_SPEED_STAT_IDS: Record<number, number> = {
   15: 17, // Construction / Building Speed
 };
 
+const ALL_PROFESSION_NAMES = [
+  'forestry',
+  'carpentry',
+  'masonry',
+  'mining',
+  'smithing',
+  'scholar',
+  'leatherworking',
+  'hunting',
+  'tailoring',
+  'farming',
+  'fishing',
+  'cooking',
+  'foraging',
+  'construction',
+];
+
 export interface ContributorDetailPayload {
   contribution: CraftContribution;
   playerDetails?: PlayerDetails | null;
@@ -155,10 +172,12 @@ export function calculateCraftXp(
   const reqToolLevel = toolReq?.level ?? 1;
   const reqToolPower = toolReq?.power ?? 1;
   const reqToolName = TOOL_TYPE_NAMES[reqToolType] || toolReq?.name || 'Tool';
+  const skillNameLower = (skillDef?.name || '').toLowerCase();
+  const profStatId = PROFESSION_SPEED_STAT_IDS[skillId];
+  const isGatheringSkill = [2, 5, 11, 12, 14].includes(skillId);
 
   let equippedTool: EquipmentSlot['item'] = null;
   let isEquipped = false;
-  let effectivePower = 1;
 
   for (const slot of equipment) {
     if (slot.item) {
@@ -166,10 +185,9 @@ export function calculateCraftXp(
       const itemName = slot.item.name.toLowerCase();
       const itemTag = (slot.item.tag || slot.item.tags || '').toLowerCase();
       const targetToolName = reqToolName.toLowerCase();
-      const skillName = skillDef.name.toLowerCase();
 
       const matchesTool = itemName.includes(targetToolName) || itemTag.includes(targetToolName);
-      const matchesSkill = itemTag.includes(skillName) || slot.primary.includes(skillName);
+      const matchesSkill = itemTag.includes(skillNameLower) || slot.primary.includes(skillNameLower);
 
       if (isMainOrOff || matchesTool || matchesSkill) {
         if (!equippedTool || matchesTool) {
@@ -181,8 +199,120 @@ export function calculateCraftXp(
 
   if (equippedTool) {
     isEquipped = true;
-    effectivePower = equippedTool.tier || 1;
   }
+
+  // 6. Equipment Modifiers (Crafting speed %, Experience Rate %, stamina, and power bonuses across all 36 slots)
+  const equipmentModifiers: EquipmentModifier[] = [];
+  let equipCraftingSpeedBonus = 0;
+  let equipGatheringSpeedBonus = 0;
+  let equipStaminaBonus = 0;
+  let equipExpRateBonus = 0;
+  let totalExtraPowerFromGear = 0;
+
+  for (const slot of equipment) {
+    if (slot.item && slot.item.stats) {
+      let slotCraftingSpeed = 0;
+      let slotGatheringSpeed = 0;
+      let slotProfessionSpeed = 0;
+      let slotPowerBonus = 0;
+      let slotStamina = 0;
+      let slotExpBonus = 0;
+
+      for (const stat of slot.item.stats) {
+        const statNameLower = (stat.name || '').toLowerCase();
+        const belongsToOtherProfession = ALL_PROFESSION_NAMES.some(
+          (p) => p !== skillNameLower && statNameLower.includes(p)
+        );
+
+        if (belongsToOtherProfession) {
+          // Stat is dedicated to a different profession (e.g. Fishing Power on Smithing craft)
+          continue;
+        }
+
+        // 1. General Crafting Speed (Stat #15)
+        if (stat.id === 15 || statNameLower.includes('crafting speed')) {
+          slotCraftingSpeed += stat.value;
+        }
+
+        // 2. Specific Profession Speed (Stat #21..#33 or "[Profession] Speed")
+        if (
+          (profStatId && stat.id === profStatId) ||
+          (skillNameLower && statNameLower.includes(`${skillNameLower} speed`))
+        ) {
+          slotProfessionSpeed += stat.value;
+        }
+
+        // 3. Gathering Speed for Gathering/Resource Skills (Stat #16)
+        if (stat.id === 16 || statNameLower.includes('gathering speed')) {
+          slotGatheringSpeed += stat.value;
+        }
+
+        // 4. Power (Tool Power, Charm Power, Instrument Power, Profession Power)
+        if (
+          stat.id === 2 ||
+          statNameLower.includes('tool power') ||
+          (skillNameLower && statNameLower.includes(`${skillNameLower} power`)) ||
+          statNameLower === 'power'
+        ) {
+          // If this is the main tool and the stat is just its base power matching its tier, avoid double-counting
+          if (slot.item === equippedTool && (statNameLower === 'power' || statNameLower === 'tool power') && stat.value === (equippedTool.tier || 1)) {
+            // Base tool tier already covers this
+          } else {
+            slotPowerBonus += stat.value;
+          }
+        }
+
+        // 5. Stamina (Stat #1)
+        if (stat.id === 1 || statNameLower.includes('stamina')) {
+          slotStamina += stat.value;
+        }
+
+        // 6. Experience Rate (Stat #50 or "[Profession] Exp")
+        if (
+          stat.id === 50 ||
+          statNameLower.includes('experience rate') ||
+          (skillNameLower && statNameLower.includes(`${skillNameLower} exp`))
+        ) {
+          slotExpBonus += stat.value;
+        }
+      }
+
+      // Applicable speed for the active craft
+      const applicableSpeedForCraft =
+        slotCraftingSpeed + slotProfessionSpeed + (isGatheringSkill ? slotGatheringSpeed : 0);
+
+      if (
+        applicableSpeedForCraft !== 0 ||
+        slotGatheringSpeed !== 0 ||
+        slotPowerBonus !== 0 ||
+        slotStamina !== 0 ||
+        slotExpBonus !== 0
+      ) {
+        equipCraftingSpeedBonus += applicableSpeedForCraft;
+        equipGatheringSpeedBonus += slotGatheringSpeed;
+        equipStaminaBonus += slotStamina;
+        equipExpRateBonus += slotExpBonus;
+        totalExtraPowerFromGear += slotPowerBonus;
+
+        equipmentModifiers.push({
+          slot: slot.primary,
+          itemName: slot.item.name,
+          tier: slot.item.tier || 1,
+          rarity: slot.item.rarityString || slot.item.rarityStr || 'Common',
+          craftingSpeedBonus: applicableSpeedForCraft,
+          gatheringSpeedBonus: slotGatheringSpeed,
+          professionSpeedBonus: slotProfessionSpeed,
+          powerBonus: slotPowerBonus,
+          staminaBonus: slotStamina,
+          xpRateBonus: slotExpBonus,
+        });
+      }
+    }
+  }
+
+  // Calculate Total Effective Power (Base Tool Power + Charms + Instruments + Gear)
+  const baseToolPower = equippedTool ? equippedTool.tier || 1 : 1;
+  const effectivePower = baseToolPower + totalExtraPowerFromGear;
 
   const toolStatus: ToolStatusInfo = {
     requiredToolName: reqToolName,
@@ -192,7 +322,7 @@ export function calculateCraftXp(
     equippedTool,
     isEquipped,
     meetsLevelReq: equippedTool ? (equippedTool.tier || 1) >= reqToolLevel : false,
-    meetsPowerReq: equippedTool ? (equippedTool.tier || 1) >= reqToolPower : false,
+    meetsPowerReq: effectivePower >= reqToolPower,
     effectivePower,
   };
 
@@ -216,60 +346,13 @@ export function calculateCraftXp(
     }
 
     if (!isMeasuredProgressPerAction) {
-      const toolTier = equippedTool?.tier || reqToolLevel || 1;
-      progressPerAction = Math.max(5, 5 * (toolTier + 1));
+      progressPerAction = Math.max(5, 5 * (effectivePower + 1));
     }
   }
 
   const physicalActionsTotal = Math.ceil(totalProgressRequired / progressPerAction);
   const physicalActionsCompleted = Math.ceil(completedProgress / progressPerAction);
   const physicalActionsRemaining = Math.max(0, physicalActionsTotal - physicalActionsCompleted);
-
-  // 6. Equipment Modifiers (Crafting speed %, Experience Rate %, stamina bonuses)
-  const equipmentModifiers: EquipmentModifier[] = [];
-  let equipCraftingSpeedBonus = 0;
-  let equipGatheringSpeedBonus = 0;
-  let equipStaminaBonus = 0;
-  let equipExpRateBonus = 0;
-
-  for (const slot of equipment) {
-    if (slot.item && slot.item.stats) {
-      let slotCraftingSpeed = 0;
-      let slotGatheringSpeed = 0;
-      let slotStamina = 0;
-
-      for (const stat of slot.item.stats) {
-        if (stat.id === 15 || stat.name.toLowerCase().includes('crafting speed')) {
-          slotCraftingSpeed += stat.value;
-        }
-        if (stat.id === 16 || stat.name.toLowerCase().includes('gathering speed')) {
-          slotGatheringSpeed += stat.value;
-        }
-        if (stat.id === 1 || stat.name.toLowerCase().includes('stamina')) {
-          slotStamina += stat.value;
-        }
-        if (stat.id === 50 || stat.name.toLowerCase().includes('experience rate')) {
-          equipExpRateBonus += stat.value;
-        }
-      }
-
-      if (slotCraftingSpeed !== 0 || slotGatheringSpeed !== 0 || slotStamina !== 0) {
-        equipCraftingSpeedBonus += slotCraftingSpeed;
-        equipGatheringSpeedBonus += slotGatheringSpeed;
-        equipStaminaBonus += slotStamina;
-
-        equipmentModifiers.push({
-          slot: slot.primary,
-          itemName: slot.item.name,
-          tier: slot.item.tier || 1,
-          rarity: slot.item.rarityString || slot.item.rarityStr || 'Common',
-          craftingSpeedBonus: slotCraftingSpeed,
-          gatheringSpeedBonus: slotGatheringSpeed,
-          staminaBonus: slotStamina,
-        });
-      }
-    }
-  }
 
   // 7. Active Buff & Debuff Modifiers
   const activeBuffModifiers: ActiveBuffModifier[] = [];
@@ -366,7 +449,6 @@ export function calculateCraftXp(
   }
 
   // 8. Total Crafting Speed Multiplier (General Crafting Speed + Profession Skill Speed)
-  const profStatId = PROFESSION_SPEED_STAT_IDS[skillId];
   let professionSkillSpeedBonus = 0;
   if (profStatId && stats && stats.values && typeof stats.values[profStatId] === 'number' && stats.values[profStatId] > 0) {
     professionSkillSpeedBonus = stats.values[profStatId] - 1.0;

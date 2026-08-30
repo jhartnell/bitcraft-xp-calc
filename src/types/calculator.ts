@@ -71,7 +71,10 @@ export interface EquipmentModifier {
   rarity: string;
   craftingSpeedBonus: number;
   gatheringSpeedBonus: number;
+  professionSpeedBonus?: number;
+  powerBonus?: number;
   staminaBonus: number;
+  xpRateBonus?: number;
 }
 
 export interface ParticipantContributionSummary {

@@ -411,7 +411,17 @@ export const ModifiersPanel: React.FC<ModifiersPanelProps> = ({
                   <div className="font-mono text-[11px] space-y-0.5">
                     {equip.craftingSpeedBonus !== 0 && (
                       <div className="text-emerald-400">
-                        Crafting Speed: +{(equip.craftingSpeedBonus * 100).toFixed(1)}%
+                        Speed: +{(equip.craftingSpeedBonus * 100).toFixed(1)}%
+                      </div>
+                    )}
+                    {equip.powerBonus !== undefined && equip.powerBonus > 0 && (
+                      <div className="text-amber-400">
+                        Power: +{equip.powerBonus}
+                      </div>
+                    )}
+                    {equip.xpRateBonus !== undefined && equip.xpRateBonus > 0 && (
+                      <div className="text-purple-400">
+                        XP Rate: +{(equip.xpRateBonus * 100).toFixed(1)}%
                       </div>
                     )}
                     {equip.staminaBonus !== 0 && (

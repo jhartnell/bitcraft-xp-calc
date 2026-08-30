@@ -637,5 +637,137 @@ describe('Level Milestone Timing & Multi-Level Forecast Engine', () => {
     expect(result.secondsPerAction).toBeCloseTo(1.6 / 0.8, 2); // 2.0s per action
     expect(result.xpMultiplier).toBeCloseTo(0.90, 2);
   });
+
+  it('correctly calculates Speed and Power bonuses from Fishing Charms and Instruments for Fishing crafts', () => {
+    const fishingCraft: CraftResult = {
+      entityId: 'fishing_station_1',
+      buildingEntityId: 'b_1',
+      ownerEntityId: 'p_1',
+      regionId: 14,
+      progress: 0,
+      recipeId: 70001,
+      craftCount: 10,
+      lockExpiration: '2026-08-25T12:00:00Z',
+      actionsRequiredPerItem: 100,
+      totalActionsRequired: 1000,
+      craftedItem: [{ item_id: 1234, quantity: 1, item_type: 'item', durability: 0 }],
+      levelRequirements: [{ level: 20, skill_id: 12, skillName: 'Fishing' }],
+      toolRequirements: [{ level: 3, power: 4, tool_type: 10, name: 'Fishing Rod' }],
+      experiencePerProgress: [{ quantity: 2.0, skill_id: 12 }],
+      buildingName: 'Fishery Station',
+      completed: false,
+    };
+
+    const fishingPlayer: PlayerDetails = {
+      entityId: 'p_1',
+      username: 'Angler',
+      experience: [{ skill_id: 12, quantity: 50000 }], // Fishing Lvl ~23 (+1.15% skill speed)
+    };
+
+    const equippedGear: EquipmentSlot[] = [
+      {
+        primary: 'main_hand',
+        item: {
+          id: 5001,
+          name: 'Sturdy Fishing Rod',
+          tier: 3,
+          stats: [{ id: 2, name: 'Tool Power', value: 3, is_pct: false }],
+        },
+      },
+      {
+        primary: 'charm_1',
+        item: {
+          id: 6001,
+          name: 'Charm of the Master Angler',
+          tier: 2,
+          rarityString: 'Rare',
+          stats: [
+            { id: 31, name: 'Fishing Speed', value: 0.05, is_pct: true }, // +5% Fishing Speed
+            { id: 2, name: 'Fishing Power', value: 1, is_pct: false },    // +1 Fishing Power
+          ],
+        },
+      },
+      {
+        primary: 'instrument',
+        item: {
+          id: 7001,
+          name: 'River Melody Flute',
+          tier: 2,
+          rarityString: 'Uncommon',
+          stats: [
+            { id: 16, name: 'Gathering Speed', value: 0.08, is_pct: true }, // +8% Gathering Speed
+            { id: 2, name: 'Power', value: 1, is_pct: false },              // +1 Power
+          ],
+        },
+      },
+    ];
+
+    const result = calculateCraftXp(fishingCraft, fishingPlayer, equippedGear, [], null, [], null);
+
+    // Effective Power = Base Rod (3) + Charm (+1) + Flute (+1) = 5
+    expect(result.toolStatus.effectivePower).toBe(5);
+    expect(result.toolStatus.meetsPowerReq).toBe(true); // 5 >= required 4
+
+    // Theoretical Progress Per Action with Power 5 = 5 * (5 + 1) = 30
+    expect(result.progressPerAction).toBe(30);
+
+    // Total Gear Speed = +5% (Charm) + 8% (Flute gathering speed) = +13.0%
+    const gearModifierNames = result.equipmentModifiers.map((e) => e.itemName);
+    expect(gearModifierNames).toContain('Charm of the Master Angler');
+    expect(gearModifierNames).toContain('River Melody Flute');
+
+    // Total multiplier = 1.0 + 0.13 (gear) + 0.0115 (Lvl 23 Fishing skill) = 1.1415
+    expect(result.totalCraftingSpeedMultiplier).toBeCloseTo(1.1415, 3);
+    expect(result.craftingSpeedBonusPercent).toBe(14.1); // +14.1% total speed
+  });
+
+  it('ensures profession-specific charms do not leak into unrelated crafts', () => {
+    const smithingCraft: CraftResult = {
+      entityId: 'anvil_1',
+      buildingEntityId: 'b_2',
+      ownerEntityId: 'p_1',
+      regionId: 14,
+      progress: 0,
+      recipeId: 80001,
+      craftCount: 1,
+      lockExpiration: '2026-08-25T12:00:00Z',
+      actionsRequiredPerItem: 100,
+      totalActionsRequired: 100,
+      craftedItem: [{ item_id: 5678, quantity: 1, item_type: 'item', durability: 0 }],
+      levelRequirements: [{ level: 10, skill_id: 6, skillName: 'Smithing' }],
+      toolRequirements: [{ level: 1, power: 1, tool_type: 5, name: 'Smithing Hammer' }],
+      experiencePerProgress: [{ quantity: 2.0, skill_id: 6 }],
+      buildingName: 'Forge',
+      completed: false,
+    };
+
+    const player: PlayerDetails = {
+      entityId: 'p_1',
+      username: 'Smith',
+      experience: [{ skill_id: 6, quantity: 10000 }],
+    };
+
+    // Equipping a Fishing Charm while at a Smithing Forge
+    const gearWithFishingCharm: EquipmentSlot[] = [
+      {
+        primary: 'charm_1',
+        item: {
+          id: 6001,
+          name: 'Charm of the Master Angler',
+          tier: 2,
+          stats: [
+            { id: 31, name: 'Fishing Speed', value: 0.10, is_pct: true },
+            { id: 2, name: 'Fishing Power', value: 2, is_pct: false },
+          ],
+        },
+      },
+    ];
+
+    const result = calculateCraftXp(smithingCraft, player, gearWithFishingCharm, [], null, [], null);
+
+    // Fishing speed & power should NOT apply to Smithing craft
+    expect(result.equipmentModifiers.length).toBe(0);
+    expect(result.toolStatus.effectivePower).toBe(1); // Default 1
+  });
 });
 
