@@ -164,6 +164,37 @@ A high-performance, real-time web application to track active crafting progress,
 
 ---
 
+## 📡 BitJita API Architecture & Caching Reference
+
+All network requests to the **BitJita API** (`https://bitjita.com/api`) route through the polite singleton client ([`src/services/apiClient.ts`](file:///home/skippy/GIT/bitcraft-xp-calc/src/services/apiClient.ts)), equipped with in-flight request deduplication, rate limiting, and tiered caching:
+
+### 1. Endpoint & Caching Matrix
+
+| Endpoint | Method | Caching TTL | Purpose | Cache Policy / Invalidation |
+| :--- | :---: | :---: | :--- | :--- |
+| **`GET /api/players?q={query}`** | GET | **60s** (1m) | Character search autocomplete | In-memory cache keyed by query string |
+| **`GET /api/players/{id}`** | GET | **20s** | Character details, experience array, and coordinates | Bypassed on poll cycle / manual refresh (`forceFresh=true`) |
+| **`GET /api/players/{id}/crafts?completed=all`** | GET | **10s** | Active, idle, and completed crafts | Bypassed on poll cycle; primes recipe XP cache |
+| **`GET /api/players/{id}/equipment`** | GET | **15s** | 36 gear slots (tools, charms, instruments, armor) | Bypassed on poll cycle; parallel `getItem` enrichment |
+| **`GET /api/players/{id}/tools`** | GET | **15s** | Tool registry (exact level & power across 15 skills) | Bypassed on poll cycle (`forceFresh=true`) |
+| **`GET /api/players/{id}/buffs`** | GET | **15s** | Food, potion, wonder, and beacon modifiers | Bypassed on poll cycle (`forceFresh=true`) |
+| **`GET /api/players/{id}/stats`** | GET | **30s** | SpacetimeDB stats registry (Stat #50 XP rate, #15 speed) | Bypassed on poll cycle (`forceFresh=true`) |
+| **`GET /api/crafts?completed=false&limit=100`** | GET | **20s** | Public crafting stations search & recipe XP cache priming | Background seeded & modal search |
+| **`GET /api/crafts?completed=false&region_id={r}`** | GET | **20s** | Nearby stations within 500m ranked by distance | Bypassed on poll cycle when player moves |
+| **`GET /api/crafts/{craftId}`** | GET | **10s** | Single crafting station details & progress state | Bypassed on custom craft selection (`forceFresh=true`) |
+| **`GET /api/crafts/{craftId}/contributions`** | GET | **15s** | Real-time action ticks, progress deltas, and helpers | Bypassed on poll cycle to calculate live action speed |
+| **`GET /api/items/{itemId}`** | GET | **3,600s** (1h) | Static item metadata, toolStats, rarity, and stats | Long-lived static cache |
+| **`GET /api/cargos/{cargoId}`** | GET | **3,600s** (1h) | Static cargo item metadata, tier, and stats | Long-lived static cache |
+| **`GET /api/skills`** | GET | **3,600s** (1h) | Static skills and profession catalog | Long-lived static cache |
+
+### 2. Politeness & Protection Engine
+* **In-Flight Request Deduplication:** Merges concurrent requests for the exact same endpoint into a single network `Promise`, eliminating redundant requests.
+* **120ms Queue Spacing:** Enforces a minimum 120ms spacing between outgoing requests to prevent burst load on BitJita.
+* **Adaptive HTTP 429 Backoff:** Detects rate limits and doubles backoff interval (from 1,000ms up to 30,000ms), gradually decreasing on successful responses.
+* **Dual Routing:** Reverse-proxies through Nginx (`/api/...`) for the Web App, and makes direct HTTPS requests in the Chrome Extension.
+
+---
+
 ## 🛠️ Architecture & Tech Stack
 
 - **Frontend:** React 18, TypeScript, Tailwind CSS, Lucide Icons
