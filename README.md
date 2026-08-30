@@ -70,6 +70,13 @@ A high-performance, real-time web application to track active crafting progress,
 - **Food Buff Override & Resilience:** Apply food buffs directly with 1-click presets or custom inputs when server buff tables lag.
 - **Active Buff Timers:** Live countdown timers with expiration warnings (< 2 minutes).
 
+### 11. In-Memory Cache Inspector & Server Data Health Diagnostics
+- **Dual-Tab Inspector Popover:** Hover or click the header's `Cache` indicator to open the interactive cache and data health dashboard.
+- **Categorized URL Path Feeds:** Live inspection of all in-memory endpoints partitioned into Character & Equipment, Crafting & Contributions, Items & Cargo Metadata, and Master Catalogs.
+- **Real-Time Timestamps & Expiration:** Real-time age timers (`Fetched 4s ago`), TTL countdowns (`Expires in 16s` or `1h Static TTL`), and expired status tags.
+- **Server Data Health Anomaly Tracker:** Automatically logs null/empty SpacetimeDB arrays (e.g. `experience: null`), missing stats tables, rate limits, and network errors with itemized diagnostic cards explaining active fallbacks.
+- **Granular Eviction & Retry:** 1-click individual endpoint cache eviction (`✕`) and single-URL retry buttons (`[ 🔄 Retry Endpoint ]`) alongside global cache flushing.
+
 ---
 
 ## 📡 BitJita API Architecture & Caching Reference

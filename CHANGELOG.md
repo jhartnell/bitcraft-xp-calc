@@ -4,6 +4,14 @@ All notable changes to the **BitCraft Online XP Calculator** project are documen
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-08-30
+
+### Added
+- **BitJita In-Memory Cache Inspector:** Added an interactive dual-tab popover on the header's Cache indicator displaying all active in-memory URL endpoints categorized into Character & Equipment, Crafting & Contributions, Items & Cargo Metadata, and Master Catalogs.
+- **Server Data Health & Anomaly Diagnostics:** Added real-time tracking for null/empty SpacetimeDB arrays (e.g. unpopulated player experience), missing tables, rate limit 429 events, and network errors with itemized diagnostic cards explaining active fallbacks.
+- **Granular Endpoint Eviction & Retry:** Added 1-click single-endpoint eviction buttons (`✕`) and dedicated `[ 🔄 Retry Endpoint ]` triggers alongside global cache clearing.
+- **Node 24 LTS Build Toolchain:** Upgraded multi-stage Docker build and GitHub Actions CI runner to modern **Node 24 LTS (`node:24-alpine`)**.
+
 ---
 
 ## [1.7.1] - 2026-08-30

@@ -2,7 +2,7 @@ import React from 'react';
 import { ExternalLink } from 'lucide-react';
 
 export const Footer: React.FC = () => {
-  const version = import.meta.env.VITE_APP_VERSION || '1.7.1';
+  const version = import.meta.env.VITE_APP_VERSION || '1.8.0';
 
   return (
     <footer className="w-full border-t border-surface-border py-4 px-4 mt-auto text-xs text-gray-500 font-mono">
