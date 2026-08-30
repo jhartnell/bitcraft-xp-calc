@@ -7,11 +7,13 @@ import {
   PlayerEquipmentApiResponse,
   PlayerBuffsApiResponse,
   PlayerStatsData,
+  PlayerToolsApiResponse,
   SkillsApiResponse,
   CraftResult,
   ItemMetadata,
 } from '../types/api';
 import { ApiClientStatus } from '../types/calculator';
+import { resolveCraftCoordinates } from './bitcraftData';
 
 interface CacheEntry<T> {
   data: T;
@@ -245,10 +247,42 @@ class PoliteApiClient {
     return res;
   }
 
-  // Get player equipment
+  // Get player equipment (auto-enriches items with toolStats & equipmentStats from /api/items/{itemId})
   public async getPlayerEquipment(entityId: string, forceFresh = false): Promise<PlayerEquipmentApiResponse> {
-    return this.fetchWithCache<PlayerEquipmentApiResponse>(
+    const res = await this.fetchWithCache<PlayerEquipmentApiResponse>(
       `/players/${entityId}/equipment`,
+      15000,
+      forceFresh
+    );
+
+    if (res?.equipment && Array.isArray(res.equipment)) {
+      await Promise.all(
+        res.equipment.map(async (slot) => {
+          if (slot.item && slot.item.id) {
+            const itemIdNum = Number(slot.item.id);
+            if (!isNaN(itemIdNum) && itemIdNum > 0) {
+              const fullItem = await this.getItem(itemIdNum);
+              if (fullItem) {
+                slot.item = {
+                  ...slot.item,
+                  ...fullItem,
+                  toolStats: fullItem.toolStats || slot.item.toolStats,
+                  stats: fullItem.stats && fullItem.stats.length > 0 ? fullItem.stats : (slot.item.stats || []),
+                };
+              }
+            }
+          }
+        })
+      );
+    }
+
+    return res;
+  }
+
+  // Get player tools (/players/{id}/tools contains exact tool powers and levels across all 15 professions)
+  public async getPlayerTools(entityId: string, forceFresh = false): Promise<PlayerToolsApiResponse> {
+    return this.fetchWithCache<PlayerToolsApiResponse>(
+      `/players/${entityId}/tools`,
       15000,
       forceFresh
     );
@@ -396,18 +430,17 @@ class PoliteApiClient {
     }[] = [];
 
     for (const c of res.craftResults) {
-      const cx = c.claimLocationX !== undefined ? c.claimLocationX : c.claimLocationX;
-      const cz = c.claimLocationZ !== undefined ? c.claimLocationZ : c.claimLocationZ;
+      const coords = resolveCraftCoordinates(c as unknown as Record<string, unknown>);
 
       let distance = 0;
-      if (playerX !== undefined && playerZ !== undefined && cx !== undefined && cz !== undefined) {
-        distance = Math.round(Math.sqrt(Math.pow(playerX - cx, 2) + Math.pow(playerZ - cz, 2)));
+      if (playerX !== undefined && playerZ !== undefined && coords) {
+        distance = Math.round(Math.sqrt(Math.pow(playerX - coords.x, 2) + Math.pow(playerZ - coords.z, 2)));
       }
 
       const itemId = c.craftedItem?.[0]?.item_id;
       const itm = itemId ? itemsMap.get(Number(itemId)) : undefined;
 
-      if (distance <= maxDistanceMeters || (cx === undefined && cz === undefined)) {
+      if (distance <= maxDistanceMeters || !coords) {
         nearbyList.push({
           craft: c,
           distanceMeters: distance,
@@ -426,14 +459,25 @@ class PoliteApiClient {
   public async getItem(itemId: number, forceFresh = false): Promise<ItemMetadata | null> {
     try {
       const res = await this.fetchWithCache<{
-        item: ItemMetadata;
+        item?: ItemMetadata;
+        toolStats?: import('../types/api').ToolStats;
+        equipmentStats?: import('../types/api').ItemStat[];
         craftingRecipes?: Array<{
           id: number;
           experiencePerProgress?: { quantity: number; skill_id: number }[];
         }>;
-      }>(`/items/${itemId}`, 3600000, forceFresh);
+      } & ItemMetadata>(`/items/${itemId}`, 3600000, forceFresh);
 
-      if (res?.craftingRecipes) {
+      if (!res) return null;
+
+      const rawItem: ItemMetadata = res.item || (res.name ? res : ({} as ItemMetadata));
+      const itemData: ItemMetadata = {
+        ...rawItem,
+        toolStats: res.toolStats || rawItem.toolStats,
+        stats: res.equipmentStats && res.equipmentStats.length > 0 ? res.equipmentStats : (rawItem.stats || []),
+      };
+
+      if (res.craftingRecipes) {
         for (const r of res.craftingRecipes) {
           if (r.id && r.experiencePerProgress && r.experiencePerProgress.length > 0) {
             this.recipeXpMap.set(r.id, r.experiencePerProgress);
@@ -441,7 +485,7 @@ class PoliteApiClient {
         }
       }
 
-      return res?.item || null;
+      return itemData.name ? itemData : null;
     } catch {
       return null;
     }

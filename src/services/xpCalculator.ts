@@ -4,8 +4,10 @@ import {
   CraftResult,
   PlayerDetails,
   EquipmentSlot,
+  ItemMetadata,
   PlayerBuff,
   PlayerStatsData,
+  PlayerToolEntry,
   CraftContribution,
 } from '../types/api';
 import {
@@ -20,13 +22,22 @@ import {
   MultiUserCraftProjection,
   LevelMilestone,
   LevelProgressForecast,
+  SkillOverrideMap,
 } from '../types/calculator';
 import {
   SKILL_DEFINITIONS,
   TOOL_TYPE_NAMES,
+  SKILL_TOOL_KEYWORDS,
   DEFAULT_SKILL_BASE_XP,
   calculateXpForLevel,
   getXpProgressForLevel,
+  getItemPower,
+  resolveToolName,
+  resolveToolRarity,
+  LEVEL_TO_TIER,
+  getProfessionLevelStats,
+  TOOL_TYPE_TO_SKILL_ID,
+  getTierRequiredLevel,
 } from './bitcraftData';
 import { bitjitaApi } from './apiClient';
 
@@ -105,7 +116,9 @@ export function calculateCraftXp(
   contributions: CraftContribution[] = [],
   overrideProgressPerAction: number | null = null,
   overrideBaseXp: number | null = null,
-  foodBuffOverride: FoodBuffOverride | null = null
+  foodBuffOverride: FoodBuffOverride | null = null,
+  playerTools: PlayerToolEntry[] = [],
+  skillOverrides: SkillOverrideMap | null = null
 ): XpCalculationResult {
   // 1. Identify primary skill for the craft
   const recipeExp =
@@ -113,18 +126,24 @@ export function calculateCraftXp(
       ? craft.experiencePerProgress
       : bitjitaApi.getRecipeExperience(craft.recipeId);
 
-  let skillId = 4; // default masonry fallback
-  if (craft.experiencePerProgress && craft.experiencePerProgress.length > 0) {
+  let skillId: number | null = null;
+  if (craft.experiencePerProgress && craft.experiencePerProgress.length > 0 && craft.experiencePerProgress[0].skill_id) {
     skillId = craft.experiencePerProgress[0].skill_id;
-  } else if (craft.levelRequirements && craft.levelRequirements.length > 0) {
+  } else if (craft.levelRequirements && craft.levelRequirements.length > 0 && craft.levelRequirements[0].skill_id) {
     skillId = craft.levelRequirements[0].skill_id;
-  } else if (recipeExp && recipeExp.length > 0) {
+  } else if (craft.toolRequirements && craft.toolRequirements.length > 0 && TOOL_TYPE_TO_SKILL_ID[craft.toolRequirements[0].tool_type]) {
+    skillId = TOOL_TYPE_TO_SKILL_ID[craft.toolRequirements[0].tool_type];
+  } else if (recipeExp && recipeExp.length > 0 && recipeExp[0].skill_id) {
     skillId = recipeExp[0].skill_id;
   } else {
     const buildingSkill = getSkillIdFromBuildingName(craft.buildingName);
     if (buildingSkill) {
       skillId = buildingSkill;
     }
+  }
+
+  if (!skillId) {
+    skillId = 4; // default masonry fallback
   }
 
   const skillDef = SKILL_DEFINITIONS[skillId] || {
@@ -136,14 +155,31 @@ export function calculateCraftXp(
   };
 
   // Current Player Level Progress for the Craft's Skill
+  const manualOverride = skillOverrides?.[skillId];
   let currentSkillXp = 0;
-  if (player && player.experience) {
-    const expObj = player.experience.find((e) => e.skill_id === skillId);
-    if (expObj) {
-      currentSkillXp = expObj.quantity;
+  let hasManualOverride = false;
+
+  if (manualOverride) {
+    if (typeof manualOverride.xp === 'number' && manualOverride.xp > 0) {
+      currentSkillXp = manualOverride.xp;
+      hasManualOverride = true;
+    } else if (typeof manualOverride.level === 'number' && manualOverride.level > 0) {
+      currentSkillXp = calculateXpForLevel(manualOverride.level);
+      hasManualOverride = true;
     }
   }
-  const currentLevelProgress = getXpProgressForLevel(currentSkillXp);
+
+  if (!hasManualOverride && player && player.experience && Array.isArray(player.experience) && player.experience.length > 0) {
+    const expObj = player.experience.find(
+      (e) => e.skill_id === skillId || (e as unknown as Record<string, unknown>).skillId === skillId || (e as unknown as Record<string, unknown>).id === skillId
+    );
+    if (expObj) {
+      const rawQty = expObj.quantity ?? (expObj as unknown as Record<string, unknown>).experience ?? (expObj as unknown as Record<string, unknown>).xp ?? 0;
+      currentSkillXp = typeof rawQty === 'number' ? rawQty : Number(rawQty) || 0;
+    }
+  }
+
+  let currentLevelProgress = getXpProgressForLevel(currentSkillXp);
 
   // 2. Base XP per progress unit
   let baseXpPerAction = DEFAULT_SKILL_BASE_XP[skillId] || 1.6;
@@ -176,33 +212,202 @@ export function calculateCraftXp(
   const profStatId = PROFESSION_SPEED_STAT_IDS[skillId];
   const isGatheringSkill = [2, 5, 11, 12, 14].includes(skillId);
 
-  // 4. Required Tool & Equipped Main Tool Matching (Strictly restricted to hand/tool slots)
-  const HAND_TOOL_SLOTS = new Set(['main_hand', 'off_hand', 'tool', 'tool_1', 'tool_2']);
+  // 4. Required Tool & Equipped Main Tool Matching (Multi-pass keyword & slot detection)
+  const isHandOrToolSlot = (slotPrimary?: string): boolean => {
+    if (!slotPrimary) return false;
+    const s = slotPrimary.toLowerCase();
+    return (
+      s.includes('tool') ||
+      s.includes('hand') ||
+      s.includes('weapon') ||
+      s.includes('pocket') ||
+      s.includes('held') ||
+      s.includes('primary') ||
+      s.includes('active')
+    );
+  };
+
+  const ACCESSORY_WORDS = new Set([
+    'charm', 'flute', 'lute', 'drum', 'horn', 'harp', 'instrument',
+    'ring', 'amulet', 'necklace', 'pendant', 'talisman', 'artifact',
+    'tunic', 'robe', 'shirt', 'vest', 'jacket', 'cloak', 'cape',
+    'pants', 'trousers', 'leggings', 'boots', 'shoes', 'gloves',
+    'gauntlets', 'bracers', 'belt', 'hat', 'helm', 'helmet', 'cap',
+    'hood', 'circlet', 'crown'
+  ]);
+
+  const isExcludedAccessoryOrGear = (item: ItemMetadata, slotPrimary?: string): boolean => {
+    const slot = (slotPrimary || '').toLowerCase();
+    if (
+      slot.includes('charm') ||
+      slot.includes('instrument') ||
+      slot.includes('finger') ||
+      slot.includes('ring') ||
+      slot.includes('neck') ||
+      slot.includes('amulet') ||
+      slot.includes('artifact') ||
+      slot.includes('torso') ||
+      slot.includes('chest') ||
+      slot.includes('legs') ||
+      slot.includes('feet') ||
+      slot.includes('head') ||
+      slot.includes('cape') ||
+      slot.includes('back')
+    ) {
+      return true;
+    }
+    const nameWords = item.name.toLowerCase().split(/[\s\-_,]+/);
+    return nameWords.some((w) => ACCESSORY_WORDS.has(w));
+  };
+
+  // Compile search keywords for the required tool
+  const toolKeywords = new Set<string>();
+  if (SKILL_TOOL_KEYWORDS[skillId]) {
+    for (const kw of SKILL_TOOL_KEYWORDS[skillId]) {
+      toolKeywords.add(kw.toLowerCase());
+    }
+  }
+  if (reqToolName) {
+    const parts = reqToolName.toLowerCase().split(/[\s\/\-_,]+/);
+    for (const p of parts) {
+      if (p.length >= 3 && p !== 'tool' && p !== 'type') toolKeywords.add(p);
+    }
+  }
+
+  const matchesToolKeywords = (item: ItemMetadata, slotPrimary?: string): boolean => {
+    if (isExcludedAccessoryOrGear(item, slotPrimary)) return false;
+
+    // 1. Direct toolStats match from /api/items/{itemId} (highest precision)
+    if (item.toolStats) {
+      if (item.toolStats.skillId === skillId) return true;
+      if (reqToolName && item.toolStats.toolType?.toLowerCase().includes(reqToolName.toLowerCase())) return true;
+    }
+
+    // 2. Keyword and tag matching
+    const name = item.name.toLowerCase();
+    const tag = (item.tag || item.tags || '').toLowerCase();
+    for (const kw of toolKeywords) {
+      if (name.includes(kw) || tag.includes(kw)) return true;
+    }
+    return false;
+  };
+
   let equippedTool: EquipmentSlot['item'] = null;
   let isEquipped = false;
 
-  for (const slot of equipment) {
-    if (slot.item && HAND_TOOL_SLOTS.has(slot.primary)) {
-      const itemName = slot.item.name.toLowerCase();
-      const itemTag = (slot.item.tag || slot.item.tags || '').toLowerCase();
-      const targetToolName = reqToolName.toLowerCase();
+  // Pass 0: Dedicated Player Tools System (/players/{id}/tools) - Authoritative Tool Power & Level in BitCraft
+  if (playerTools && playerTools.length > 0) {
+    const matchedTool = playerTools.find((t) => t.toolType === reqToolType);
+    if (matchedTool) {
+      const toolTier = LEVEL_TO_TIER[matchedTool.level] || matchedTool.level;
+      const resolvedToolName = resolveToolName(reqToolType, matchedTool.level);
+      const toolRarity = resolveToolRarity(toolTier, matchedTool.power);
+      isEquipped = true;
+      equippedTool = {
+        id: `tool_${reqToolType}`,
+        name: resolvedToolName,
+        tier: toolTier,
+        rarityStr: toolRarity,
+        rarityString: toolRarity,
+        toolStats: {
+          power: matchedTool.power,
+          level: matchedTool.level,
+          toolType: reqToolName,
+          skillId: skillId,
+          skillName: skillDef.name,
+        },
+      };
+    }
+  }
 
-      const matchesTool = itemName.includes(targetToolName) || itemTag.includes(targetToolName);
-      const matchesSkill = itemTag.includes(skillNameLower);
-
-      if (matchesTool) {
-        // Highest priority: exact tool match in hand slot
-        equippedTool = slot.item;
-        break;
-      } else if (!equippedTool && (slot.primary === 'main_hand' || matchesSkill)) {
-        // Fallback: main hand item or tool matching the active skill
-        equippedTool = slot.item;
+  // Pass 1: Check hand/tool slots for keyword or skill match
+  if (!equippedTool) {
+    for (const slot of equipment) {
+      if (slot.item && isHandOrToolSlot(slot.primary)) {
+        if (matchesToolKeywords(slot.item, slot.primary)) {
+          equippedTool = slot.item;
+          break;
+        }
       }
     }
   }
 
+  // Pass 2: Check hand/tool slots for any tool with power or tier
+  if (!equippedTool) {
+    for (const slot of equipment) {
+      if (slot.item && isHandOrToolSlot(slot.primary) && !isExcludedAccessoryOrGear(slot.item, slot.primary)) {
+        const hasPowerStat = slot.item.stats?.some(
+          (st) => (st.name || '').toLowerCase().includes('power') || st.id === 2
+        );
+        if (hasPowerStat || (slot.item.tier && slot.item.tier > 0)) {
+          equippedTool = slot.item;
+          break;
+        }
+      }
+    }
+  }
+
+  // Pass 3: Check main_hand or default hand slot
+  if (!equippedTool) {
+    const mainHandSlot = equipment.find(
+      (s) => s.item && s.primary.toLowerCase().includes('main_hand') && !isExcludedAccessoryOrGear(s.item, s.primary)
+    );
+    if (mainHandSlot?.item) {
+      equippedTool = mainHandSlot.item;
+    }
+  }
+
+  // Pass 4: Check ANY equipment slot for a tool matching this skill
+  if (!equippedTool) {
+    for (const slot of equipment) {
+      if (slot.item && matchesToolKeywords(slot.item, slot.primary)) {
+        equippedTool = slot.item;
+        break;
+      }
+    }
+  }
+
+  // Pass 5: If the player is actively crafting at the station, infer valid tool
+  const userContrib = player && contributions.length > 0 ? contributions.find(
+    (c) =>
+      c.contributorEntityId === player.entityId ||
+      c.contributorUsername?.toLowerCase() === player.username.toLowerCase()
+  ) : null;
+  const isActivelyCrafting = Boolean(
+    (userContrib && userContrib.contributionCount > 0) ||
+    (player && craft.ownerEntityId === player.entityId && (craft.progress || 0) > 0)
+  );
+
   if (equippedTool) {
     isEquipped = true;
+  } else if (isActivelyCrafting) {
+    // Player is confirmed to be crafting at this station in-game
+    const inferredTier = Math.max(reqToolLevel, 1);
+    const inferredName = resolveToolName(reqToolType, inferredTier);
+    isEquipped = true;
+    equippedTool = {
+      id: 'active_tool',
+      name: inferredName,
+      tier: inferredTier,
+    };
+  }
+
+  // Smart Level Floor: Higher of Craft Level Requirement vs. Equipped Tool Tier Level Requirement
+  // (e.g. T7 Tool = 70+, T5 Craft = 50+ -> 70; or Craft 60 vs Tool 50 -> 60)
+  let isSkillLevelInferred = false;
+  const isSkillLevelOverridden = hasManualOverride;
+
+  if (!hasManualOverride && (!player?.experience || player.experience.length === 0 || currentLevelProgress.level <= 1)) {
+    const craftReqLevel = craft.levelRequirements?.find((r) => r.skill_id === skillId)?.level || craft.levelRequirements?.[0]?.level || 1;
+    const toolReqLevel = getTierRequiredLevel(equippedTool?.tier);
+    const smartFloorLevel = Math.max(1, craftReqLevel, toolReqLevel);
+    if (smartFloorLevel > currentLevelProgress.level) {
+      currentSkillXp = calculateXpForLevel(smartFloorLevel);
+      currentLevelProgress = getXpProgressForLevel(currentSkillXp);
+      isSkillLevelInferred = true;
+    } else if (!player?.experience || player.experience.length === 0) {
+      isSkillLevelInferred = true;
+    }
   }
 
   // 6. Equipment Modifiers (Crafting speed %, Experience Rate %, stamina, and power bonuses across all 36 slots)
@@ -258,9 +463,9 @@ export function calculateCraftXp(
           (skillNameLower && statNameLower.includes(`${skillNameLower} power`)) ||
           statNameLower === 'power'
         ) {
-          // If this is the main tool and the stat is just its base power matching its tier, avoid double-counting
-          if (slot.item === equippedTool && (statNameLower === 'power' || statNameLower === 'tool power') && stat.value === (equippedTool.tier || 1)) {
-            // Base tool tier already covers this
+          // If this is the main equipped tool, its power is already accounted for in baseToolPower
+          if (slot.item === equippedTool) {
+            // Handled directly by base tool power
           } else {
             slotPowerBonus += stat.value;
           }
@@ -314,9 +519,15 @@ export function calculateCraftXp(
     }
   }
 
-  // Calculate Total Effective Power (Base Tool Power + Charms + Instruments + Gear)
-  const baseToolPower = equippedTool ? equippedTool.tier || 1 : 1;
-  const effectivePower = baseToolPower + totalExtraPowerFromGear;
+  // Cumulative Profession Level Stat Increases (Power, Speed, Crit) from BitcraftLevelStatIncreases.csv
+  const professionLevelStats = getProfessionLevelStats(skillId, currentLevelProgress.level);
+  const levelPowerBonus = professionLevelStats.power;
+  const levelSpeedBonus = professionLevelStats.speed;
+  const levelCritBonus = professionLevelStats.crit;
+
+  // Calculate Total Effective Power (Base Tool Power + Charms + Instruments + Gear + Profession Level Bonus)
+  const baseToolPower = equippedTool ? getItemPower(equippedTool) : (isEquipped ? 1 : 1);
+  const effectivePower = baseToolPower + totalExtraPowerFromGear + levelPowerBonus;
 
   const toolStatus: ToolStatusInfo = {
     requiredToolName: reqToolName,
@@ -328,6 +539,9 @@ export function calculateCraftXp(
     meetsLevelReq: equippedTool ? (equippedTool.tier || 1) >= reqToolLevel : false,
     meetsPowerReq: effectivePower >= reqToolPower,
     effectivePower,
+    levelPowerBonus,
+    levelSpeedBonus,
+    levelCritBonus,
   };
 
   // 5. Calculate Progress Per Physical Action (Effort per click/tick)
@@ -350,7 +564,7 @@ export function calculateCraftXp(
     }
 
     if (!isMeasuredProgressPerAction) {
-      progressPerAction = Math.max(5, 5 * (effectivePower + 1));
+      progressPerAction = Math.max(1, effectivePower);
     }
   }
 
@@ -456,24 +670,9 @@ export function calculateCraftXp(
   let professionSkillSpeedBonus = 0;
   if (profStatId && stats && stats.values && typeof stats.values[profStatId] === 'number' && stats.values[profStatId] > 0) {
     professionSkillSpeedBonus = stats.values[profStatId] - 1.0;
-  } else if (
-    currentLevelProgress.level > 1 &&
-    (skillId === 2 ||
-      skillId === 3 ||
-      skillId === 4 ||
-      skillId === 5 ||
-      skillId === 6 ||
-      skillId === 7 ||
-      skillId === 8 ||
-      skillId === 9 ||
-      skillId === 10 ||
-      skillId === 11 ||
-      skillId === 12 ||
-      skillId === 14)
-  ) {
-    // In BitCraft, crafting and gathering professions grant +0.05% speed per skill level (+3.6% at Lvl 72 Carpentry)
-    // Cooking (13) and Construction (15) do not have separate profession level speed scaling
-    professionSkillSpeedBonus = (currentLevelProgress.level * 0.05) / 100.0;
+  } else if (levelSpeedBonus > 0) {
+    // Cumulative profession level speed bonus from BitcraftLevelStatIncreases.csv (e.g. +3.6 for +360% Speed at Lvl 72)
+    professionSkillSpeedBonus = levelSpeedBonus;
   }
 
   // Equipment speed: compute directly from all equipped gear pieces (ground truth item stats)
@@ -648,6 +847,8 @@ export function calculateCraftXp(
     currentLevelProgressPct: currentLevelProgress.progressPercent,
     projectedLevelProgressPct: projectedLevelProgress.progressPercent,
     levelsGained,
+    isSkillLevelInferred,
+    isSkillLevelOverridden,
     
     baseActionDurationSeconds: BASE_ACTION_DURATION_SECONDS,
     secondsPerAction,

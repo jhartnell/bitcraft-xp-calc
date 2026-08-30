@@ -12,10 +12,19 @@ import {
   Zap,
   TrendingUp,
   Globe,
+  ExternalLink,
 } from 'lucide-react';
 import { CraftResult, ItemMetadata } from '../types/api';
-import { XpCalculationResult } from '../types/calculator';
+import { XpCalculationResult, SkillOverrideMap } from '../types/calculator';
 import { LiveRateGraphPopover } from './LiveRateGraphPopover';
+import { PowerBreakdownPopover } from './PowerBreakdownPopover';
+import {
+  getBitCraftMapUrl,
+  resolveCraftCoordinates,
+  toBitCraftCoords,
+  SKILL_DEFINITIONS,
+} from '../services/bitcraftData';
+import { Edit2, Check, X, RotateCcw } from 'lucide-react';
 
 export interface NearbyCraftItem {
   craft: CraftResult;
@@ -39,6 +48,9 @@ interface ActiveCraftCardProps {
   onOverrideProgressPerAction?: (val: number | null) => void;
   onOpenPublicModal?: () => void;
   onResetSession?: () => void;
+  skillOverrides?: SkillOverrideMap;
+  onSetSkillLevel?: (skillId: number, level: number) => void;
+  onClearSkillOverride?: (skillId: number) => void;
 }
 
 export const ActiveCraftCard: React.FC<ActiveCraftCardProps> = ({
@@ -53,10 +65,15 @@ export const ActiveCraftCard: React.FC<ActiveCraftCardProps> = ({
   onOverrideProgressPerAction,
   onOpenPublicModal,
   onResetSession,
+  skillOverrides = {},
+  onSetSkillLevel,
+  onClearSkillOverride,
 }) => {
   const [isEditingEffort, setIsEditingEffort] = useState(false);
   const [effortInput, setEffortInput] = useState<string>(String(calc.progressPerAction));
   const [isNearbyDropdownOpen, setIsNearbyDropdownOpen] = useState(false);
+  const [isEditingSkillLevel, setIsEditingSkillLevel] = useState(false);
+  const [skillLevelInput, setSkillLevelInput] = useState<string>(String(calc.currentSkillLevel));
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Close dropdown on click outside
@@ -153,14 +170,34 @@ export const ActiveCraftCard: React.FC<ActiveCraftCardProps> = ({
                 )}
               </div>
               <p className="text-xs text-gray-400 flex items-center gap-1.5 mt-0.5 font-mono">
-                {craft.claimName ? (
-                  <span className="flex items-center gap-1 text-gray-300">
-                    <MapPin className="w-3 h-3 text-emerald-400" />
-                    {craft.claimName} {craft.regionName ? `(${craft.regionName})` : ''}
-                  </span>
-                ) : (
-                  <span>Region {craft.regionId}</span>
-                )}
+                {(() => {
+                  const coords = resolveCraftCoordinates(craft as unknown as Record<string, unknown>);
+                  const bcCoords = coords ? toBitCraftCoords(coords.x, coords.z) : null;
+                  const mapUrl = coords ? getBitCraftMapUrl(coords.x, coords.z) : null;
+                  return bcCoords && mapUrl ? (
+                    <a
+                      href={mapUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title={`Open ${craft.claimName || 'Station'} on BitCraftMap (N: ${bcCoords.n}, E: ${bcCoords.e})`}
+                      className="inline-flex items-center gap-1 text-emerald-400 hover:text-emerald-300 hover:underline transition-colors"
+                    >
+                      <MapPin className="w-3 h-3 text-emerald-400 shrink-0" />
+                      <span>{craft.claimName || 'Wilderness'} {craft.regionName ? `(${craft.regionName})` : `(Region ${craft.regionId})`}</span>
+                      <span className="text-[10px] text-emerald-300/80">
+                        (N {bcCoords.n}, E {bcCoords.e})
+                      </span>
+                      <ExternalLink className="w-2.5 h-2.5 opacity-70" />
+                    </a>
+                  ) : craft.claimName ? (
+                    <span className="flex items-center gap-1 text-gray-300">
+                      <MapPin className="w-3 h-3 text-emerald-400 shrink-0" />
+                      <span>{craft.claimName} {craft.regionName ? `(${craft.regionName})` : `(Region ${craft.regionId})`}</span>
+                    </span>
+                  ) : (
+                    <span>Region {craft.regionId}</span>
+                  );
+                })()}
               </p>
             </div>
           </div>
@@ -324,24 +361,109 @@ export const ActiveCraftCard: React.FC<ActiveCraftCardProps> = ({
                 {itemRarity}
               </span>
             </div>
-            <div className="text-xs text-gray-400 mt-0.5 flex items-center gap-3">
+            <div className="text-xs text-gray-400 mt-0.5 flex flex-wrap items-center gap-2 sm:gap-3">
               <span>Tier {itemTier}</span>
               <span>•</span>
               <span>Recipe #{craft.recipeId}</span>
               <span>•</span>
               <span className="text-emerald-400 font-medium">
-                {calc.skillName} Req Level {craft.levelRequirements?.[0]?.level || 1}
+                {calc.skillName} Req Lvl {craft.levelRequirements?.[0]?.level || 1}
               </span>
+              <span>•</span>
+              <div className="flex items-center gap-1.5 font-mono">
+                <span className="text-gray-400 font-sans">Your Level:</span>
+                {isEditingSkillLevel ? (
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min="1"
+                      max="110"
+                      value={skillLevelInput}
+                      onChange={(e) => setSkillLevelInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          const val = parseInt(skillLevelInput, 10);
+                          if (!isNaN(val) && val >= 1 && val <= 110 && onSetSkillLevel) {
+                            onSetSkillLevel(calc.skillId, val);
+                          }
+                          setIsEditingSkillLevel(false);
+                        }
+                        if (e.key === 'Escape') setIsEditingSkillLevel(false);
+                      }}
+                      className="w-12 px-1 py-0.5 rounded bg-surface border border-emerald-500 text-emerald-300 font-mono text-[11px] font-bold focus:outline-none"
+                      autoFocus
+                    />
+                    <button
+                      onClick={() => {
+                        const val = parseInt(skillLevelInput, 10);
+                        if (!isNaN(val) && val >= 1 && val <= 110 && onSetSkillLevel) {
+                          onSetSkillLevel(calc.skillId, val);
+                        }
+                        setIsEditingSkillLevel(false);
+                      }}
+                      className="p-1 rounded bg-emerald-700 hover:bg-emerald-600 text-white cursor-pointer"
+                      title="Save Level"
+                    >
+                      <Check className="w-2.5 h-2.5" />
+                    </button>
+                    <button
+                      onClick={() => setIsEditingSkillLevel(false)}
+                      className="p-1 rounded bg-surface-border hover:bg-gray-600 text-gray-300 cursor-pointer"
+                      title="Cancel"
+                    >
+                      <X className="w-2.5 h-2.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setSkillLevelInput(String(calc.currentSkillLevel));
+                      setIsEditingSkillLevel(true);
+                    }}
+                    className={`font-mono font-bold px-1.5 py-0.5 rounded flex items-center gap-1 cursor-pointer transition-colors text-[11px] ${
+                      skillOverrides[calc.skillId]
+                        ? 'bg-amber-950/80 text-amber-300 border border-amber-700/60 hover:bg-amber-900/90'
+                        : calc.isSkillLevelInferred
+                        ? 'bg-amber-950/60 text-amber-300 border border-amber-700/50 hover:bg-amber-900/70'
+                        : 'bg-emerald-950/80 text-emerald-300 border border-emerald-800/60 hover:bg-emerald-900/90'
+                    }`}
+                    title={
+                      calc.isSkillLevelInferred
+                        ? 'BitJita experience data was unavailable for this player. Level is inferred based on your equipped tool and crafting station requirements. Click to enter your exact level.'
+                        : 'Click to customize your skill level'
+                    }
+                  >
+                    <span>Lvl {calc.currentSkillLevel}</span>
+                    {skillOverrides[calc.skillId] ? (
+                      <span className="text-[9px] text-amber-300/80 font-normal">(Custom)</span>
+                    ) : calc.isSkillLevelInferred ? (
+                      <span className="text-[9px] text-amber-400/90 font-normal bg-amber-900/50 px-1 rounded border border-amber-700/40 flex items-center gap-0.5">
+                        Inferred ℹ️
+                      </span>
+                    ) : null}
+                    <Edit2 className="w-2.5 h-2.5 opacity-60 hover:opacity-100 ml-0.5" />
+                  </button>
+                )}
+                {skillOverrides[calc.skillId] && onClearSkillOverride && (
+                  <button
+                    onClick={() => onClearSkillOverride(calc.skillId)}
+                    className="text-gray-500 hover:text-rose-400 cursor-pointer transition-colors"
+                    title="Reset to server data"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Tool Requirements Badge */}
-        <div className="flex flex-col sm:items-end justify-center text-xs space-y-1">
+        {/* Tool & Power Requirements Badges */}
+        <div className="flex flex-col sm:items-end justify-center text-xs space-y-1.5">
           {calc.toolStatus.isEquipped ? (
             <div className="flex items-center gap-1.5 text-emerald-400 bg-emerald-950/60 border border-emerald-800/60 px-2.5 py-1 rounded-md font-mono">
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Tool Equipped: {calc.toolStatus.equippedTool?.name || 'Valid Tool'}</span>
+              <span>Tool: {calc.toolStatus.equippedTool?.name || 'Valid Tool'}</span>
             </div>
           ) : (
             <div className="flex items-center gap-1.5 text-amber-400 bg-amber-950/60 border border-amber-800/60 px-2.5 py-1 rounded-md font-mono">
@@ -349,9 +471,19 @@ export const ActiveCraftCard: React.FC<ActiveCraftCardProps> = ({
               <span>Tool Required: {calc.toolStatus.requiredToolName || 'Matching Tool'}</span>
             </div>
           )}
-          <span className="text-[11px] text-gray-400 font-mono">
-            Requires Power T{craft.toolRequirements?.[0]?.power || 1}+ • Tool Lvl {craft.toolRequirements?.[0]?.level || 1}+
-          </span>
+
+          {/* Tool Power Status Badge */}
+          <div
+            className={`flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-mono border ${
+              calc.toolStatus.meetsPowerReq
+                ? 'text-amber-300 bg-amber-950/50 border-amber-800/60'
+                : 'text-rose-400 bg-rose-950/50 border-rose-800/60'
+            }`}
+          >
+            <Zap className="w-3 h-3 text-amber-400" />
+            <span className="font-semibold">Power: {calc.toolStatus.effectivePower}</span>
+            <span className="text-gray-400">/ Req {craft.toolRequirements?.[0]?.power || 1}+</span>
+          </div>
         </div>
       </div>
 
@@ -381,21 +513,35 @@ export const ActiveCraftCard: React.FC<ActiveCraftCardProps> = ({
         <div className="flex items-center flex-wrap gap-2">
           <Wrench className="w-4 h-4 text-indigo-400" />
           <div className="flex items-center flex-wrap gap-2">
-            <div>
-              <span className="text-gray-300 font-medium">Calculated Effort Pace:</span>{' '}
-              <strong className="text-emerald-400 font-mono text-sm">
-                {calc.progressPerAction.toFixed(1)} effort / action
-              </strong>
-              {calc.isMeasuredProgressPerAction ? (
-                <span className="text-[10px] text-indigo-300 ml-2 bg-indigo-950/80 border border-indigo-700/60 px-1.5 py-0.5 rounded font-mono">
-                  Historical Calibration
-                </span>
-              ) : (
-                <span className="text-[10px] text-gray-400 ml-2 font-mono">
-                  (Default 1.0)
-                </span>
-              )}
-            </div>
+            <PowerBreakdownPopover
+              toolStatus={calc.toolStatus}
+              equipmentModifiers={calc.equipmentModifiers}
+              skillId={calc.skillId}
+              skillName={calc.skillName}
+              skillIcon={SKILL_DEFINITIONS[calc.skillId]?.icon}
+              currentSkillLevel={calc.currentSkillLevel}
+              hasManualSkillOverride={Boolean(skillOverrides[calc.skillId])}
+              isSkillLevelInferred={calc.isSkillLevelInferred}
+              progressPerAction={calc.progressPerAction}
+              isMeasuredProgressPerAction={calc.isMeasuredProgressPerAction}
+            >
+              <div className="flex items-center gap-1.5 cursor-help group">
+                <span className="text-gray-300 font-medium">Calculated Effort Pace:</span>{' '}
+                <strong className="text-emerald-400 font-mono text-sm underline decoration-emerald-500/50 group-hover:decoration-emerald-400">
+                  {calc.progressPerAction.toFixed(1)} effort / action
+                </strong>
+                <ChevronDown className="w-3 h-3 text-emerald-400 opacity-70 group-hover:opacity-100" />
+                {calc.isMeasuredProgressPerAction ? (
+                  <span className="text-[10px] text-indigo-300 ml-1 bg-indigo-950/80 border border-indigo-700/60 px-1.5 py-0.5 rounded font-mono">
+                    Historical Calibration
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-gray-400 ml-1 font-mono">
+                    (Theoretical)
+                  </span>
+                )}
+              </div>
+            </PowerBreakdownPopover>
             <div className="flex items-center gap-1.5 flex-wrap">
               <span
                 className="text-[11px] font-bold px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-800/60 font-mono flex items-center gap-1"

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React from 'react';
 import {
   Gauge,
   Utensils,
@@ -7,6 +7,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { SpeedBreakdownInfo } from '../types/calculator';
+import { useHoverPopoverState } from '../hooks/useHoverPopoverState';
 
 interface SpeedBreakdownPopoverProps {
   speedBreakdown: SpeedBreakdownInfo;
@@ -19,22 +20,7 @@ export const SpeedBreakdownPopover: React.FC<SpeedBreakdownPopoverProps> = ({
   children,
   className = '',
 }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const hideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  const handleMouseEnter = () => {
-    if (hideTimeoutRef.current) {
-      clearTimeout(hideTimeoutRef.current);
-      hideTimeoutRef.current = null;
-    }
-    setIsOpen(true);
-  };
-
-  const handleMouseLeave = () => {
-    hideTimeoutRef.current = setTimeout(() => {
-      setIsOpen(false);
-    }, 150);
-  };
+  const { isOpen, handleMouseEnter, handleMouseLeave, toggle } = useHoverPopoverState(150);
 
   const isSpeedDebuffed = speedBreakdown.totalBonusPercent < 0;
 
@@ -43,7 +29,7 @@ export const SpeedBreakdownPopover: React.FC<SpeedBreakdownPopoverProps> = ({
       className={`relative inline-block ${className}`}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
-      onClick={() => setIsOpen((prev) => !prev)}
+      onClick={toggle}
     >
       {/* Target Trigger with subtle indicator cursor */}
       <div className="cursor-help transition-transform hover:scale-[1.02]">

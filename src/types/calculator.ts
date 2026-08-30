@@ -12,6 +12,9 @@ export interface ToolStatusInfo {
   meetsLevelReq: boolean;
   meetsPowerReq: boolean;
   effectivePower: number;
+  levelPowerBonus?: number;
+  levelSpeedBonus?: number;
+  levelCritBonus?: number;
 }
 
 export interface ActiveBuffModifier {
@@ -205,6 +208,8 @@ export interface XpCalculationResult {
   currentLevelProgressPct: number;
   projectedLevelProgressPct: number;
   levelsGained: number;
+  isSkillLevelInferred?: boolean;
+  isSkillLevelOverridden?: boolean;
   
   baseActionDurationSeconds: number;
   secondsPerAction: number;
@@ -226,6 +231,14 @@ export interface XpCalculationResult {
   levelForecast: LevelProgressForecast;
   sessionStats?: SessionRateStats | null;
 }
+
+export interface SkillOverrideItem {
+  level?: number;
+  xp?: number;
+  updatedAt?: number;
+}
+
+export type SkillOverrideMap = Record<number, SkillOverrideItem>;
 
 export interface ApiClientStatus {
   lastFetchedAt: Date | null;

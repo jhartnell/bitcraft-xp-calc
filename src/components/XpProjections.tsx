@@ -12,6 +12,7 @@ import {
   Layers,
   ChevronDown,
   ChevronUp,
+  AlertTriangle,
 } from 'lucide-react';
 import { XpCalculationResult } from '../types/calculator';
 import { formatXp, formatTimeSeconds } from '../services/bitcraftData';
@@ -205,6 +206,27 @@ export const XpProjections: React.FC<XpProjectionsProps> = ({ calc, onResetSessi
             </div>
           </div>
         </div>
+
+        {/* Inferred Skill Level Accuracy Notice */}
+        {calc.isSkillLevelInferred && (
+          <div className="bg-amber-950/40 border border-amber-600/50 rounded-xl p-3.5 text-xs text-amber-200 flex items-start gap-3 shadow-inner">
+            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+            <div className="space-y-1 min-w-0 flex-1">
+              <div className="font-semibold text-amber-300 flex items-center gap-1.5 flex-wrap">
+                <span>Inferred Skill Level & Milestone Accuracy Notice</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-900/80 border border-amber-700/60 text-amber-200 font-mono">
+                  BitJita XP Missing
+                </span>
+              </div>
+              <p className="text-[11px] text-amber-200/90 leading-relaxed">
+                BitJita did not return player experience data for {calc.skillName}. The calculator inferred a baseline of <strong>Level {calc.currentSkillLevel} (0 XP)</strong> based on the higher requirement between your equipped tool and crafting station. Because your true current XP is unknown, <strong>level milestones, ETAs, and levels gained</strong> are estimates measured from this baseline.
+              </p>
+              <p className="text-[11px] text-gray-300">
+                💡 <strong>Tip:</strong> Click your level badge in the craft banner above or the Character Skills matrix to enter your exact level and restore complete milestone accuracy.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Detailed XP Progress Bars */}
         <div className="space-y-3 pt-2">

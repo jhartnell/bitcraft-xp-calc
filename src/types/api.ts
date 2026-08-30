@@ -107,6 +107,26 @@ export interface CraftContributionsApiResponse {
   contributions: CraftContribution[];
 }
 
+export interface ToolStats {
+  power: number;
+  level: number;
+  toolType: string;
+  skillId: number;
+  skillName: string;
+  skillIconAssetName?: string;
+}
+
+export interface PlayerToolEntry {
+  toolType: number;
+  power: number;
+  level: number;
+}
+
+export interface PlayerToolsApiResponse {
+  tools: PlayerToolEntry[];
+  skillPowers?: Record<string, number>;
+}
+
 export interface ItemMetadata {
   id: number | string;
   name: string;
@@ -121,6 +141,7 @@ export interface ItemMetadata {
   volume?: number;
   durability?: number;
   stats?: ItemStat[];
+  toolStats?: ToolStats;
 }
 
 export interface ItemStat {

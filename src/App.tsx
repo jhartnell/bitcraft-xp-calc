@@ -6,6 +6,7 @@ import {
   EquipmentSlot,
   PlayerBuff,
   PlayerStatsData,
+  PlayerToolEntry,
   ItemMetadata,
 } from './types/api';
 import { ApiClientStatus, FoodBuffOverride } from './types/calculator';
@@ -24,6 +25,7 @@ import { Footer } from './components/Footer';
 import { UpdateNotificationToast } from './components/UpdateNotificationToast';
 import { useVersionUpdateChecker } from './hooks/useVersionUpdateChecker';
 import { useSessionXpTracker } from './hooks/useSessionXpTracker';
+import { useSkillOverrides } from './hooks/useSkillOverrides';
 import { Hammer, AlertCircle, Info, MapPin, Star, Globe } from 'lucide-react';
 
 const RECENT_PLAYERS_KEY = 'bitcraft_xp_recent_players';
@@ -62,6 +64,7 @@ export const App: React.FC = () => {
 
   const [playerDetails, setPlayerDetails] = useState<PlayerDetails | null>(null);
   const [equipment, setEquipment] = useState<EquipmentSlot[]>([]);
+  const [playerTools, setPlayerTools] = useState<PlayerToolEntry[]>([]);
   const [buffs, setBuffs] = useState<PlayerBuff[]>([]);
   const [stats, setStats] = useState<PlayerStatsData | null>(null);
   const [crafts, setCrafts] = useState<CraftResult[]>([]);
@@ -74,6 +77,13 @@ export const App: React.FC = () => {
   const [itemMetadataMap, setItemMetadataMap] = useState<Map<number, ItemMetadata>>(new Map());
   const [customProgressPerAction, setCustomProgressPerAction] = useState<number | null>(null);
   
+  // Persistent user skill level overrides (for BitJita experience null gaps or manual tuning)
+  const {
+    overrides: skillOverrides,
+    setSkillLevel,
+    clearSkillOverride,
+  } = useSkillOverrides(selectedPlayer?.entityId || playerDetails?.entityId);
+
   const [foodBuffOverride, setFoodBuffOverride] = useState<FoodBuffOverride | null>(() => {
     try {
       const saved = sessionStorage.getItem('bitcraft_food_buff_override');
@@ -352,18 +362,60 @@ export const App: React.FC = () => {
         setError(null);
 
         // Fetch parallel endpoints with polite rate-limiting
-        const [detailsRes, craftsRes, equipRes, buffsRes, statsRes] = await Promise.all([
+        const [detailsRes, craftsRes, equipRes, buffsRes, statsRes, toolsRes] = await Promise.all([
           bitjitaApi.getPlayerDetails(player.entityId, forceFresh),
           bitjitaApi.getPlayerCrafts(player.entityId, forceFresh),
           bitjitaApi.getPlayerEquipment(player.entityId, forceFresh),
           bitjitaApi.getPlayerBuffs(player.entityId, forceFresh),
           bitjitaApi.getPlayerStats(player.entityId, forceFresh).catch(() => null),
+          bitjitaApi.getPlayerTools(player.entityId, forceFresh).catch(() => ({ tools: [] })),
         ]);
 
         setPlayerDetails(detailsRes);
-        setEquipment(equipRes?.equipment || []);
+        const rawEquip = equipRes?.equipment || [];
+        setEquipment(rawEquip);
         setBuffs(buffsRes?.buffs || []);
         setStats(statsRes);
+        setPlayerTools(toolsRes?.tools || []);
+
+        // Background-enrich equipment items with full /api/items/{itemId} metadata (including toolStats)
+        const toolSlotItems = rawEquip.filter(
+          (s) => s.item && s.item.id && !s.item.toolStats
+        );
+        if (toolSlotItems.length > 0) {
+          Promise.all(
+            toolSlotItems.map(async (slot) => {
+              if (slot.item?.id) {
+                const fullItem = await bitjitaApi.getItem(Number(slot.item.id));
+                if (fullItem) {
+                  return { slotPrimary: slot.primary, fullItem };
+                }
+              }
+              return null;
+            })
+          ).then((enriched) => {
+            const updates = enriched.filter(Boolean);
+            if (updates.length > 0) {
+              setEquipment((prev) =>
+                prev.map((slot) => {
+                  const match = updates.find((u) => u?.slotPrimary === slot.primary);
+                  if (match && match.fullItem) {
+                    return {
+                      ...slot,
+                      item: {
+                        ...slot.item,
+                        ...match.fullItem,
+                        toolStats: match.fullItem.toolStats || slot.item?.toolStats,
+                        stats: match.fullItem.stats && match.fullItem.stats.length > 0 ? match.fullItem.stats : (slot.item?.stats || []),
+                      },
+                    };
+                  }
+                  return slot;
+                })
+              );
+            }
+          }).catch(() => {});
+        }
 
         // Filter active (incomplete) crafts
         const activeCrafts = (craftsRes?.craftResults || []).filter(
@@ -633,7 +685,9 @@ export const App: React.FC = () => {
         contributions,
         customProgressPerAction,
         null,
-        foodBuffOverride
+        foodBuffOverride,
+        playerTools,
+        skillOverrides
       )
     : null;
 
@@ -797,6 +851,9 @@ export const App: React.FC = () => {
                   onOverrideProgressPerAction={(val) => setCustomProgressPerAction(val)}
                   onOpenPublicModal={() => setIsPublicModalOpen(true)}
                   onResetSession={resetSession}
+                  skillOverrides={skillOverrides}
+                  onSetSkillLevel={setSkillLevel}
+                  onClearSkillOverride={clearSkillOverride}
                 />
 
                 {/* Craft Contributors & Projections Panel */}
@@ -885,6 +942,9 @@ export const App: React.FC = () => {
               <SkillList
                 player={playerDetails}
                 highlightSkillId={calcResult?.skillId}
+                skillOverrides={skillOverrides}
+                onSetSkillLevel={setSkillLevel}
+                onClearSkillOverride={clearSkillOverride}
               />
             )}
           </div>
@@ -933,6 +993,7 @@ export const App: React.FC = () => {
         onSelectCraft={(craft) => handleSelectCustomCraft(craft)}
         playerId={selectedPlayer?.entityId}
         playerUsername={selectedPlayer?.username}
+        playerRegionId={playerDetails?.regionId}
       />
 
       {/* Floating Update Notification Toast */}

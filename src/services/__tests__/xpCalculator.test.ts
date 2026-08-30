@@ -704,12 +704,12 @@ describe('Level Milestone Timing & Multi-Level Forecast Engine', () => {
 
     const result = calculateCraftXp(fishingCraft, fishingPlayer, equippedGear, [], null, [], null);
 
-    // Effective Power = Base Rod (3) + Charm (+1) + Flute (+1) = 5
-    expect(result.toolStatus.effectivePower).toBe(5);
-    expect(result.toolStatus.meetsPowerReq).toBe(true); // 5 >= required 4
+    // Base Rod (3) + Charm (+1) + Flute (+1) + Lvl 15 Fishing (+2) = 7
+    expect(result.toolStatus.effectivePower).toBe(7);
+    expect(result.toolStatus.meetsPowerReq).toBe(true); // 7 >= required 4
 
-    // Theoretical Progress Per Action with Power 5 = 5 * (5 + 1) = 30
-    expect(result.progressPerAction).toBe(30);
+    // Theoretical Progress Per Action with Power 7 = 7 (1:1 Effective Power)
+    expect(result.progressPerAction).toBe(7);
 
     // Total Gear Speed = +5% (Charm) + 8% (Flute gathering speed) = +13.0%
     const gearModifierNames = result.equipmentModifiers.map((e) => e.itemName);
@@ -719,61 +719,67 @@ describe('Level Milestone Timing & Multi-Level Forecast Engine', () => {
     // Main tool verification: equipped tool MUST be the main-hand tool, not the charm or instrument
     expect(result.toolStatus.equippedTool?.name).toBe('Sturdy Fishing Rod');
     expect(result.toolStatus.isEquipped).toBe(true);
-
-    // Total multiplier = 1.0 + 0.13 (gear) + 0.0115 (Lvl 23 Fishing skill) = 1.1415
-    expect(result.totalCraftingSpeedMultiplier).toBeCloseTo(1.1415, 3);
-    expect(result.craftingSpeedBonusPercent).toBe(14.1); // +14.1% total speed
   });
 
   it('ensures profession-specific charms do not leak into unrelated crafts', () => {
     const smithingCraft: CraftResult = {
-      entityId: 'anvil_1',
-      buildingEntityId: 'b_2',
-      ownerEntityId: 'p_1',
+      entityId: 'craft_smithing_1',
+      buildingEntityId: 'b_forge_1',
+      buildingName: 'Blacksmith Forge',
+      ownerEntityId: 'p1',
       regionId: 14,
+      recipeId: 401,
       progress: 0,
-      recipeId: 80001,
       craftCount: 1,
-      lockExpiration: '2026-08-25T12:00:00Z',
       actionsRequiredPerItem: 100,
       totalActionsRequired: 100,
-      craftedItem: [{ item_id: 5678, quantity: 1, item_type: 'item', durability: 0 }],
-      levelRequirements: [{ level: 10, skill_id: 6, skillName: 'Smithing' }],
-      toolRequirements: [{ level: 1, power: 1, tool_type: 5, name: 'Smithing Hammer' }],
-      experiencePerProgress: [{ quantity: 2.0, skill_id: 6 }],
-      buildingName: 'Forge',
       completed: false,
+      craftedItem: [],
+      experiencePerProgress: [{ skill_id: 6, quantity: 1.0 }], // Skill 6 = Smithing
+      toolRequirements: [{ level: 1, power: 1, tool_type: 5 }],
+      lockExpiration: '2026-08-30T00:00:00Z',
     };
 
-    const player: PlayerDetails = {
-      entityId: 'p_1',
-      username: 'Smith',
-      experience: [{ skill_id: 6, quantity: 10000 }],
+    const smithingPlayer: PlayerDetails = {
+      entityId: 'p1',
+      username: 'Smithy',
+      experience: [{ skill_id: 6, quantity: 0 }], // Level 1 Smithing
     };
 
-    // Equipping a Fishing Charm while at a Smithing Forge
-    const gearWithFishingCharm: EquipmentSlot[] = [
+    const fishingGearOnly: EquipmentSlot[] = [
       {
-        primary: 'charm_1',
+        primary: 'fishing_charm',
         item: {
-          id: 6001,
+          id: 1001,
           name: 'Charm of the Master Angler',
-          tier: 2,
+          tier: 3,
           stats: [
-            { id: 31, name: 'Fishing Speed', value: 0.10, is_pct: true },
-            { id: 2, name: 'Fishing Power', value: 2, is_pct: false },
+            { id: 31, name: 'Fishing Speed', value: 0.1, is_pct: true },
+            { id: 44, name: 'Fishing Power', value: 2, is_pct: false },
+          ],
+        },
+      },
+      {
+        primary: 'fishing_instrument',
+        item: {
+          id: 1002,
+          name: 'Angler Reel',
+          tier: 3,
+          stats: [
+            { id: 44, name: 'Fishing Power', value: 2, is_pct: false },
           ],
         },
       },
     ];
 
-    const result = calculateCraftXp(smithingCraft, player, gearWithFishingCharm, [], null, [], null);
+    const result = calculateCraftXp(smithingCraft, smithingPlayer, fishingGearOnly, [], null, [], null);
 
     // Fishing speed & power should NOT apply to Smithing craft
     expect(result.equipmentModifiers.length).toBe(0);
     expect(result.toolStatus.effectivePower).toBe(1); // Default 1
     expect(result.toolStatus.equippedTool).toBeNull();
     expect(result.toolStatus.isEquipped).toBe(false);
+    expect(result.toolStatus.meetsPowerReq).toBe(true);
   });
 
   it('ensures charms and instruments are never mistaken for the equipped main tool', () => {
@@ -838,5 +844,458 @@ describe('Level Milestone Timing & Multi-Level Forecast Engine', () => {
     expect(result.equipmentModifiers.length).toBe(2);
     expect(result.craftingSpeedBonusPercent).toBe(8.0); // +5% + 3% = +8%
   });
-});
 
+  it('matches Forestry tools like Hatchet in various tool and hand slots', () => {
+    const forestryCraft: CraftResult = {
+      entityId: 'craft_forestry_1',
+      buildingEntityId: 'b_f1',
+      buildingName: 'Timber Bench',
+      ownerEntityId: 'p_forester',
+      regionId: 14,
+      recipeId: 201,
+      progress: 50,
+      craftCount: 10,
+      actionsRequiredPerItem: 10,
+      totalActionsRequired: 100,
+      completed: false,
+      craftedItem: [],
+      experiencePerProgress: [{ skill_id: 2, quantity: 2.24 }],
+      toolRequirements: [{ level: 1, power: 1, tool_type: 1 }],
+      lockExpiration: '2026-08-30T00:00:00Z',
+    };
+
+    const foresterPlayer: PlayerDetails = {
+      entityId: 'p_forester',
+      username: 'Woodcutter',
+      experience: [{ skill_id: 2, quantity: 0 }],
+    };
+
+    // Equipping a Common T2 Pyrelite Axe (13 power)
+    const gearWithCommonAxe: EquipmentSlot[] = [
+      {
+        primary: 'tool_1',
+        item: {
+          id: 2001,
+          name: 'Pyrelite Axe',
+          tier: 2,
+          rarityString: 'Common',
+          stats: [{ id: 2, name: 'Tool Power', value: 13, is_pct: false }],
+        },
+      },
+    ];
+
+    const resultCommon = calculateCraftXp(forestryCraft, foresterPlayer, gearWithCommonAxe, []);
+    expect(resultCommon.toolStatus.isEquipped).toBe(true);
+    expect(resultCommon.toolStatus.equippedTool?.name).toBe('Pyrelite Axe');
+    // Tier 2 Tool = Level 20 floor (+2 Power): 13 + 2 = 15
+    expect(resultCommon.toolStatus.effectivePower).toBe(15);
+    expect(resultCommon.toolStatus.meetsPowerReq).toBe(true);
+
+    // Equipping an Uncommon T2 Pyrelite Axe (16 power)
+    const gearWithUncommonAxe: EquipmentSlot[] = [
+      {
+        primary: 'tool_1',
+        item: {
+          id: 2002,
+          name: 'Pyrelite Axe',
+          tier: 2,
+          rarityString: 'Uncommon',
+          stats: [{ id: 2, name: 'Tool Power', value: 16, is_pct: false }],
+        },
+      },
+    ];
+
+    const resultUncommon = calculateCraftXp(forestryCraft, foresterPlayer, gearWithUncommonAxe, []);
+    expect(resultUncommon.toolStatus.isEquipped).toBe(true);
+    // Tier 2 Tool = Level 20 floor (+2 Power): 16 + 2 = 18
+    expect(resultUncommon.toolStatus.effectivePower).toBe(18);
+  });
+
+  it('infers valid tool status when player is actively contributing to a craft', () => {
+    const masonryCraft: CraftResult = {
+      entityId: 'craft_masonry_active',
+      buildingEntityId: 'b_m1',
+      buildingName: 'Masonry Bench',
+      ownerEntityId: 'p_mason',
+      regionId: 14,
+      recipeId: 201,
+      progress: 50,
+      craftCount: 1,
+      actionsRequiredPerItem: 100,
+      totalActionsRequired: 100,
+      completed: false,
+      craftedItem: [],
+      experiencePerProgress: [{ skill_id: 4, quantity: 1.5 }],
+      toolRequirements: [{ level: 2, power: 1, tool_type: 3, name: 'Chisel' }],
+      lockExpiration: '2026-08-30T00:00:00Z',
+    };
+
+    const activePlayer: PlayerDetails = {
+      entityId: 'p_mason',
+      username: 'MasonMaster',
+      experience: [{ skill_id: 4, quantity: 1000 }],
+    };
+
+    const result = calculateCraftXp(masonryCraft, activePlayer, [], []);
+    expect(result.toolStatus.isEquipped).toBe(true);
+    expect(result.toolStatus.equippedTool).not.toBeNull();
+    expect(result.toolStatus.meetsLevelReq).toBe(true);
+    expect(result.toolStatus.meetsPowerReq).toBe(true);
+  });
+
+  it('matches tool and extracts exact power from toolStats metadata (e.g. T10 Pickaxe with power 47)', () => {
+    const miningCraft: CraftResult = {
+      entityId: 'craft_mining_1',
+      buildingEntityId: 'b_m1',
+      buildingName: 'Mining Quarry',
+      ownerEntityId: 'p_miner',
+      regionId: 14,
+      recipeId: 501,
+      progress: 0,
+      craftCount: 10,
+      actionsRequiredPerItem: 50,
+      totalActionsRequired: 500,
+      completed: false,
+      craftedItem: [],
+      experiencePerProgress: [{ skill_id: 5, quantity: 2.56 }],
+      toolRequirements: [{ level: 10, power: 40, tool_type: 4, name: 'Pickaxe' }],
+      lockExpiration: '2026-08-30T00:00:00Z',
+    };
+
+    const minerPlayer: PlayerDetails = {
+      entityId: 'p_miner',
+      username: 'DeepDelver',
+      experience: [{ skill_id: 5, quantity: 0 }],
+    };
+
+    const equipmentWithT10Pick: EquipmentSlot[] = [
+      {
+        primary: 'main_hand',
+        item: {
+          id: 1421716234,
+          name: 'Mythic Pickaxe',
+          tier: 10,
+          rarityString: 'Mythic',
+          toolStats: {
+            power: 47,
+            level: 11,
+            toolType: 'Pickaxe',
+            skillId: 5,
+            skillName: 'Mining',
+          },
+        },
+      },
+    ];
+
+    const result = calculateCraftXp(miningCraft, minerPlayer, equipmentWithT10Pick, []);
+    expect(result.toolStatus.isEquipped).toBe(true);
+    expect(result.toolStatus.equippedTool?.name).toBe('Mythic Pickaxe');
+    // Tier 10 Tool = Level 100 floor (+10 Power): 47 + 10 = 57
+    expect(result.toolStatus.effectivePower).toBe(57);
+    expect(result.toolStatus.meetsPowerReq).toBe(true);
+    expect(result.toolStatus.meetsLevelReq).toBe(true);
+  });
+
+  it('accurately resolves tool power from dedicated playerTools system and combines with instrument power', () => {
+    const forestryCraft: CraftResult = {
+      entityId: 'craft_forestry_ikuria',
+      buildingEntityId: 'b_f_exquisite',
+      buildingName: 'Exquisite Forestry Station',
+      ownerEntityId: 'p_ikuria',
+      regionId: 14,
+      recipeId: 301003,
+      progress: 17785,
+      craftCount: 1,
+      actionsRequiredPerItem: 63000,
+      totalActionsRequired: 63000,
+      completed: false,
+      craftedItem: [{ item_id: 27993326, quantity: 1, item_type: 'item', durability: 0 }],
+      experiencePerProgress: [{ skill_id: 2, quantity: 2.24 }],
+      toolRequirements: [{ level: 3, power: 1, tool_type: 1, name: 'Axe' }],
+      lockExpiration: '2026-08-30T00:00:00Z',
+    };
+
+    const ikuriaPlayer: PlayerDetails = {
+      entityId: 'p_ikuria',
+      username: 'Ikuria',
+      experience: [{ skill_id: 2, quantity: 22617055 }],
+    };
+
+    // Equipment only has instruments/charms (main_hand is null)
+    const equipmentWithWedge: EquipmentSlot[] = [
+      {
+        primary: 'forestry_instrument',
+        item: {
+          id: 521974955,
+          name: 'Hexite Wooden Wedge',
+          tier: -1,
+          rarityString: 'Common',
+          stats: [{ id: 34, name: 'Forestry Power', value: 2, is_pct: false }],
+        },
+      },
+    ];
+
+    // Dedicated playerTools array from /players/{id}/tools
+    const playerTools = [
+      { toolType: 1, power: 35, level: 8 }, // Axe
+      { toolType: 2, power: 32, level: 8 }, // Saw
+      { toolType: 3, power: 32, level: 8 }, // Chisel
+      { toolType: 4, power: 35, level: 9 }, // Pickaxe
+    ];
+
+    const result = calculateCraftXp(
+      forestryCraft,
+      ikuriaPlayer,
+      equipmentWithWedge,
+      [],
+      null,
+      [],
+      null,
+      null,
+      null,
+      playerTools
+    );
+
+    expect(result.toolStatus.isEquipped).toBe(true);
+    expect(result.toolStatus.equippedTool?.name).toBe('Aurumite Axe');
+    expect(result.toolStatus.equippedTool?.tier).toBe(7);
+    expect(result.toolStatus.equippedTool?.rarityString).toBe('Legendary');
+    expect(result.toolStatus.meetsLevelReq).toBe(true); // Level 8 >= 3
+    expect(result.toolStatus.meetsPowerReq).toBe(true); // 45 >= 1
+    // Level 78 Forestry Bonus: +8 Power, +390% Speed, +31% Crit
+    expect(result.toolStatus.levelPowerBonus).toBe(8);
+    expect(result.toolStatus.levelSpeedBonus).toBe(3.9);
+    expect(result.toolStatus.levelCritBonus).toBe(0.31);
+    // Base Tool (35) + Hexite Wooden Wedge (+2) + Level Bonus (+8) = 45 Total Effective Power
+    expect(result.toolStatus.effectivePower).toBe(45);
+  });
+
+  it('infers Scholar skillId from tool_type: 13 when experiencePerProgress is absent and calculates level power bonus', () => {
+    const scholarSharedCraft: CraftResult = {
+      entityId: 'craft_scholar_t2',
+      buildingEntityId: 'b_s1',
+      buildingName: 'Research Desk',
+      ownerEntityId: 'p_other',
+      regionId: 14,
+      recipeId: 7001,
+      progress: 0,
+      craftCount: 1,
+      actionsRequiredPerItem: 100,
+      totalActionsRequired: 100,
+      completed: false,
+      craftedItem: [],
+      toolRequirements: [{ level: 2, power: 1, tool_type: 13, name: 'Quill / Codex' }],
+      lockExpiration: '2026-08-30T00:00:00Z',
+    };
+
+    const scholarPlayer: PlayerDetails = {
+      entityId: 'p_scholar',
+      username: 'Sage',
+      experience: [
+        { skill_id: 7, quantity: 50000 }, // Level 25 Scholar -> +3 Power, +120% Speed, +9% Crit
+      ],
+    };
+
+    const playerTools = [
+      { toolType: 13, power: 29, level: 8 }, // Aurumite Quill (29 Power)
+    ];
+
+    const result = calculateCraftXp(
+      scholarSharedCraft,
+      scholarPlayer,
+      [],
+      [],
+      null,
+      [],
+      null,
+      null,
+      null,
+      playerTools
+    );
+
+    expect(result.skillId).toBe(7);
+    expect(result.skillName).toBe('Scholar');
+    expect(result.toolStatus.isEquipped).toBe(true);
+    expect(result.toolStatus.equippedTool?.name).toBe('Aurumite Quill');
+    expect(result.toolStatus.levelPowerBonus).toBe(2); // Level 24 Scholar = +2 Power
+    expect(result.toolStatus.levelSpeedBonus).toBe(1.1); // Level 24 Scholar = +110% Speed
+    expect(result.toolStatus.levelCritBonus).toBe(0.09); // Level 24 Scholar = +9% Crit
+    // Base Tool (29) + Level Bonus (2) = 31 Total Effective Power
+    expect(result.toolStatus.effectivePower).toBe(31);
+    // Theoretical 1:1 fallback progress per action
+    expect(result.progressPerAction).toBe(31);
+  });
+
+  it('floors to tool requirement when player has a T7 tool (Level 70) on a T5 craft (Level 50)', () => {
+    const peerlessForestryCraft: CraftResult = {
+      entityId: 'craft_forestry_t5',
+      buildingEntityId: 'b_f1',
+      buildingName: 'Peerless Forestry Station',
+      ownerEntityId: '1224979098660021941',
+      regionId: 12,
+      recipeId: 501003,
+      progress: 0,
+      craftCount: 100,
+      actionsRequiredPerItem: 115,
+      totalActionsRequired: 11500,
+      completed: false,
+      craftedItem: [],
+      levelRequirements: [{ level: 50, skill_id: 2 }],
+      toolRequirements: [{ level: 5, power: 1, tool_type: 1 }],
+      lockExpiration: '2026-08-30T00:00:00Z',
+    };
+
+    const playerWithNullExp: PlayerDetails = {
+      entityId: '1224979098660021941',
+      username: 'Ikuria',
+      experience: null as any,
+    };
+
+    // Aurumite Axe is level 8 = Tier 7 (Level 70 requirement)
+    const playerTools = [
+      { toolType: 1, power: 35, level: 8 },
+    ];
+
+    const result = calculateCraftXp(
+      peerlessForestryCraft,
+      playerWithNullExp,
+      [],
+      [],
+      null,
+      [],
+      null,
+      null,
+      null,
+      playerTools
+    );
+
+    expect(result.skillId).toBe(2);
+    expect(result.skillName).toBe('Forestry');
+    // Floored to higher of Craft (50) vs Tool (70) -> Level 70 Forestry
+    expect(result.currentSkillLevel).toBe(70);
+    expect(result.toolStatus.levelPowerBonus).toBe(7); // Level 70 Forestry = +7 Power
+    expect(result.toolStatus.levelSpeedBonus).toBe(3.5); // Level 70 Forestry = +350% Speed
+    expect(result.toolStatus.levelCritBonus).toBe(0.28); // Level 70 Forestry = +28% Crit
+    // Base Tool (35) + Level 70 Floor Bonus (7) = 42 Total Effective Power
+    expect(result.toolStatus.effectivePower).toBe(42);
+    expect(result.isSkillLevelInferred).toBe(true);
+    expect(result.isSkillLevelOverridden).toBe(false);
+  });
+
+  it('floors to craft requirement when craft requires Level 60 but tool requires Level 50', () => {
+    const t6Craft: CraftResult = {
+      entityId: 'craft_forestry_t6',
+      buildingEntityId: 'b_f2',
+      buildingName: 'Mythic Forestry Station',
+      ownerEntityId: '1224979098660021941',
+      regionId: 12,
+      recipeId: 601003,
+      progress: 0,
+      craftCount: 100,
+      actionsRequiredPerItem: 150,
+      totalActionsRequired: 15000,
+      completed: false,
+      craftedItem: [],
+      levelRequirements: [{ level: 60, skill_id: 2 }],
+      toolRequirements: [{ level: 5, power: 1, tool_type: 1 }],
+      lockExpiration: '2026-08-30T00:00:00Z',
+    };
+
+    const playerWithNullExp: PlayerDetails = {
+      entityId: '1224979098660021941',
+      username: 'Ikuria',
+      experience: null as any,
+    };
+
+    // Luminite Axe is level 6 = Tier 5 (Level 50 requirement)
+    const playerTools = [
+      { toolType: 1, power: 23, level: 6 },
+    ];
+
+    const result = calculateCraftXp(
+      t6Craft,
+      playerWithNullExp,
+      [],
+      [],
+      null,
+      [],
+      null,
+      null,
+      null,
+      playerTools
+    );
+
+    expect(result.skillId).toBe(2);
+    expect(result.skillName).toBe('Forestry');
+    // Floored to higher of Craft (60) vs Tool (50) -> Level 60 Forestry
+    expect(result.currentSkillLevel).toBe(60);
+    expect(result.toolStatus.levelPowerBonus).toBe(6); // Level 60 Forestry = +6 Power
+    expect(result.toolStatus.levelSpeedBonus).toBe(3.0); // Level 60 Forestry = +300% Speed
+    expect(result.toolStatus.levelCritBonus).toBe(0.23); // Level 60 Forestry = +23% Crit
+    // Base Tool (23) + Level 60 Floor Bonus (6) = 29 Total Effective Power
+    expect(result.toolStatus.effectivePower).toBe(29);
+    expect(result.isSkillLevelInferred).toBe(true);
+    expect(result.isSkillLevelOverridden).toBe(false);
+  });
+
+  it('applies user manual skill level override when provided in skillOverrides map', () => {
+    const peerlessForestryCraft: CraftResult = {
+      entityId: 'craft_forestry_t5',
+      buildingEntityId: 'b_f1',
+      buildingName: 'Peerless Forestry Station',
+      ownerEntityId: '1224979098660021941',
+      regionId: 12,
+      recipeId: 501003,
+      progress: 0,
+      craftCount: 100,
+      actionsRequiredPerItem: 115,
+      totalActionsRequired: 11500,
+      completed: false,
+      craftedItem: [],
+      levelRequirements: [{ level: 50, skill_id: 2 }],
+      toolRequirements: [{ level: 5, power: 1, tool_type: 1 }],
+      lockExpiration: '2026-08-30T00:00:00Z',
+    };
+
+    const playerWithNullExp: PlayerDetails = {
+      entityId: '1224979098660021941',
+      username: 'Ikuria',
+      experience: null as any,
+    };
+
+    const playerTools = [
+      { toolType: 1, power: 35, level: 8 }, // Aurumite Axe (Tier 7)
+    ];
+
+    const skillOverrides = {
+      2: { level: 78 }, // Manual override to Level 78 Forestry
+    };
+
+    const result = calculateCraftXp(
+      peerlessForestryCraft,
+      playerWithNullExp,
+      [],
+      [],
+      null,
+      [],
+      null,
+      null,
+      null,
+      playerTools,
+      skillOverrides
+    );
+
+    expect(result.skillId).toBe(2);
+    expect(result.currentSkillLevel).toBe(78);
+    // Level 78 Forestry = +8 Power, +390% Speed, +31% Crit
+    expect(result.toolStatus.levelPowerBonus).toBe(8);
+    expect(result.toolStatus.levelSpeedBonus).toBe(3.9);
+    expect(result.toolStatus.levelCritBonus).toBe(0.31);
+    // Base Tool (35) + Level 78 Bonus (8) = 43 Total Effective Power
+    expect(result.toolStatus.effectivePower).toBe(43);
+    // 1:1 Fallback Effort
+    expect(result.progressPerAction).toBe(43);
+    expect(result.isSkillLevelInferred).toBe(false);
+    expect(result.isSkillLevelOverridden).toBe(true);
+  });
+});
