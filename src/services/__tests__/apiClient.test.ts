@@ -165,4 +165,61 @@ describe('PoliteApiClient Cache & Inspector', () => {
 
     vi.unstubAllGlobals();
   });
+
+  it('automatically clears anomalies when a previously failed endpoint succeeds', async () => {
+    bitjitaApi.clearAnomalies();
+
+    // 1. Initial fetch returns null experience -> anomaly recorded
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ player: { entityId: 'p_heal', username: 'Healer', experience: null } }),
+    }));
+
+    await bitjitaApi.getPlayerDetails('p_heal', true);
+    expect(bitjitaApi.getAnomalies().length).toBe(1);
+    expect(bitjitaApi.getAnomalies()[0].endpoint).toBe('/players/p_heal');
+
+    // 2. Subsequent fetch returns valid experience array -> anomaly automatically cleared!
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        player: {
+          entityId: 'p_heal',
+          username: 'Healer',
+          experience: [{ skill_id: 1, quantity: 5000 }],
+        },
+      }),
+    }));
+
+    await bitjitaApi.getPlayerDetails('p_heal', true);
+    expect(bitjitaApi.getAnomalies().length).toBe(0);
+
+    vi.unstubAllGlobals();
+  });
+
+  it('automatically clears HTTP error anomalies when network request succeeds', async () => {
+    bitjitaApi.clearAnomalies();
+
+    // 1. Initial request fails with 500 -> anomaly recorded
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+      statusText: 'Internal Server Error',
+    }));
+
+    await expect(bitjitaApi.getSkills()).rejects.toThrow();
+    expect(bitjitaApi.getAnomalies().length).toBe(1);
+    expect(bitjitaApi.getAnomalies()[0].endpoint).toBe('/skills');
+
+    // 2. Subsequent request succeeds -> anomaly automatically cleared!
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ skills: [{ id: 1, name: 'Carpentry' }] }),
+    }));
+
+    await bitjitaApi.getSkills();
+    expect(bitjitaApi.getAnomalies().length).toBe(0);
+
+    vi.unstubAllGlobals();
+  });
 });

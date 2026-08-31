@@ -68,9 +68,25 @@ export const CacheInspectorPopover: React.FC<CacheInspectorPopoverProps> = ({
     setRetryingEndpoint(endpoint);
     try {
       bitjitaApi.evictEntry(endpoint);
-      await bitjitaApi.fetchWithCache(endpoint, 15000, true);
+      if (endpoint.includes('/stats')) {
+        const entityId = endpoint.split('/')[2];
+        if (entityId) {
+          await bitjitaApi.getPlayerStats(entityId, true);
+        } else {
+          await bitjitaApi.fetchWithCache(endpoint, 15000, true);
+        }
+      } else if (endpoint.startsWith('/players/')) {
+        const entityId = endpoint.split('/')[2];
+        if (entityId) {
+          await bitjitaApi.getPlayerDetails(entityId, true);
+        } else {
+          await bitjitaApi.fetchWithCache(endpoint, 15000, true);
+        }
+      } else {
+        await bitjitaApi.fetchWithCache(endpoint, 15000, true);
+      }
     } catch {
-      // Re-triggers error handling
+      // Re-triggers error handling & anomaly logging
     } finally {
       setRetryingEndpoint(null);
     }

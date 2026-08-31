@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Client-Side Region Verification:** Added strict client-side region verification (`c.regionId === regionId`) because BitJita's backend `/api/crafts?region_id={r}` returns crafts across all regions globally.
 - **Strict Coordinate Validation:** Stations with missing or unindexed coordinates (`coords === null`) are excluded from proximity calculation so they no longer default to `0m`.
 - **Multi-Path Player Coordinate Resolution:** Added multi-path resolution across `player.locationX`, `player.location.locationX`, `player.teleportLocationX`, and fallback to the player's active craft station location.
+- **Self-Healing Anomaly Diagnostics:** Automatically clears logged endpoint anomalies from the Cache Inspector when a previously failed or unpopulated API endpoint (e.g. player experience, player stats, or network 429/500) successfully returns healthy data on subsequent polls or retries.
 
 ---
 

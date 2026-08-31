@@ -171,6 +171,8 @@ class PoliteApiClient {
         timestamp: Date.now(),
         ttlMs,
       });
+      // Clear any prior network/rate-limit anomalies on successful fetch
+      this.clearAnomaliesForEndpoint(endpoint, ['http_error', 'rate_limited']);
       this.notifyStatus();
       return data;
     });
@@ -273,6 +275,19 @@ class PoliteApiClient {
     this.notifyStatus();
   }
 
+  public clearAnomaliesForEndpoint(endpointPattern: string, types?: EndpointAnomaly['type'][]): void {
+    const initialLength = this.anomalies.length;
+    this.anomalies = this.anomalies.filter((a) => {
+      const matchesEndpoint = a.endpoint === endpointPattern || a.endpoint.includes(endpointPattern);
+      if (!matchesEndpoint) return true;
+      if (types && !types.includes(a.type)) return true;
+      return false;
+    });
+    if (this.anomalies.length !== initialLength) {
+      this.notifyStatus();
+    }
+  }
+
   public getAnomalies(): EndpointAnomaly[] {
     return [...this.anomalies];
   }
@@ -313,6 +328,9 @@ class PoliteApiClient {
         message: 'player.experience array is null or empty in server response',
         impact: 'Baseline skill level inferred from station/equipment requirements',
       });
+    } else {
+      // Data is healthy and experience array is populated! Auto-clear any previous anomaly for this player
+      this.clearAnomaliesForEndpoint(`/players/${entityId}`);
     }
     return res.player;
   }
@@ -409,7 +427,7 @@ class PoliteApiClient {
         30000,
         forceFresh
       );
-      if (!res?.stats) {
+      if (!res?.stats || Object.keys(res.stats).length === 0) {
         this.recordAnomaly({
           endpoint: `/players/${entityId}/stats`,
           method: 'GET',
@@ -417,6 +435,8 @@ class PoliteApiClient {
           message: 'Player stats object returned null or empty from BitJita',
           impact: 'Speed bonuses derived from equipment and skill level fallback',
         });
+      } else {
+        this.clearAnomaliesForEndpoint(`/players/${entityId}/stats`);
       }
       return res?.stats || ({} as PlayerStatsData);
     } catch {
