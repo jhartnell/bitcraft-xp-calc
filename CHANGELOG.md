@@ -4,6 +4,13 @@ All notable changes to the **BitCraft Online XP Calculator** project are documen
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.2] - 2026-08-30
+
+### Fixed
+- **Self-Healing Anomaly Diagnostics:** Automatically clears logged endpoint anomalies from the Cache Inspector when a previously failed or unpopulated API endpoint (e.g. player experience, player stats, or network 429/500) successfully returns healthy data on subsequent polls or retries.
+
+---
+
 ## [1.8.1] - 2026-08-30
 
 ### Fixed

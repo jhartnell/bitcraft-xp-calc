@@ -46,7 +46,7 @@ export async function checkForAppUpdate(
 export function useVersionUpdateChecker(
   pollIntervalMs: number = 60_000
 ): UseVersionUpdateCheckerReturn {
-  const currentVersion = (import.meta.env.VITE_APP_VERSION as string) || '1.8.1';
+  const currentVersion = (import.meta.env.VITE_APP_VERSION as string) || '1.8.2';
   const [hasUpdate, setHasUpdate] = useState<boolean>(false);
   const [latestVersion, setLatestVersion] = useState<string | null>(null);
   const dismissedUntilRef = useRef<number>(0);
