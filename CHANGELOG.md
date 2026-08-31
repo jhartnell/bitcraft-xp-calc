@@ -4,6 +4,16 @@ All notable changes to the **BitCraft Online XP Calculator** project are documen
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.3] - 2026-08-31
+
+### Fixed
+- **Authoritative BitJita Canonical Level Curve:** Integrated official 120-level dataset from `https://bitjita.com/static/experience/levels.json`, ensuring 100% mathematically exact level thresholds and progression deltas across all professions (resolving Level 80+ calculation discrepancies).
+- **In-Level Progress & Remaining XP Tracking:** Added detailed in-level metrics (`2,054 / 2,974,820 XP (0.1%)`) and explicit remaining XP display (`• 2,972,766 XP left to Lvl 81`) alongside lifetime XP totals in the Level Projection Card.
+- **25% Interval Tick Marks & Percentage Scales:** Introduced clean vertical divider tick marks at 25%, 50%, and 75% with a monospace percentage scale on Level Progression bars, Projected Outcome bars, and Craft Station completion bars via reusable `ProgressBarWithTicks` component.
+- **Skill Card Tooltip Metrics:** Enriched skill cards in the 20-skill matrix with exact in-level progress and remaining XP on hover.
+
+---
+
 ## [1.8.2] - 2026-08-30
 
 ### Fixed
