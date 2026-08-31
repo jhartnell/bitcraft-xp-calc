@@ -18,6 +18,7 @@ import { CraftResult, ItemMetadata } from '../types/api';
 import { XpCalculationResult, SkillOverrideMap } from '../types/calculator';
 import { LiveRateGraphPopover } from './LiveRateGraphPopover';
 import { PowerBreakdownPopover } from './PowerBreakdownPopover';
+import { ProgressBarWithTicks } from './ProgressBarWithTicks';
 import {
   getBitCraftMapUrl,
   resolveCraftCoordinates,
@@ -499,13 +500,13 @@ export const ActiveCraftCard: React.FC<ActiveCraftCardProps> = ({
           </span>
         </div>
 
-        {/* Progress Bar */}
-        <div className="w-full bg-surface-subtle rounded-full h-3.5 overflow-hidden border border-surface-border relative">
-          <div
-            className="bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-400 h-full rounded-full transition-all duration-500"
-            style={{ width: `${Math.max(1, Math.min(100, calc.progressPercent))}%` }}
-          />
-        </div>
+        {/* Progress Bar with 25% Tick Marks */}
+        <ProgressBarWithTicks
+          progressPercent={calc.progressPercent}
+          barColorClassName="bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-400"
+          heightClassName="h-3.5"
+          showTickLabels={true}
+        />
       </div>
 
       {/* Effort Pacing & Override Control */}

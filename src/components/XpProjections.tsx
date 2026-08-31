@@ -17,6 +17,7 @@ import {
 import { XpCalculationResult } from '../types/calculator';
 import { formatXp, formatTimeSeconds } from '../services/bitcraftData';
 import { LiveRateGraphPopover } from './LiveRateGraphPopover';
+import { ProgressBarWithTicks } from './ProgressBarWithTicks';
 
 interface XpProjectionsProps {
   calc: XpCalculationResult;
@@ -248,32 +249,38 @@ export const XpProjections: React.FC<XpProjectionsProps> = ({ calc, onResetSessi
                 </span>
               </div>
             </div>
-            <div className="w-full bg-surface rounded-full h-2.5 overflow-hidden border border-surface-border">
-              <div
-                className="bg-indigo-500 h-full rounded-full transition-all duration-500 shadow-sm"
-                style={{ width: `${Math.max(1, calc.currentLevelProgressPct)}%` }}
-              />
-            </div>
-            <div className="flex items-center justify-between text-[11px] text-gray-500 font-mono pt-0.5">
+            {/* Progress Bar Container with 25% Tick Marks */}
+            <ProgressBarWithTicks
+              progressPercent={calc.currentLevelProgressPct}
+              barColorClassName="bg-indigo-500"
+              heightClassName="h-3"
+              showTickLabels={true}
+            />
+
+            <div className="flex items-center justify-between text-[11px] text-gray-400 font-mono pt-0.5 border-t border-surface-border/40">
               <span>Lifetime XP: {formatXp(calc.currentSkillXp)} ({calc.currentSkillXp.toLocaleString()})</span>
               <span>Next Level at: {formatXp(calc.xpForNextLevel)} ({calc.xpForNextLevel.toLocaleString()})</span>
             </div>
           </div>
 
           {/* Projected Total Progress */}
-          <div className="space-y-1">
+          <div className="space-y-1.5 bg-surface-subtle/30 p-3 rounded-lg border border-surface-border/40">
             <div className="flex items-center justify-between text-xs">
-              <span className="text-emerald-400 font-medium">After Craft Completion:</span>
+              <span className="text-emerald-400 font-semibold flex items-center gap-1">
+                <span>✨ After Craft Completion:</span>
+              </span>
               <span className="text-emerald-300 font-mono font-bold">
-                {formatXp(calc.projectedSkillXp)} XP (Lvl {calc.projectedSkillLevel})
+                {formatXp(calc.projectedSkillXp)} XP (Lvl {calc.projectedSkillLevel} • {calc.projectedLevelProgressPct.toFixed(1)}%)
               </span>
             </div>
-            <div className="w-full bg-surface-subtle rounded-full h-2.5 overflow-hidden border border-surface-border">
-              <div
-                className="bg-gradient-to-r from-emerald-500 to-teal-400 h-full rounded-full transition-all duration-500"
-                style={{ width: `${Math.max(1, calc.projectedLevelProgressPct)}%` }}
-              />
-            </div>
+
+            {/* Projected Progress Bar Container with 25% Tick Marks */}
+            <ProgressBarWithTicks
+              progressPercent={calc.projectedLevelProgressPct}
+              barColorClassName="bg-gradient-to-r from-emerald-500 to-teal-400"
+              heightClassName="h-3"
+              showTickLabels={true}
+            />
           </div>
         </div>
 
