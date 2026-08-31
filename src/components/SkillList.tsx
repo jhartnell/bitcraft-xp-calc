@@ -136,6 +136,7 @@ export const SkillList: React.FC<SkillListProps> = ({
                   ? 'bg-emerald-950/70 border-emerald-500/80 shadow-md shadow-emerald-900/30 ring-1 ring-emerald-500/50'
                   : 'bg-surface-subtle border-surface-border hover:border-surface-border/80'
               }`}
+              title={`${skill.name} Lvl ${prog.level}: ${prog.xpInCurrentLevel.toLocaleString()} / ${prog.levelSpan.toLocaleString()} XP (${prog.xpNeededForNext.toLocaleString()} XP left to Lvl ${Math.min(120, prog.level + 1)})\nLifetime XP: ${currentXp.toLocaleString()}`}
             >
               <div className="flex items-center justify-between gap-1 mb-1">
                 <span className="font-semibold text-gray-200 truncate flex items-center gap-1">

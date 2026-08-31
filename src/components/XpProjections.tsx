@@ -231,18 +231,32 @@ export const XpProjections: React.FC<XpProjectionsProps> = ({ calc, onResetSessi
         {/* Detailed XP Progress Bars */}
         <div className="space-y-3 pt-2">
           {/* Current Level Progress */}
-          <div className="space-y-1">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-gray-400">Current Level {calc.currentSkillLevel} Progress:</span>
-              <span className="text-gray-200 font-mono">
-                {formatXp(calc.currentSkillXp)} / {formatXp(calc.xpForNextLevel)} ({calc.currentLevelProgressPct.toFixed(1)}%)
+          <div className="space-y-1.5 bg-surface-subtle/50 p-3 rounded-lg border border-surface-border/60">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between text-xs gap-1">
+              <span className="text-gray-300 font-semibold flex items-center gap-1.5">
+                <span>🎯 Level {calc.currentSkillLevel} Progress:</span>
               </span>
+              <div className="flex flex-wrap items-center gap-2 font-mono text-xs">
+                <span className="text-indigo-300 font-bold">
+                  {calc.xpInCurrentLevel.toLocaleString()} / {calc.xpSpanForCurrentLevel.toLocaleString()} XP
+                </span>
+                <span className="text-emerald-400 font-bold">
+                  ({calc.currentLevelProgressPct.toFixed(1)}%)
+                </span>
+                <span className="text-gray-400 text-[11px]">
+                  • <strong className="text-amber-400 font-bold">{calc.xpRemainingToNextLevel.toLocaleString()}</strong> XP left to Lvl {Math.min(120, calc.currentSkillLevel + 1)}
+                </span>
+              </div>
             </div>
-            <div className="w-full bg-surface-subtle rounded-full h-2.5 overflow-hidden border border-surface-border">
+            <div className="w-full bg-surface rounded-full h-2.5 overflow-hidden border border-surface-border">
               <div
-                className="bg-indigo-500 h-full rounded-full transition-all duration-500"
+                className="bg-indigo-500 h-full rounded-full transition-all duration-500 shadow-sm"
                 style={{ width: `${Math.max(1, calc.currentLevelProgressPct)}%` }}
               />
+            </div>
+            <div className="flex items-center justify-between text-[11px] text-gray-500 font-mono pt-0.5">
+              <span>Lifetime XP: {formatXp(calc.currentSkillXp)} ({calc.currentSkillXp.toLocaleString()})</span>
+              <span>Next Level at: {formatXp(calc.xpForNextLevel)} ({calc.xpForNextLevel.toLocaleString()})</span>
             </div>
           </div>
 

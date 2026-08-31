@@ -205,6 +205,9 @@ export interface XpCalculationResult {
   projectedSkillLevel: number;
   xpForCurrentLevel: number;
   xpForNextLevel: number;
+  xpInCurrentLevel: number;
+  xpSpanForCurrentLevel: number;
+  xpRemainingToNextLevel: number;
   currentLevelProgressPct: number;
   projectedLevelProgressPct: number;
   levelsGained: number;

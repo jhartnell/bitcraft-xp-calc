@@ -285,36 +285,43 @@ describe('Multi-User Collaborative Crafting Engine', () => {
 });
 
 describe('Bitcraft XP and Level Progression Curve', () => {
-  it('correctly maps base level thresholds', () => {
+  it('correctly maps base level thresholds from canonical levels.json', () => {
     expect(calculateXpForLevel(1)).toBe(0);
-    expect(calculateXpForLevel(2)).toBe(500);
-    expect(calculateXpForLevel(10)).toBe(7366);
+    expect(calculateXpForLevel(2)).toBe(520);
+    expect(calculateXpForLevel(10)).toBe(7540);
     expect(calculateXpForLevel(79)).toBe(23032020);
     expect(calculateXpForLevel(80)).toBe(25698250);
+    expect(calculateXpForLevel(81)).toBe(28673070);
+    expect(calculateXpForLevel(120)).toBe(2053471040);
   });
 
   it('correctly converts arbitrary XP to skill levels', () => {
     expect(getLevelFromXp(0)).toBe(1);
-    expect(getLevelFromXp(500)).toBe(2);
+    expect(getLevelFromXp(520)).toBe(2);
     expect(getLevelFromXp(4000)).toBe(6);
-    expect(getLevelFromXp(25694018)).toBe(79); // Ikuria's live Masonry level
+    expect(getLevelFromXp(25694018)).toBe(79); // Ikuria's prior Masonry level
+    expect(getLevelFromXp(25700304)).toBe(80); // Ikuria's live Level 80 Forestry level
   });
 
   it('calculates level progress percentage and remaining XP to next level', () => {
     const progress = getXpProgressForLevel(750);
-    expect(progress.level).toBe(2); // level 2 is 500..1060
-    expect(progress.currentLevelXp).toBe(500);
-    expect(progress.nextLevelXp).toBe(1060);
-    expect(progress.xpNeededForNext).toBe(310); // 1060 - 750
-    expect(progress.progressPercent).toBeGreaterThan(40);
+    expect(progress.level).toBe(2); // level 2 is 520..1100
+    expect(progress.currentLevelXp).toBe(520);
+    expect(progress.nextLevelXp).toBe(1100);
+    expect(progress.xpInCurrentLevel).toBe(230); // 750 - 520
+    expect(progress.levelSpan).toBe(580); // 1100 - 520
+    expect(progress.xpNeededForNext).toBe(350); // 1100 - 750
+    expect(progress.progressPercent).toBeCloseTo(39.65, 1);
 
-    // Test with Ikuria's exact level 79 Masonry XP
-    const ikuriaProgress = getXpProgressForLevel(25694018);
-    expect(ikuriaProgress.level).toBe(79);
-    expect(ikuriaProgress.currentLevelXp).toBe(23032020);
-    expect(ikuriaProgress.nextLevelXp).toBe(25698250);
-    expect(ikuriaProgress.xpNeededForNext).toBe(4232);
-    expect(ikuriaProgress.progressPercent).toBeGreaterThan(99);
+    // Test with Ikuria's exact level 80 Forestry XP (2,054 in level out of 2,974,820 until 81)
+    const ikuriaProgress = getXpProgressForLevel(25700304);
+    expect(ikuriaProgress.level).toBe(80);
+    expect(ikuriaProgress.currentLevelXp).toBe(25698250);
+    expect(ikuriaProgress.nextLevelXp).toBe(28673070);
+    expect(ikuriaProgress.xpInCurrentLevel).toBe(2054);
+    expect(ikuriaProgress.levelSpan).toBe(2974820);
+    expect(ikuriaProgress.xpNeededForNext).toBe(2972766);
+    expect(ikuriaProgress.progressPercent).toBeCloseTo(0.069, 2);
   });
 
   it('formats large XP numbers and timestamps cleanly', () => {

@@ -270,36 +270,34 @@ export const DEFAULT_SKILL_BASE_XP: Record<number, number> = {
   21: 13.0, // Sailing
 };
 
-// Calibrated BitCraft incremental level delta XP (XP needed to complete level L and reach L + 1)
-function calculateLevelDeltaXp(level: number): number {
-  if (level <= 1) return 500;
-  const rate = 1.115732232;
-  const scale = 520.2624865;
-  return Math.round(500 + scale * (Math.pow(rate, level - 1) - 1));
-}
-
-// Pre-computed cumulative lookup table for instant O(1) performance
-// LEVEL_XP_TABLE[L] = Cumulative lifetime XP required to reach Level L (Level 1 = 0 XP)
-const LEVEL_XP_TABLE: number[] = (() => {
-  const table = new Array<number>(111).fill(0);
-  table[0] = 0;
-  table[1] = 0;
-  for (let l = 1; l < 110; l++) {
-    table[l + 1] = table[l] + calculateLevelDeltaXp(l);
-  }
-  return table;
-})();
+// Canonical BitCraft Cumulative Lifetime XP Table (Levels 1 to 120) from BitJita API /static/experience/levels.json
+// LEVEL_XP_TABLE[L] = Lifetime XP required to reach Level L (Level 1 = 0 XP)
+const LEVEL_XP_TABLE: number[] = [
+  0,          0,          520,        1100,       1740,       2460,       3270,       4170,       5170,       6290,
+  7540,       8930,       10490,      12220,      14160,      16320,      18730,      21420,      24410,      27760,
+  31490,      35660,      40310,      45490,      51280,      57740,      64940,      72980,      81940,      91950,
+  103110,     115560,     129460,     144960,     162260,     181560,     203100,     227130,     253930,     283840,
+  317220,     354450,     396000,     442350,     494070,     551770,     616150,     687980,     768130,     857560,
+  957330,     1068650,    1192860,    1331440,    1486060,    1658570,    1851060,    2065820,    2305430,    2572780,
+  2871080,    3203890,    3575230,    3989550,    4451810,    4967590,    5543050,    6185120,    6901500,    7700800,
+  8592610,    9587630,    10697810,   11936490,   13318540,   14860540,   16581010,   18500600,   20642370,   23032020,
+  25698250,   28673070,   31992200,   35695470,   39827360,   44437480,   49581160,   55320170,   61723410,   68867770,
+  76839000,   85732810,   95656000,   106727680,  119080790,  132863630,  148241700,  165399620,  184543380,  205902840,
+  229734400,  256324240,  285991580,  319092580,  356024680,  397231240,  443207040,  494504080,  551738200,  615596560,
+  686845760,  766341360,  855037760,  953999760,  1064415520, 1187610880, 1325064640, 1478427360, 1649540000, 1840457120,
+  2053471040,
+];
 
 // Cumulative lifetime XP required to reach a specific level
 export function calculateXpForLevel(level: number): number {
   if (level <= 1) return 0;
-  const clamped = Math.min(110, Math.max(1, level));
+  const clamped = Math.min(120, Math.max(1, level));
   return LEVEL_XP_TABLE[clamped];
 }
 
 export function getLevelFromXp(xp: number): number {
   if (xp <= 0) return 1;
-  for (let lvl = 110; lvl >= 1; lvl--) {
+  for (let lvl = 120; lvl >= 1; lvl--) {
     if (xp >= LEVEL_XP_TABLE[lvl]) {
       return lvl;
     }
@@ -307,25 +305,31 @@ export function getLevelFromXp(xp: number): number {
   return 1;
 }
 
-export function getXpProgressForLevel(xp: number): {
+export interface XpProgressInfo {
   level: number;
   currentXp: number;
   currentLevelXp: number;
   nextLevelXp: number;
+  xpInCurrentLevel: number;
+  levelSpan: number;
   xpNeededForNext: number;
   progressPercent: number;
-} {
+}
+
+export function getXpProgressForLevel(xp: number): XpProgressInfo {
   const level = getLevelFromXp(xp);
   const currentLevelXp = LEVEL_XP_TABLE[level];
-  const nextLevel = Math.min(110, level + 1);
+  const nextLevel = Math.min(120, level + 1);
   const nextLevelXp = LEVEL_XP_TABLE[nextLevel];
   
-  if (level >= 110) {
+  if (level >= 120) {
     return {
-      level: 110,
+      level: 120,
       currentXp: xp,
       currentLevelXp,
       nextLevelXp: currentLevelXp,
+      xpInCurrentLevel: Math.max(0, xp - currentLevelXp),
+      levelSpan: 1,
       xpNeededForNext: 0,
       progressPercent: 100,
     };
@@ -340,6 +344,8 @@ export function getXpProgressForLevel(xp: number): {
     currentXp: xp,
     currentLevelXp,
     nextLevelXp,
+    xpInCurrentLevel,
+    levelSpan,
     xpNeededForNext: Math.max(0, nextLevelXp - xp),
     progressPercent,
   };
