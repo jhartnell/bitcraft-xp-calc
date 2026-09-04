@@ -1,6 +1,4 @@
-// Game metadata constants, mappings, and XP curves for Bitcraft Online
-
-import { ToolStats, ItemStat } from '../types/api';
+import { ToolStats, ItemStat, CraftResult, CraftContribution } from '../types/api';
 
 export interface SkillDefinition {
   id: number;
@@ -50,7 +48,7 @@ export const TOOL_TYPE_NAMES: Record<number, string> = {
   14: 'Construction Mallet',
 };
 
-export const TOOL_TYPE_TO_SKILL_ID: Record<number, number> = {
+const TOOL_TYPE_TO_SKILL_ID: Record<number, number> = {
   1: 2,   // Axe -> Forestry
   2: 3,   // Saw -> Carpentry
   3: 4,   // Chisel -> Masonry
@@ -611,3 +609,66 @@ export function getProfessionLevelStats(skillId: number, level: number = 1): Pro
   const clampedLevel = Math.max(1, Math.min(110, Math.floor(level)));
   return PROFESSION_LEVEL_STAT_TABLE[clampedLevel] || { speed: 0, power: 0, crit: 0 };
 }
+
+function getSkillIdFromBuildingName(buildingName?: string): number | null {
+  if (!buildingName) return null;
+  const lower = buildingName.toLowerCase();
+  if (lower.includes('carpentry') || lower.includes('sawmill') || lower.includes('woodcraft')) return 3;
+  if (lower.includes('masonry') || lower.includes('stone') || lower.includes('brick') || lower.includes('kiln')) return 4;
+  if (lower.includes('smith') || lower.includes('forge') || lower.includes('anvil')) return 6;
+  if (lower.includes('cook') || lower.includes('kitchen') || lower.includes('oven') || lower.includes('stove') || lower.includes('brew') || lower.includes('cauldron')) return 13;
+  if (lower.includes('tailor') || lower.includes('loom') || lower.includes('spinning') || lower.includes('weaving')) return 10;
+  if (lower.includes('leather') || lower.includes('tannery') || lower.includes('tanner')) return 8;
+  if (lower.includes('forestry') || lower.includes('woodcut') || lower.includes('lumber')) return 2;
+  if (lower.includes('mining') || lower.includes('smelter') || lower.includes('furnace')) return 5;
+  if (lower.includes('scholar') || lower.includes('scribe') || lower.includes('research') || lower.includes('desk') || lower.includes('alchemy')) return 7;
+  if (lower.includes('farm') || lower.includes('agriculture') || lower.includes('mill') || lower.includes('thresher') || lower.includes('compost')) return 11;
+  if (lower.includes('fish')) return 12;
+  if (lower.includes('forag')) return 14;
+  if (lower.includes('construct') || lower.includes('build')) return 15;
+  if (lower.includes('hunt')) return 9;
+  return null;
+}
+
+export function getCraftSkillId(
+  c: CraftResult,
+  recipeExperience?: { skill_id: number; quantity: number }[] | null
+): number | null {
+  if (c.experiencePerProgress && c.experiencePerProgress.length > 0 && c.experiencePerProgress[0].skill_id) {
+    return c.experiencePerProgress[0].skill_id;
+  }
+  if (c.levelRequirements && c.levelRequirements.length > 0 && c.levelRequirements[0].skill_id) {
+    return c.levelRequirements[0].skill_id;
+  }
+  if (c.toolRequirements && c.toolRequirements.length > 0) {
+    const tr = c.toolRequirements[0];
+    if (tr.skill_id) return tr.skill_id;
+    if (tr.tool_type && TOOL_TYPE_TO_SKILL_ID[tr.tool_type]) {
+      return TOOL_TYPE_TO_SKILL_ID[tr.tool_type];
+    }
+  }
+  if (recipeExperience && recipeExperience.length > 0 && recipeExperience[0].skill_id) {
+    return recipeExperience[0].skill_id;
+  }
+  const buildingSkill = getSkillIdFromBuildingName(c.buildingName);
+  if (buildingSkill) {
+    return buildingSkill;
+  }
+  return null;
+}
+
+export function extractPlayerContribution(
+  contribs: CraftContribution[],
+  playerEntityId: string,
+  playerUsername?: string
+): number {
+  if (!contribs || contribs.length === 0) return 0;
+  return (
+    contribs.find(
+      (cb) =>
+        cb.contributorEntityId === playerEntityId ||
+        (playerUsername && cb.contributorUsername?.toLowerCase() === playerUsername.toLowerCase())
+    )?.totalProgressContributed || 0
+  );
+}
+

@@ -12,6 +12,7 @@ import {
 import { ApiClientStatus, FoodBuffOverride } from './types/calculator';
 import { bitjitaApi } from './services/apiClient';
 import { resolveCraftCoordinates } from './services/bitcraftData';
+import { resolveActiveCraftSelection } from './services/craftResolution';
 import { calculateCraftXp, calculateMultiUserCraftProjection } from './services/xpCalculator';
 import { Header } from './components/Header';
 import { PlayerSearch } from './components/PlayerSearch';
@@ -447,233 +448,137 @@ export const App: React.FC = () => {
         );
         setCrafts(activeCrafts);
 
-        // Helper to extract primary skill ID from a craft
-        const getCraftSkillId = (c: CraftResult): number | null => {
-          if (c.experiencePerProgress && c.experiencePerProgress.length > 0) {
-            return c.experiencePerProgress[0].skill_id;
-          }
-          if (c.levelRequirements && c.levelRequirements.length > 0) {
-            return c.levelRequirements[0].skill_id;
-          }
-          if (c.toolRequirements && c.toolRequirements.length > 0) {
-            return c.toolRequirements[0].skill_id ?? null;
-          }
-          return null;
-        };
-
-        // Helper to extract this specific player's progress contribution on a craft
-        const extractPlayerContribution = (contribs: import('./types/api').CraftContribution[]): number => {
-          return (
-            contribs.find(
-              (cb) =>
-                cb.contributorEntityId === player.entityId ||
-                (player.username && cb.contributorUsername?.toLowerCase() === player.username.toLowerCase())
-            )?.totalProgressContributed || 0
-          );
-        };
-
-        // 3. Preserve current craft selection or detect where the player is actively gaining XP
-        const currentTargetCraftId = selectedCraftIdRef.current;
-        let isCraftResolved = false;
-
-        if (currentTargetCraftId) {
-          const ownedIndex = activeCrafts.findIndex((c) => c.entityId === currentTargetCraftId);
-          if (ownedIndex >= 0) {
-            // Player is currently viewing an owned active craft
-            const currentOwnedCraft = activeCrafts[ownedIndex];
-            const ownedContribs = await fetchCraftContributions(currentOwnedCraft.entityId, player.entityId, forceFresh);
-
-            // Record player-specific contribution on this craft
-            const myOwnedContrib = extractPlayerContribution(ownedContribs);
-            playerContribSnapshotRef.current.set(currentOwnedCraft.entityId, myOwnedContrib);
-
-            // Check if player actively switched to another owned craft (e.g. gained XP in that craft's skill)
-            let switchedOwnedIndex = -1;
-            if (activeGainedSkillIds.size > 0) {
-              const currentOwnedSkill = getCraftSkillId(currentOwnedCraft);
-              if (currentOwnedSkill === null || !activeGainedSkillIds.has(currentOwnedSkill)) {
-                const matchingOtherIndex = activeCrafts.findIndex((c, idx) => {
-                  if (idx === ownedIndex) return false;
-                  const sId = getCraftSkillId(c);
-                  return sId !== null && activeGainedSkillIds.has(sId);
-                });
-                if (matchingOtherIndex >= 0) {
-                  switchedOwnedIndex = matchingOtherIndex;
-                }
-              }
-            }
-
-            if (switchedOwnedIndex >= 0) {
-              // Player switched to a different owned craft
-              const switchedCraft = activeCrafts[switchedOwnedIndex];
-              selectedCraftIdRef.current = switchedCraft.entityId;
-              setSelectedCraftIndex(switchedOwnedIndex);
-              setCustomCraft(null);
-              isCraftResolved = true;
-              fetchCraftContributions(switchedCraft.entityId, player.entityId, forceFresh);
-            } else {
-              // Stay on current owned craft
-              setSelectedCraftIndex(ownedIndex);
-              setCustomCraft(null);
-              isCraftResolved = true;
-            }
-          } else {
-            // Player is viewing a custom / helper craft (e.g. at someone else's station)
-            try {
-              const res = await bitjitaApi.getCraft(currentTargetCraftId, forceFresh);
-              const isStillOngoing =
-                Boolean(res?.craft) &&
-                !res!.craft.completed &&
-                res!.craft.status !== 'completed' &&
-                (res!.craft.progress ?? 0) < (res!.craft.totalActionsRequired || Infinity);
-
-              if (isStillOngoing) {
-                // Fetch latest contributions on the helper craft
-                const helperContribs = await fetchCraftContributions(currentTargetCraftId, player.entityId, forceFresh);
-                const myHelperContrib = extractPlayerContribution(helperContribs);
-                playerContribSnapshotRef.current.set(currentTargetCraftId, myHelperContrib);
-
-                // Check: Did THIS player return to actively working on an owned craft?
-                // Only switch if this player gained XP in an owned craft's skill (and not the helper craft's skill)
-                let playerSwitchedToOwnedIndex = -1;
-                if (activeCrafts.length > 0 && activeGainedSkillIds.size > 0) {
-                  const helperSkill = getCraftSkillId(res!.craft);
-                  if (helperSkill === null || !activeGainedSkillIds.has(helperSkill)) {
-                    for (let i = 0; i < activeCrafts.length; i++) {
-                      const ownedSkill = getCraftSkillId(activeCrafts[i]);
-                      if (ownedSkill !== null && activeGainedSkillIds.has(ownedSkill)) {
-                        playerSwitchedToOwnedIndex = i;
-                        break;
-                      }
-                    }
-                  }
-                }
-
-                if (playerSwitchedToOwnedIndex >= 0) {
-                  // Player physically returned to crafting on their owned station!
-                  const targetOwned = activeCrafts[playerSwitchedToOwnedIndex];
-                  selectedCraftIdRef.current = targetOwned.entityId;
-                  setSelectedCraftIndex(playerSwitchedToOwnedIndex);
-                  setCustomCraft(null);
-                  isCraftResolved = true;
-                  fetchCraftContributions(targetOwned.entityId, player.entityId, forceFresh);
-                } else {
-                  // Player is still helping or viewing this helper craft -> STAY ON IT!
-                  setCustomCraft(res!.craft);
-                  isCraftResolved = true;
-                  updateItemMetadataMap(res!.items, res!.cargos);
-                }
-              } else {
-                // The targeted helper craft completed or is no longer active! Clear it to auto-pick the active craft.
-                selectedCraftIdRef.current = null;
-                setCustomCraft(null);
-              }
-            } catch {
-              selectedCraftIdRef.current = null;
-              setCustomCraft(null);
-            }
-          }
-        }
-
-        // 4. Auto-selection if no craft is currently selected or previous craft finished
-        if (!isCraftResolved) {
-          if (activeCrafts.length > 0) {
-            // Prioritize craft with active lock expiration or matching recently gained skill XP
-            let bestIndex = 0;
-            const now = Date.now();
-            for (let i = 0; i < activeCrafts.length; i++) {
-              const ownedSkill = getCraftSkillId(activeCrafts[i]);
-              if (ownedSkill !== null && activeGainedSkillIds.has(ownedSkill)) {
-                bestIndex = i;
-                break;
-              }
-              const lockTime = activeCrafts[i].lockExpiration ? new Date(activeCrafts[i].lockExpiration!).getTime() : 0;
-              if (lockTime > now - 60_000) {
-                bestIndex = i;
-                break;
-              }
-            }
-
-            selectedCraftIdRef.current = activeCrafts[bestIndex].entityId;
-            setSelectedCraftIndex(bestIndex);
-            setCustomCraft(null);
-
-            fetchCraftContributions(activeCrafts[bestIndex].entityId, player.entityId, forceFresh);
-          } else {
-            setCustomCraft(null);
-            setContributions([]);
-            setContributorPayloads([]);
-          }
-        }
-
-        // Spatial Proximity: Find nearby stations in the player's region (< 500m)
+        // 3. Resolve player coordinates and fetch candidate shared/nearby crafts
         const activeRegionId = detailsRes?.regionId || buffsRes?.regionId;
+        const rawPlayerX = detailsRes?.locationX ?? detailsRes?.location?.locationX ?? detailsRes?.teleportLocationX;
+        const rawPlayerZ = detailsRes?.locationZ ?? detailsRes?.location?.locationZ ?? detailsRes?.teleportLocationZ;
+        const activeCraftStationCoords = activeCrafts.length > 0 ? resolveCraftCoordinates(activeCrafts[0] as unknown as Record<string, unknown>) : null;
+        const effectivePlayerX = rawPlayerX !== undefined && rawPlayerX !== null && !isNaN(Number(rawPlayerX)) && Number(rawPlayerX) !== 0 ? Number(rawPlayerX) : activeCraftStationCoords?.x;
+        const effectivePlayerZ = rawPlayerZ !== undefined && rawPlayerZ !== null && !isNaN(Number(rawPlayerZ)) && Number(rawPlayerZ) !== 0 ? Number(rawPlayerZ) : activeCraftStationCoords?.z;
+
+        // Collect candidate helper craft IDs from localStorage and current target
+        const trackedAssistedIds = new Set<string>();
+        try {
+          const key = `bitcraft_assisted_crafts_${player.entityId}`;
+          const raw = localStorage.getItem(key);
+          if (raw) {
+            for (const id of JSON.parse(raw)) {
+              if (id) trackedAssistedIds.add(String(id));
+            }
+          }
+        } catch {
+          // ignore
+        }
+        if (selectedCraftIdRef.current) {
+          trackedAssistedIds.add(selectedCraftIdRef.current);
+        }
+
+        // Fetch nearby crafts in active region
+        let nearList: NearbyCraftItem[] = [];
         if (activeRegionId) {
-          // Resolve player coordinates across root entity, nested location, and teleport locations
-          const rawPlayerX = detailsRes?.locationX ?? detailsRes?.location?.locationX ?? detailsRes?.teleportLocationX;
-          const rawPlayerZ = detailsRes?.locationZ ?? detailsRes?.location?.locationZ ?? detailsRes?.teleportLocationZ;
-
-          // Fallback to active craft station coordinates if player direct coords are absent
-          const activeCraftStationCoords = activeCrafts.length > 0 ? resolveCraftCoordinates(activeCrafts[0] as unknown as Record<string, unknown>) : null;
-          const effectivePlayerX = rawPlayerX !== undefined && rawPlayerX !== null && !isNaN(Number(rawPlayerX)) && Number(rawPlayerX) !== 0 ? Number(rawPlayerX) : activeCraftStationCoords?.x;
-          const effectivePlayerZ = rawPlayerZ !== undefined && rawPlayerZ !== null && !isNaN(Number(rawPlayerZ)) && Number(rawPlayerZ) !== 0 ? Number(rawPlayerZ) : activeCraftStationCoords?.z;
-
-          bitjitaApi
-            .getNearbyActiveCrafts(
+          try {
+            nearList = await bitjitaApi.getNearbyActiveCrafts(
               activeRegionId,
               effectivePlayerX,
               effectivePlayerZ,
               500,
               forceFresh
-            )
-            .then(async (nearList) => {
-              const enhancedNearby: NearbyCraftItem[] = [];
-              for (const item of nearList.slice(0, 8)) {
-                let isHelper = false;
-                try {
-                  const cbs = await bitjitaApi.getCraftContributions(item.craft.entityId);
-                  isHelper = cbs.some(
-                    (cb) =>
-                      cb.contributorEntityId === player.entityId ||
-                      cb.contributorUsername?.toLowerCase() === player.username.toLowerCase()
-                  );
-                } catch {
-                  // ignore
-                }
-                enhancedNearby.push({ ...item, isHelper });
+            );
+          } catch {
+            nearList = [];
+          }
+        }
+
+        // Build candidate shared crafts map and cache item metadata
+        const candidateMap = new Map<string, CraftResult>();
+        for (const item of nearList) {
+          if (item.craft && !candidateMap.has(item.craft.entityId)) {
+            candidateMap.set(item.craft.entityId, item.craft);
+          }
+          if (item.itemMetadata) {
+            setItemMetadataMap((prev) => {
+              const next = new Map(prev);
+              next.set(Number(item.itemMetadata!.id), item.itemMetadata!);
+              return next;
+            });
+          }
+        }
+
+        // Fetch any tracked helper crafts not in nearby list
+        for (const assistedId of trackedAssistedIds) {
+          if (!candidateMap.has(assistedId) && !activeCrafts.some((c) => c.entityId === assistedId)) {
+            try {
+              const res = await bitjitaApi.getCraft(assistedId, forceFresh);
+              if (res?.craft) {
+                candidateMap.set(res.craft.entityId, res.craft);
+                updateItemMetadataMap(res.items, res.cargos);
               }
+            } catch {
+              // ignore
+            }
+          }
+        }
 
-              // Sort helper crafts first, then by distance
-              enhancedNearby.sort((a, b) => {
-                if (a.isHelper && !b.isHelper) return -1;
-                if (!a.isHelper && b.isHelper) return 1;
-                return a.distanceMeters - b.distanceMeters;
-              });
+        const candidateHelperCrafts = Array.from(candidateMap.values());
 
-              // Cache all nearby items metadata
-              for (const item of nearList) {
-                if (item.itemMetadata) {
-                  setItemMetadataMap((prev) => {
-                    const next = new Map(prev);
-                    next.set(Number(item.itemMetadata!.id), item.itemMetadata!);
-                    return next;
-                  });
-                }
-              }
+        // 4. Resolve active craft selection (bidirectional XP matching, sticky persistence, or fallback)
+        const currentTargetCraftId = selectedCraftIdRef.current;
+        const resolution = resolveActiveCraftSelection({
+          currentTargetCraftId,
+          activeGainedSkillIds,
+          ownedActiveCrafts: activeCrafts,
+          candidateSharedCrafts: candidateHelperCrafts,
+          playerEntityId: player.entityId,
+          playerUsername: player.username,
+        });
 
-              setNearbyCrafts(enhancedNearby);
+        selectedCraftIdRef.current = resolution.selectedCraftId;
+        setSelectedCraftIndex(resolution.selectedCraftIndex);
+        setCustomCraft(resolution.customCraft);
 
-              // If player has NO owned active crafts and is assisting on a station, auto-switch to it!
-              if (activeCrafts.length === 0 && enhancedNearby.length > 0) {
-                const helperCandidate = enhancedNearby.find((n) => n.isHelper && !n.craft.completed);
-                if (helperCandidate) {
-                  if (selectedCraftIdRef.current !== helperCandidate.craft.entityId) {
-                    handleSelectCustomCraft(helperCandidate.craft);
-                  }
-                }
-              }
-            })
-            .catch(() => setNearbyCrafts([]));
+        if (resolution.selectedCraftId) {
+          fetchCraftContributions(resolution.selectedCraftId, player.entityId, forceFresh);
+          if (resolution.customCraft) {
+            try {
+              const key = `bitcraft_assisted_crafts_${player.entityId}`;
+              const raw = localStorage.getItem(key);
+              const set = new Set<string>(raw ? JSON.parse(raw) : []);
+              set.add(resolution.customCraft.entityId);
+              localStorage.setItem(key, JSON.stringify(Array.from(set)));
+            } catch {
+              // ignore
+            }
+          }
+        } else {
+          setContributions([]);
+          setContributorPayloads([]);
+        }
+
+        // 5. Build enhanced nearby list for UI tabs and dropdown
+        if (nearList.length > 0) {
+          const enhancedNearby: NearbyCraftItem[] = [];
+          for (const item of nearList.slice(0, 8)) {
+            let isHelper = false;
+            try {
+              const cbs = await bitjitaApi.getCraftContributions(item.craft.entityId);
+              isHelper = cbs.some(
+                (cb) =>
+                  cb.contributorEntityId === player.entityId ||
+                  cb.contributorUsername?.toLowerCase() === player.username.toLowerCase()
+              );
+            } catch {
+              // ignore
+            }
+            enhancedNearby.push({ ...item, isHelper });
+          }
+
+          enhancedNearby.sort((a, b) => {
+            if (a.isHelper && !b.isHelper) return -1;
+            if (!a.isHelper && b.isHelper) return 1;
+            return a.distanceMeters - b.distanceMeters;
+          });
+
+          setNearbyCrafts(enhancedNearby);
         } else {
           setNearbyCrafts([]);
         }

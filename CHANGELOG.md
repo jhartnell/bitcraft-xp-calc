@@ -4,6 +4,16 @@ All notable changes to the **BitCraft Online XP Calculator** project are documen
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.5] - 2026-09-04
+
+### Fixed
+- **Bidirectional Active Skill XP Auto-Switching:** Implemented unified multi-source craft candidate resolution in `resolveActiveCraftSelection`, allowing the app to automatically detect when a player gains XP on shared/helper crafting stations (e.g. Niomore working on SPancerfaustyna's Tailoring Station while owning an idle Cooking Station) and immediately switch focus to the active shared station.
+- **Owned Station Immunity & Personal XP Isolation:** Retains focus on the active helper station even when third-party contributors progress an owned station, only returning to owned stations when the player physically gains XP on their own craft.
+- **Multi-Source Candidate Resolution:** Aggregates owned active crafts, nearby claim stations within 500m, and tracked assisted craft history (`localStorage`) before evaluating skill XP deltas, eliminating async race conditions and UI flickering.
+- **Robust Tool & Station Skill Extraction:** Canonical `getCraftSkillId` extracts skill associations across recipe experience, level requirements, `toolRequirements` (mapping `tool_type` through `TOOL_TYPE_TO_SKILL_ID`), and station building names.
+
+---
+
 ## [1.8.4] - 2026-09-04
 
 ### Fixed

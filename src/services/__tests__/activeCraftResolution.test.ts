@@ -1,34 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { CraftResult, CraftContribution } from '../../types/api';
-
-// Helper to extract primary skill ID from a craft
-function getCraftSkillId(c: CraftResult): number | null {
-  if (c.experiencePerProgress && c.experiencePerProgress.length > 0) {
-    return c.experiencePerProgress[0].skill_id;
-  }
-  if (c.levelRequirements && c.levelRequirements.length > 0) {
-    return c.levelRequirements[0].skill_id;
-  }
-  if (c.toolRequirements && c.toolRequirements.length > 0) {
-    return c.toolRequirements[0].skill_id ?? null;
-  }
-  return null;
-}
-
-// Helper to extract player's contribution on a craft
-function extractPlayerContribution(
-  contribs: CraftContribution[],
-  playerEntityId: string,
-  playerUsername?: string
-): number {
-  return (
-    contribs.find(
-      (cb) =>
-        cb.contributorEntityId === playerEntityId ||
-        (playerUsername && cb.contributorUsername?.toLowerCase() === playerUsername.toLowerCase())
-    )?.totalProgressContributed || 0
-  );
-}
+import { getCraftSkillId, extractPlayerContribution } from '../bitcraftData';
+import { resolveActiveCraftSelection, isCraftOngoing } from '../craftResolution';
 
 describe('Active Craft Resolution & XP-Driven Persistence', () => {
   const playerEntityId = '1297036692699948454';
@@ -72,9 +45,29 @@ describe('Active Craft Resolution & XP-Driven Persistence', () => {
     experiencePerProgress: [{ skill_id: 10, quantity: 2.0 }],
   };
 
-  it('correctly identifies craft skill IDs', () => {
+  const helperCarpentryCraft: CraftResult = {
+    entityId: 'craft-carpentry-1',
+    buildingEntityId: 'bld-carpentry-1',
+    ownerEntityId: '2009907771234567890',
+    ownerUsername: 'BobTheBuilder',
+    buildingName: 'Carpentry Workshop',
+    regionId: 8,
+    recipeId: 301002,
+    lockExpiration: '2026-09-04T12:00:00Z',
+    craftedItem: [{ item_id: 3010005, quantity: 1, item_type: 'item', durability: 0 }],
+    progress: 1000,
+    craftCount: 50,
+    actionsRequiredPerItem: 100,
+    totalActionsRequired: 5000,
+    completed: false,
+    toolRequirements: [{ level: 1, power: 1, tool_type: 2 }], // Tool type 2 -> Saw -> Carpentry (skill 3)
+  };
+
+  it('correctly identifies craft skill IDs across exp, level, toolRequirements, and building name', () => {
     expect(getCraftSkillId(ownedCookingCraft)).toBe(13); // Cooking
     expect(getCraftSkillId(helperTailoringCraft)).toBe(10); // Tailoring
+    expect(getCraftSkillId(helperCarpentryCraft)).toBe(3); // Carpentry from toolRequirements tool_type 2
+    expect(getCraftSkillId({ entityId: 'c1', buildingName: 'Ancient Smithy' } as CraftResult)).toBe(6); // Smithing
   });
 
   it('correctly filters player contributions versus third-party contributions', () => {
@@ -101,74 +94,93 @@ describe('Active Craft Resolution & XP-Driven Persistence', () => {
     expect(extractPlayerContribution(mixedContributions, 'random-player', 'Random')).toBe(0);
   });
 
-  it('preserves helper craft selection when third party contributes to owned craft', () => {
-    const activeCrafts = [ownedCookingCraft];
-    
-    // Simulate third party adding progress to owned cooking craft
-    // player's personal contribution on cooking is 0
-    const cookingContribs: CraftContribution[] = [
-      {
-        id: 'cb-other',
-        contributorEntityId: 'other-helper-999',
-        contributorUsername: 'HelperBee',
-        totalProgressContributed: 500,
-        contributionCount: 10,
-        firstContributedAt: '2026-09-04T10:00:00Z',
-      },
-    ];
+  it('auto-switches from Owned craft to Shared craft when gaining shared craft skill XP', () => {
+    // Player is currently viewing owned cooking craft, but starts gaining Tailoring XP (skill 10)
+    const res = resolveActiveCraftSelection({
+      currentTargetCraftId: ownedCookingCraft.entityId,
+      activeGainedSkillIds: new Set<number>([10]), // Tailoring XP gained!
+      ownedActiveCrafts: [ownedCookingCraft],
+      candidateSharedCrafts: [helperTailoringCraft],
+      playerEntityId,
+      playerUsername,
+    });
 
-    const myCookingContrib = extractPlayerContribution(cookingContribs, playerEntityId, playerUsername);
-    expect(myCookingContrib).toBe(0);
-
-    // activeGainedSkillIds is empty (no cooking XP gained by Niomore)
-    const activeGainedSkillIds = new Set<number>();
-
-    // Helper craft is still ongoing
-    const isHelperOngoing = !helperTailoringCraft.completed;
-    expect(isHelperOngoing).toBe(true);
-
-    // Decision check: Did player switch to owned craft?
-    let playerSwitchedToOwned = false;
-    if (activeCrafts.length > 0 && activeGainedSkillIds.size > 0) {
-      const helperSkill = getCraftSkillId(helperTailoringCraft);
-      if (helperSkill === null || !activeGainedSkillIds.has(helperSkill)) {
-        for (const oc of activeCrafts) {
-          const s = getCraftSkillId(oc);
-          if (s !== null && activeGainedSkillIds.has(s)) {
-            playerSwitchedToOwned = true;
-            break;
-          }
-        }
-      }
-    }
-
-    expect(playerSwitchedToOwned).toBe(false);
-    // Result: STAYS on helper craft!
+    expect(res.isResolved).toBe(true);
+    expect(res.selectedCraftId).toBe(helperTailoringCraft.entityId);
+    expect(res.customCraft).toEqual(helperTailoringCraft);
+    expect(res.reason).toBe('active_xp_match_shared');
   });
 
-  it('switches to owned craft when player actively gains XP in owned craft skill', () => {
-    const activeCrafts = [ownedCookingCraft];
+  it('preserves shared craft selection when actively gaining shared craft skill XP', () => {
+    // Player is viewing shared tailoring craft and continues gaining Tailoring XP (skill 10)
+    const res = resolveActiveCraftSelection({
+      currentTargetCraftId: helperTailoringCraft.entityId,
+      activeGainedSkillIds: new Set<number>([10]),
+      ownedActiveCrafts: [ownedCookingCraft],
+      candidateSharedCrafts: [helperTailoringCraft],
+      playerEntityId,
+      playerUsername,
+    });
 
-    // Simulate player gaining Cooking XP (skill_id 13)
-    const activeGainedSkillIds = new Set<number>([13]);
-
-    const helperSkill = getCraftSkillId(helperTailoringCraft); // 10
-    expect(activeGainedSkillIds.has(helperSkill!)).toBe(false);
-
-    let switchedOwnedIndex = -1;
-    for (let i = 0; i < activeCrafts.length; i++) {
-      const s = getCraftSkillId(activeCrafts[i]);
-      if (s !== null && activeGainedSkillIds.has(s)) {
-        switchedOwnedIndex = i;
-        break;
-      }
-    }
-
-    expect(switchedOwnedIndex).toBe(0);
-    // Result: Switches to owned craft index 0 (Cooking Station)
+    expect(res.isResolved).toBe(true);
+    expect(res.selectedCraftId).toBe(helperTailoringCraft.entityId);
+    expect(res.customCraft).toEqual(helperTailoringCraft);
+    expect(res.reason).toBe('active_xp_match_current');
   });
 
-  it('detects when helper craft finishes and clears selection for fallback', () => {
+  it('preserves shared craft selection when third party contributes to owned craft', () => {
+    // Third party contributes to Cooking craft -> Player's gained skill XP is empty (or Tailoring)
+    const res = resolveActiveCraftSelection({
+      currentTargetCraftId: helperTailoringCraft.entityId,
+      activeGainedSkillIds: new Set<number>(), // No XP gained by player in this tick
+      ownedActiveCrafts: [ownedCookingCraft],
+      candidateSharedCrafts: [helperTailoringCraft],
+      playerEntityId,
+      playerUsername,
+    });
+
+    expect(res.isResolved).toBe(true);
+    expect(res.selectedCraftId).toBe(helperTailoringCraft.entityId);
+    expect(res.customCraft).toEqual(helperTailoringCraft);
+    expect(res.reason).toBe('sticky_shared');
+  });
+
+  it('switches back to owned craft when player actively gains XP in owned craft skill', () => {
+    // Player moves back to cooking station and gains Cooking XP (skill 13)
+    const res = resolveActiveCraftSelection({
+      currentTargetCraftId: helperTailoringCraft.entityId,
+      activeGainedSkillIds: new Set<number>([13]), // Cooking XP gained!
+      ownedActiveCrafts: [ownedCookingCraft],
+      candidateSharedCrafts: [helperTailoringCraft],
+      playerEntityId,
+      playerUsername,
+    });
+
+    expect(res.isResolved).toBe(true);
+    expect(res.selectedCraftId).toBe(ownedCookingCraft.entityId);
+    expect(res.selectedCraftIndex).toBe(0);
+    expect(res.customCraft).toBeNull();
+    expect(res.reason).toBe('active_xp_match_owned');
+  });
+
+  it('auto-switches from Shared Craft A to Shared Craft B when player switches stations', () => {
+    // Player was on Tailoring, but starts gaining Carpentry XP (skill 3) on Bob's Carpentry Station
+    const res = resolveActiveCraftSelection({
+      currentTargetCraftId: helperTailoringCraft.entityId,
+      activeGainedSkillIds: new Set<number>([3]), // Carpentry XP gained!
+      ownedActiveCrafts: [ownedCookingCraft],
+      candidateSharedCrafts: [helperTailoringCraft, helperCarpentryCraft],
+      playerEntityId,
+      playerUsername,
+    });
+
+    expect(res.isResolved).toBe(true);
+    expect(res.selectedCraftId).toBe(helperCarpentryCraft.entityId);
+    expect(res.customCraft).toEqual(helperCarpentryCraft);
+    expect(res.reason).toBe('active_xp_match_shared');
+  });
+
+  it('detects when helper craft finishes and falls back to owned craft', () => {
     const completedHelperCraft: CraftResult = {
       ...helperTailoringCraft,
       progress: 648830,
@@ -177,13 +189,22 @@ describe('Active Craft Resolution & XP-Driven Persistence', () => {
       status: 'completed',
     };
 
-    const isStillOngoing =
-      Boolean(completedHelperCraft) &&
-      !completedHelperCraft.completed &&
-      completedHelperCraft.status !== 'completed' &&
-      completedHelperCraft.progress < completedHelperCraft.totalActionsRequired;
+    expect(isCraftOngoing(completedHelperCraft)).toBe(false);
 
-    expect(isStillOngoing).toBe(false);
-    // Result: Selection cleared, falls back to active owned craft
+    const res = resolveActiveCraftSelection({
+      currentTargetCraftId: completedHelperCraft.entityId,
+      activeGainedSkillIds: new Set<number>(),
+      ownedActiveCrafts: [ownedCookingCraft],
+      candidateSharedCrafts: [completedHelperCraft],
+      playerEntityId,
+      playerUsername,
+    });
+
+    expect(res.isResolved).toBe(true);
+    expect(res.selectedCraftId).toBe(ownedCookingCraft.entityId);
+    expect(res.selectedCraftIndex).toBe(0);
+    expect(res.customCraft).toBeNull();
+    expect(res.reason).toBe('fallback_owned');
   });
 });
+

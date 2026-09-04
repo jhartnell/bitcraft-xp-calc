@@ -51,7 +51,9 @@ A high-performance, real-time web application to track active crafting progress,
 - **XP Share Distribution:** Accurately distributes remaining craft effort and expected XP according to each participant's relative crafting speed and gear buffs.
 - **Simulation Toggles:** Check or uncheck any contributor to simulate team compositions on shared or public crafting stations.
 
-### 8. Spatial Proximity & Claim Auto-Discovery
+### 8. Spatial Proximity, Helper Station Tracking & Active XP Auto-Switching
+- **Bidirectional Active Skill XP Auto-Switching:** Automatically detects when a player gains skill XP on a shared/helper station and switches focus immediately (e.g. tailoring at another player's station while owning an idle cooking station).
+- **Owned Station Immunity & Personal XP Isolation:** Retains focus on active helper stations even if third parties work on owned stations, only returning to owned stations when the player physically gains XP on their own craft.
 - **2D World Coordinate Tracking:** Ingests character coordinates and region to detect all active crafting stations within interaction distance ($\le 500\text{m}$).
 - **Automatic Helper Station Tabs:** Identifies stations where the player has contributed effort and pins a prominent **`⭐ Helping: Station (Item Name)`** tab directly to the dashboard.
 - **Active Task Rollover:** Automatically transitions to new crafts or helper stations when a tracked craft finishes.
