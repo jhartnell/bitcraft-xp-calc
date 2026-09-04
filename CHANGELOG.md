@@ -4,6 +4,16 @@ All notable changes to the **BitCraft Online XP Calculator** project are documen
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.4] - 2026-09-04
+
+### Fixed
+- **XP-Driven Active Craft Tracking & Helper Persistence:** Fixed an issue where the calculator would forcibly reset back to a player's owned craft every 30 seconds during background data polling, even when actively helping with a shared community craft (e.g. Niomore on SPancerfaustyna's Tailoring Station).
+- **Player-Specific Contribution Isolation:** Distinguishes between progress made by *this player* vs other contributors. Third-party progress on owned stations will no longer hijack active craft focus away from the shared station the player is assisting on.
+- **Skill Experience Delta Tracking:** Automatically detects when a player switches between stations by monitoring `player.experience` gains and personal contribution increases across polling cycles.
+- **Seamless Station Tabs Header:** Active assisted/helper stations are rendered directly in the header tabs alongside owned crafts (`[My Craft #1]` and `[Helping: <StationName>]`), allowing 1-click manual switching at any time.
+
+---
+
 ## [1.8.3] - 2026-08-31
 
 ### Fixed
