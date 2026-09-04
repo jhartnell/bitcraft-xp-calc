@@ -174,6 +174,8 @@ export const App: React.FC = () => {
 
   const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
   const selectedCraftIdRef = useRef<string | null>(null);
+  const playerExpSnapshotRef = useRef<Map<number, number>>(new Map());
+  const playerContribSnapshotRef = useRef<Map<string, number>>(new Map());
 
   // Subscribe to live API client status (cache size, latency, fetching state)
   useEffect(() => {
@@ -421,27 +423,102 @@ export const App: React.FC = () => {
           }).catch(() => {});
         }
 
-        // Filter active (incomplete) crafts
+        // 1. Skill Experience Delta Tracking (identify skills where this player gained XP since last poll)
+        const oldExpMap = playerExpSnapshotRef.current;
+        const currentExpMap = new Map<number, number>();
+        const activeGainedSkillIds = new Set<number>();
+
+        if (detailsRes?.experience && Array.isArray(detailsRes.experience)) {
+          for (const exp of detailsRes.experience) {
+            if (exp && exp.skill_id !== undefined && exp.quantity !== undefined) {
+              currentExpMap.set(exp.skill_id, exp.quantity);
+              const oldVal = oldExpMap.get(exp.skill_id);
+              if (oldVal !== undefined && exp.quantity > oldVal) {
+                activeGainedSkillIds.add(exp.skill_id);
+              }
+            }
+          }
+        }
+        playerExpSnapshotRef.current = currentExpMap;
+
+        // 2. Filter active (incomplete) owned crafts
         const activeCrafts = (craftsRes?.craftResults || []).filter(
           (c) => !c.completed && (c.progress ?? 0) < (c.totalActionsRequired || Infinity)
         );
         setCrafts(activeCrafts);
 
-        // Preserve current craft selection or detect newly active craft
+        // Helper to extract primary skill ID from a craft
+        const getCraftSkillId = (c: CraftResult): number | null => {
+          if (c.experiencePerProgress && c.experiencePerProgress.length > 0) {
+            return c.experiencePerProgress[0].skill_id;
+          }
+          if (c.levelRequirements && c.levelRequirements.length > 0) {
+            return c.levelRequirements[0].skill_id;
+          }
+          if (c.toolRequirements && c.toolRequirements.length > 0) {
+            return c.toolRequirements[0].skill_id ?? null;
+          }
+          return null;
+        };
+
+        // Helper to extract this specific player's progress contribution on a craft
+        const extractPlayerContribution = (contribs: import('./types/api').CraftContribution[]): number => {
+          return (
+            contribs.find(
+              (cb) =>
+                cb.contributorEntityId === player.entityId ||
+                (player.username && cb.contributorUsername?.toLowerCase() === player.username.toLowerCase())
+            )?.totalProgressContributed || 0
+          );
+        };
+
+        // 3. Preserve current craft selection or detect where the player is actively gaining XP
         const currentTargetCraftId = selectedCraftIdRef.current;
         let isCraftResolved = false;
 
         if (currentTargetCraftId) {
           const ownedIndex = activeCrafts.findIndex((c) => c.entityId === currentTargetCraftId);
           if (ownedIndex >= 0) {
-            // Player is viewing an owned active craft that is still in progress
-            setSelectedCraftIndex(ownedIndex);
-            setCustomCraft(null);
-            isCraftResolved = true;
+            // Player is currently viewing an owned active craft
+            const currentOwnedCraft = activeCrafts[ownedIndex];
+            const ownedContribs = await fetchCraftContributions(currentOwnedCraft.entityId, player.entityId, forceFresh);
 
-            fetchCraftContributions(activeCrafts[ownedIndex].entityId, player.entityId, forceFresh);
+            // Record player-specific contribution on this craft
+            const myOwnedContrib = extractPlayerContribution(ownedContribs);
+            playerContribSnapshotRef.current.set(currentOwnedCraft.entityId, myOwnedContrib);
+
+            // Check if player actively switched to another owned craft (e.g. gained XP in that craft's skill)
+            let switchedOwnedIndex = -1;
+            if (activeGainedSkillIds.size > 0) {
+              const currentOwnedSkill = getCraftSkillId(currentOwnedCraft);
+              if (currentOwnedSkill === null || !activeGainedSkillIds.has(currentOwnedSkill)) {
+                const matchingOtherIndex = activeCrafts.findIndex((c, idx) => {
+                  if (idx === ownedIndex) return false;
+                  const sId = getCraftSkillId(c);
+                  return sId !== null && activeGainedSkillIds.has(sId);
+                });
+                if (matchingOtherIndex >= 0) {
+                  switchedOwnedIndex = matchingOtherIndex;
+                }
+              }
+            }
+
+            if (switchedOwnedIndex >= 0) {
+              // Player switched to a different owned craft
+              const switchedCraft = activeCrafts[switchedOwnedIndex];
+              selectedCraftIdRef.current = switchedCraft.entityId;
+              setSelectedCraftIndex(switchedOwnedIndex);
+              setCustomCraft(null);
+              isCraftResolved = true;
+              fetchCraftContributions(switchedCraft.entityId, player.entityId, forceFresh);
+            } else {
+              // Stay on current owned craft
+              setSelectedCraftIndex(ownedIndex);
+              setCustomCraft(null);
+              isCraftResolved = true;
+            }
           } else {
-            // Check if the custom / helper craft is still ongoing
+            // Player is viewing a custom / helper craft (e.g. at someone else's station)
             try {
               const res = await bitjitaApi.getCraft(currentTargetCraftId, forceFresh);
               const isStillOngoing =
@@ -451,19 +528,43 @@ export const App: React.FC = () => {
                 (res!.craft.progress ?? 0) < (res!.craft.totalActionsRequired || Infinity);
 
               if (isStillOngoing) {
-                // If player has an owned active craft, owned crafts ALWAYS take priority over custom/helper stations!
-                if (activeCrafts.length > 0) {
-                  selectedCraftIdRef.current = null;
+                // Fetch latest contributions on the helper craft
+                const helperContribs = await fetchCraftContributions(currentTargetCraftId, player.entityId, forceFresh);
+                const myHelperContrib = extractPlayerContribution(helperContribs);
+                playerContribSnapshotRef.current.set(currentTargetCraftId, myHelperContrib);
+
+                // Check: Did THIS player return to actively working on an owned craft?
+                // Only switch if this player gained XP in an owned craft's skill (and not the helper craft's skill)
+                let playerSwitchedToOwnedIndex = -1;
+                if (activeCrafts.length > 0 && activeGainedSkillIds.size > 0) {
+                  const helperSkill = getCraftSkillId(res!.craft);
+                  if (helperSkill === null || !activeGainedSkillIds.has(helperSkill)) {
+                    for (let i = 0; i < activeCrafts.length; i++) {
+                      const ownedSkill = getCraftSkillId(activeCrafts[i]);
+                      if (ownedSkill !== null && activeGainedSkillIds.has(ownedSkill)) {
+                        playerSwitchedToOwnedIndex = i;
+                        break;
+                      }
+                    }
+                  }
+                }
+
+                if (playerSwitchedToOwnedIndex >= 0) {
+                  // Player physically returned to crafting on their owned station!
+                  const targetOwned = activeCrafts[playerSwitchedToOwnedIndex];
+                  selectedCraftIdRef.current = targetOwned.entityId;
+                  setSelectedCraftIndex(playerSwitchedToOwnedIndex);
                   setCustomCraft(null);
-                  isCraftResolved = false;
+                  isCraftResolved = true;
+                  fetchCraftContributions(targetOwned.entityId, player.entityId, forceFresh);
                 } else {
-                  await fetchCraftContributions(currentTargetCraftId, player.entityId, forceFresh);
+                  // Player is still helping or viewing this helper craft -> STAY ON IT!
                   setCustomCraft(res!.craft);
                   isCraftResolved = true;
                   updateItemMetadataMap(res!.items, res!.cargos);
                 }
               } else {
-                // The targeted craft has completed or is no longer active! Clear it to auto-pick the new craft.
+                // The targeted helper craft completed or is no longer active! Clear it to auto-pick the active craft.
                 selectedCraftIdRef.current = null;
                 setCustomCraft(null);
               }
@@ -474,13 +575,18 @@ export const App: React.FC = () => {
           }
         }
 
-        // If the targeted craft was completed or none was selected, auto-select the active craft!
+        // 4. Auto-selection if no craft is currently selected or previous craft finished
         if (!isCraftResolved) {
           if (activeCrafts.length > 0) {
-            // Prioritize the craft with active lock expiration / recent activity, else first craft
+            // Prioritize craft with active lock expiration or matching recently gained skill XP
             let bestIndex = 0;
             const now = Date.now();
             for (let i = 0; i < activeCrafts.length; i++) {
+              const ownedSkill = getCraftSkillId(activeCrafts[i]);
+              if (ownedSkill !== null && activeGainedSkillIds.has(ownedSkill)) {
+                bestIndex = i;
+                break;
+              }
               const lockTime = activeCrafts[i].lockExpiration ? new Date(activeCrafts[i].lockExpiration!).getTime() : 0;
               if (lockTime > now - 60_000) {
                 bestIndex = i;
@@ -633,6 +739,8 @@ export const App: React.FC = () => {
 
   const handleSelectPlayer = (player: PlayerSummary) => {
     selectedCraftIdRef.current = null;
+    playerExpSnapshotRef.current = new Map();
+    playerContribSnapshotRef.current = new Map();
     setCustomCraft(null);
     setSelectedCraftIndex(0);
     setSelectedPlayer(player);

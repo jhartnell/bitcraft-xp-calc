@@ -141,11 +141,25 @@ export const ActiveCraftCard: React.FC<ActiveCraftCardProps> = ({
     (n) => !craftsList.some((c) => c.entityId === n.craft.entityId)
   );
 
+  const isCustomCraft = !craftsList.some((c) => c.entityId === craft.entityId);
   const helperCrafts = uniqueNearbyCrafts.filter((n) => n.isHelper);
   const idleNearbyCrafts = uniqueNearbyCrafts.filter((n) => !n.isHelper);
-  const selectedIdleCraft = idleNearbyCrafts.find((n) => isCurrentCraftSelected(n.craft));
 
-  const hasMultipleOptions = craftsList.length > 1 || uniqueNearbyCrafts.length > 0;
+  // If the active craft is a custom/helper craft not already in helperCrafts list, include it
+  const isCraftInHelper = helperCrafts.some((h) => h.craft.entityId === craft.entityId);
+  const isCraftInIdle = idleNearbyCrafts.some((n) => n.craft.entityId === craft.entityId);
+  const displayHelperCrafts = [...helperCrafts];
+  if (isCustomCraft && !isCraftInHelper && !isCraftInIdle) {
+    displayHelperCrafts.unshift({
+      craft,
+      distanceMeters: 0,
+      itemName: itemMetadata?.name,
+      isHelper: true,
+    });
+  }
+
+  const selectedIdleCraft = idleNearbyCrafts.find((n) => isCurrentCraftSelected(n.craft));
+  const hasMultipleOptions = craftsList.length > 1 || uniqueNearbyCrafts.length > 0 || isCustomCraft;
 
   return (
     <div className="bg-surface rounded-xl border border-surface-border p-5 shadow-xl space-y-4">
@@ -246,8 +260,8 @@ export const ActiveCraftCard: React.FC<ActiveCraftCardProps> = ({
               );
             })}
 
-            {/* 2. Active Helper Crafts (Only stations where you've contributed) */}
-            {helperCrafts.map(({ craft: hCraft, distanceMeters, itemName: hItemName }) => {
+            {/* 2. Active Helper Crafts (Only stations where you've contributed or currently selected) */}
+            {displayHelperCrafts.map(({ craft: hCraft, distanceMeters, itemName: hItemName }) => {
               const isSelected = isCurrentCraftSelected(hCraft);
               return (
                 <button
@@ -265,7 +279,7 @@ export const ActiveCraftCard: React.FC<ActiveCraftCardProps> = ({
                     {hItemName ? ` (${hItemName})` : ''}
                   </span>
                   <span className="text-[10px] font-mono text-gray-400 opacity-90">
-                    ({distanceMeters}m{hCraft.ownerUsername ? ` • ${hCraft.ownerUsername}` : ''})
+                    ({distanceMeters > 0 ? `${distanceMeters}m • ` : ''}{hCraft.ownerUsername || 'Public'})
                   </span>
                 </button>
               );
