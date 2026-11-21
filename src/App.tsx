@@ -333,7 +333,7 @@ export const App: React.FC = () => {
                 {multiUserProjection && multiUserProjection.totalContributorsCount > 0 && (
                   <ContributorsPanel
                     projection={multiUserProjection}
-                    primaryEntityId={playerDetails?.entityId}
+                    primaryEntityId={selectedPlayer?.entityId || playerDetails?.entityId}
                     onToggleParticipant={handleToggleParticipant}
                     onInactivityTimeoutChange={handleInactivityTimeoutChange}
                     isInitiallyCollapsed={otherContributorsCount === 0}

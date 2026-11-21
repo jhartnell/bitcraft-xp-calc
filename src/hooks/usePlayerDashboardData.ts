@@ -426,6 +426,11 @@ export function usePlayerDashboardData({
     (player: PlayerSummary) => {
       selectedCraftIdRef.current = null;
       playerExpSnapshotRef.current = new Map();
+      setPlayerDetails(null);
+      setCrafts([]);
+      setNearbyCrafts([]);
+      setContributionsState({ craftId: null, list: [] });
+      setContributorPayloadsState({ craftId: null, list: [] });
       setCustomCraft(null);
       setSelectedCraftIndex(0);
       setCustomProgressPerAction(null);
@@ -496,8 +501,8 @@ export function usePlayerDashboardData({
         })
         .catch(() => {});
 
-      const activePlayerId = playerDetails?.entityId || selectedPlayer?.entityId;
-      const activePlayerName = playerDetails?.username || selectedPlayer?.username;
+      const activePlayerId = selectedPlayer?.entityId || playerDetails?.entityId;
+      const activePlayerName = selectedPlayer?.username || playerDetails?.username;
       if (activePlayerId) {
         void fetchCraftContributions(targetCraftId, activePlayerId, activePlayerName, true);
       }
