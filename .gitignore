@@ -11,7 +11,11 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+client-side-only/browser-extension/dist
 *.local
+
+# Generated build manifests
+public/version.json
 
 # Editor directories and files
 .vscode/*

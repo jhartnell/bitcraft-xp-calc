@@ -29,20 +29,17 @@ export const CacheInspectorPopover: React.FC<CacheInspectorPopoverProps> = ({
   className = '',
 }) => {
   const { isOpen, handleMouseEnter, handleMouseLeave, toggle } = useHoverPopoverState(200);
-  const [activeTab, setActiveTab] = useState<'cache' | 'anomalies'>('cache');
+  const [selectedTab, setSelectedTab] = useState<'cache' | 'anomalies' | null>(null);
   const [filterText, setFilterText] = useState('');
   const [retryingEndpoint, setRetryingEndpoint] = useState<string | null>(null);
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(() => Date.now());
 
   const cachedEntries = apiStatus.cachedEntries || [];
   const anomalies = apiStatus.anomalies || [];
 
-  // If there are anomalies and no cache, switch default tab
-  useEffect(() => {
-    if (anomalies.length > 0 && cachedEntries.length === 0) {
-      setActiveTab('anomalies');
-    }
-  }, [anomalies.length, cachedEntries.length]);
+  const activeTab: 'cache' | 'anomalies' =
+    selectedTab ?? (anomalies.length > 0 && cachedEntries.length === 0 ? 'anomalies' : 'cache');
+  const setActiveTab = (tab: 'cache' | 'anomalies') => setSelectedTab(tab);
 
   // Update relative timestamps while popover is open
   useEffect(() => {
@@ -162,12 +159,18 @@ export const CacheInspectorPopover: React.FC<CacheInspectorPopoverProps> = ({
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
-      <div onClick={toggle} className="cursor-pointer">
+      <button
+        type="button"
+        onClick={toggle}
+        aria-expanded={isOpen}
+        aria-haspopup="true"
+        className="cursor-pointer bg-transparent border-0 p-0 text-inherit font-inherit"
+      >
         {children}
-      </div>
+      </button>
 
       {isOpen && (
-        <div className="absolute right-0 top-full mt-2 w-[360px] sm:w-[480px] md:w-[560px] max-w-[95vw] bg-surface/95 backdrop-blur-xl border border-surface-border rounded-xl shadow-2xl p-4 z-50 text-xs text-gray-300 animate-in fade-in zoom-in-95 duration-150 space-y-3 font-sans">
+        <div className="absolute right-0 top-full mt-2 w-[360px] sm:w-[480px] md:w-[560px] max-w-[95vw] bg-surface/95 backdrop-blur-xl border border-surface-border rounded-xl shadow-2xl p-4 z-50 text-xs text-gray-300 animate-zoom-in space-y-3 font-sans">
           {/* Header */}
           <div className="flex items-start justify-between gap-2 border-b border-surface-border pb-3">
             <div className="space-y-0.5">
@@ -269,7 +272,7 @@ export const CacheInspectorPopover: React.FC<CacheInspectorPopoverProps> = ({
 
           {/* TAB 1: CACHED URL LIST */}
           {activeTab === 'cache' && (
-            <div className="max-h-[320px] overflow-y-auto pr-1 space-y-3 scrollbar-thin scrollbar-thumb-surface-border">
+            <div className="max-h-[320px] overflow-y-auto pr-1 space-y-3">
               {cachedEntries.length === 0 ? (
                 <div className="text-center py-6 text-gray-400 space-y-1">
                   <p>No active endpoints cached in memory.</p>
@@ -361,7 +364,7 @@ export const CacheInspectorPopover: React.FC<CacheInspectorPopoverProps> = ({
 
           {/* TAB 2: ANOMALIES & DATA WARNINGS */}
           {activeTab === 'anomalies' && (
-            <div className="max-h-[320px] overflow-y-auto pr-1 space-y-2.5 scrollbar-thin scrollbar-thumb-surface-border">
+            <div className="max-h-[320px] overflow-y-auto pr-1 space-y-2.5">
               <div className="bg-amber-950/30 border border-amber-700/40 rounded-lg p-2.5 text-[11px] text-amber-200/90 flex items-start gap-2">
                 <Info className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
                 <div className="space-y-0.5">

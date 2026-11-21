@@ -1,7 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { Zap, Trophy, Clock, Sparkles, RotateCcw, Activity, TrendingUp } from 'lucide-react';
 import { SessionRateStats, SessionRatePoint } from '../types/calculator';
 import { formatTimeSeconds, formatXp } from '../services/bitcraftData';
+import { useHoverPopoverState } from '../hooks/useHoverPopoverState';
 
 interface LiveRateGraphPopoverProps {
   sessionStats?: SessionRateStats | null;
@@ -26,28 +27,15 @@ export const LiveRateGraphPopover: React.FC<LiveRateGraphPopoverProps> = ({
   className = 'inline-block',
   children,
 }) => {
-  const [isOpen, setIsOpen] = useState(false);
+  const { isOpen, handleMouseEnter, handleMouseLeave: baseMouseLeave, toggle } =
+    useHoverPopoverState(250);
   const [hoveredPoint, setHoveredPoint] = useState<SessionRatePoint | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  const handleMouseEnter = () => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    setIsOpen(true);
-  };
 
   const handleMouseLeave = () => {
-    timeoutRef.current = setTimeout(() => {
-      setIsOpen(false);
-      setHoveredPoint(null);
-    }, 250);
+    baseMouseLeave();
+    setHoveredPoint(null);
   };
-
-  useEffect(() => {
-    return () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    };
-  }, []);
 
   const history = sessionStats?.history || [];
 
@@ -123,14 +111,20 @@ export const LiveRateGraphPopover: React.FC<LiveRateGraphPopoverProps> = ({
       ref={popoverRef}
     >
       {/* Trigger children badge */}
-      <div className="cursor-pointer select-none w-full">
+      <button
+        type="button"
+        onClick={toggle}
+        aria-expanded={isOpen}
+        aria-haspopup="true"
+        className="cursor-pointer select-none w-full bg-transparent border-0 p-0 text-inherit font-inherit text-left"
+      >
         {children}
-      </div>
+      </button>
 
       {/* Enlarged Popover Window */}
       {isOpen && (
         <div
-          className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-3 w-[450px] sm:w-[500px] max-w-[94vw] bg-surface/95 backdrop-blur-md border border-surface-border rounded-xl shadow-2xl p-4 text-xs font-sans animate-in fade-in zoom-in-95 duration-150"
+          className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-3 w-[450px] sm:w-[500px] max-w-[94vw] bg-surface/95 backdrop-blur-md border border-surface-border rounded-xl shadow-2xl p-4 text-xs font-sans animate-zoom-in"
         >
           {/* Header */}
           <div className="flex items-center justify-between pb-2.5 mb-3 border-b border-surface-border/60">

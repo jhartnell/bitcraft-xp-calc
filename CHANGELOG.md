@@ -4,6 +4,27 @@ All notable changes to the **BitCraft Online XP Calculator** project are documen
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+- **Non-Root Least-Privilege Docker Runtime:** Switched runtime image to `nginxinc/nginx-unprivileged:1.27-alpine` listening on port `8080` as UID `101`, updated `docker-compose.yml` with `read_only: true`, `cap_drop: [ALL]`, `security_opt: [no-new-privileges:true]`, and tmpfs mounts, and removed unused extension files from the web Docker build stage.
+- **Nginx Reverse Proxy & Header Hardening:** Added shared `nginx-security-headers.conf` (strict `Content-Security-Policy`, `Permissions-Policy`, `Referrer-Policy`, `X-Frame-Options`, `X-Content-Type-Options`) included across all `location` blocks to prevent Nginx `add_header` inheritance drops; restricted `/api/` to `GET`/`HEAD` only with `limit_req` throttling, TLS upstream verification, `server_tokens off;`, and removed deprecated `X-XSS-Protection`.
+- **CI/CD & Extension Least Privilege:** Scoped GitHub Actions permissions per job (`contents: read` for `test`, `packages: write` only for `docker`) with `persist-credentials: false`; narrowed Chrome Extension `host_permissions` to `https://bitjita.com/api/*`; added sender ID/payload validation, `AbortSignal.timeout`, and `encodeURIComponent` URL encoding in `apiClient.ts` and `background.js`; parameterized `builddocker.sh` via `DOCKER_REGISTRY` with `set -euo pipefail`.
+- **Dependency CVE Remediation:** Upgraded `vite` (`6.4.6`), `vitest` (`5.1.1`), and transitive dependencies (`postcss-selector-parser`, `source-map-js`, `tinypool`, `@vitest/mocker`) to resolve all 6 `npm audit` vulnerabilities (0 remaining), and moved `tailwindcss` to `devDependencies`.
+
+### Fixed
+- **Single Authoritative Polling Loop:** Removed duplicate auto-refresh trigger and state-updater side effect in `RefreshControls`; countdown is now purely derived from `nextRefreshAt`.
+- **Welcome Screen Sample Players:** Sample player quick-start buttons now resolve real `entityId`s via `bitjitaApi.searchPlayers` instead of passing empty IDs.
+- **Chrome Extension Background Sync Bridge:** Connected `usePersistentPreferences` primary player pinning directly to `chrome.runtime.sendMessage({ type: 'SYNC_PRIMARY_PLAYER' })`, enabling live toolbar badge tracking (`%` / `IDLE`).
+- **XP & Contributor Calculations:** Fixed primary participant `equippedToolTier` (previously mapped to `effectivePower`), fixed max-level (120) milestone guard, fixed `physicalActionsRemaining` rounding (`Math.ceil(remainingProgress / progressPerAction)`), prevented double-counting food XP overrides with server stat `#50`, and included profession speed + stat `#50` for non-primary contributors.
+- **Async Race Conditions & Performance:** Added request-generation guards in `usePlayerDashboardData` and `PlayerSearch`, removed redundant per-poll equipment `getItem` re-enrichment, fixed in-place cache mutation in `getPlayerEquipment`, parallelized nearby craft contribution lookups, batched `itemMetadataMap` updates, added bounded cache eviction & 15s fetch timeouts in `PoliteApiClient`, and scoped `bitjitaApi.subscribe` to `Header` to avoid full-app re-renders.
+- **Build & UI Polish:** Emitted `version.json` via Vite `generateBundle` (preventing `public/version.json` git churn), added `public/favicon.svg`, removed stale `1.8.4` fallback strings, fixed `document` `visibilitychange` listener and skipped version polling in extension contexts, fixed `useHoverPopoverState` timer cleanup, synced `effortInput` on edit open, and replaced dead `tailwindcss-animate` classes with working CSS keyframes (`prefers-reduced-motion` aware).
+
+### Changed
+- **Architecture & Accessibility:** Decomposed `App.tsx` into `usePersistentPreferences` and `usePlayerDashboardData`, split `xpCalculator.ts` into `toolMatching.ts`, `levelForecast.ts`, and `multiUserProjection.ts`, added a top-level `ErrorBoundary`, upgraded `PublicCraftsModal` to a native `<dialog>` with `closedby="any"` + Safari light-dismiss fallback, upgraded popovers to keyboard/touch-accessible button triggers with Escape dismissal, and added ESLint 9 (`npm run lint`).
+
+---
+
 ## [1.8.5] - 2026-09-04
 
 ### Fixed

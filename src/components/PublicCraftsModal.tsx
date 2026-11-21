@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   Globe,
   X,
@@ -60,49 +60,121 @@ export const PublicCraftsModal: React.FC<PublicCraftsModalProps> = ({
   const [itemsMap, setItemsMap] = useState<Map<number, ItemMetadata>>(new Map());
   const [isLoading, setIsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedRegion, setSelectedRegion] = useState<number | 'all'>(
-    playerRegionId ?? 'all'
-  );
+  const [regionSelection, setRegionSelection] = useState<{
+    playerRegion?: number;
+    value: number | 'all';
+  } | null>(null);
   const [selectedProfession, setSelectedProfession] = useState<number | 'all'>('all');
   const [minTier, setMinTier] = useState(1);
   const [maxTier, setMaxTier] = useState(10);
   const [onlyAssistedFilter, setOnlyAssistedFilter] = useState(false);
   const [isFilterSetOpen, setIsFilterSetOpen] = useState(false);
-  const [assistedCraftIds, setAssistedCraftIds] = useState<Set<string>>(new Set());
+  const [assistedState, setAssistedState] = useState<{
+    playerId?: string;
+    ids: Set<string>;
+  } | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<number | 'tracked'>>(
     new Set(['tracked'])
   );
+  const dialogRef = useRef<HTMLDialogElement>(null);
 
-  // Default region filter to active player's region whenever modal opens
-  useEffect(() => {
-    if (isOpen && playerRegionId) {
-      setSelectedRegion(playerRegionId);
+  const selectedRegion: number | 'all' =
+    regionSelection && regionSelection.playerRegion === playerRegionId
+      ? regionSelection.value
+      : (playerRegionId ?? 'all');
+
+  const setSelectedRegion = useCallback(
+    (value: number | 'all') => {
+      setRegionSelection({ playerRegion: playerRegionId, value });
+    },
+    [playerRegionId]
+  );
+
+  // Derive persisted assisted craft IDs cleanly when player changes or modal re-opens
+  const assistedCraftIds = useMemo(() => {
+    if (assistedState && assistedState.playerId === playerId) {
+      return assistedState.ids;
     }
-  }, [isOpen, playerRegionId]);
-
-  // Load tracked assisted craft IDs from localStorage for the active player
-  useEffect(() => {
-    if (!playerId) return;
+    if (!playerId || !isOpen) return new Set<string>();
     try {
       const stored = localStorage.getItem(`bitcraft_assisted_crafts_${playerId}`);
       if (stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed)) {
-          setAssistedCraftIds(new Set(parsed));
+          return new Set<string>(parsed.map(String));
         }
       }
     } catch {
       // ignore
     }
-  }, [playerId, isOpen]);
+    return new Set<string>();
+  }, [assistedState, playerId, isOpen]);
+
+  // Sync native <dialog> top-layer modal open/close state and Safari light-dismiss fallback
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+
+    if (isOpen) {
+      dialog.setAttribute('closedby', 'any');
+      if (!dialog.open && typeof dialog.showModal === 'function') {
+        dialog.showModal();
+      }
+    } else if (dialog.open) {
+      dialog.close();
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog || !isOpen) return;
+
+    const handleClose = () => {
+      onClose();
+    };
+
+    dialog.addEventListener('close', handleClose);
+
+    // Fallback light-dismiss for browsers without native closedby support (e.g. Safari)
+    let cleanupFallback: (() => void) | undefined;
+    if (typeof HTMLDialogElement !== 'undefined' && !('closedBy' in HTMLDialogElement.prototype)) {
+      const isOutside = (e: PointerEvent) => {
+        const r = dialog.getBoundingClientRect();
+        return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+      };
+      let pressedOutside = false;
+      const handlePointerDown = (e: PointerEvent) => {
+        pressedOutside = isOutside(e);
+      };
+      const handlePointerUp = (e: PointerEvent) => {
+        if (pressedOutside && isOutside(e)) {
+          dialog.close();
+        }
+        pressedOutside = false;
+      };
+      dialog.addEventListener('pointerdown', handlePointerDown);
+      dialog.addEventListener('pointerup', handlePointerUp);
+      cleanupFallback = () => {
+        dialog.removeEventListener('pointerdown', handlePointerDown);
+        dialog.removeEventListener('pointerup', handlePointerUp);
+      };
+    }
+
+    return () => {
+      dialog.removeEventListener('close', handleClose);
+      cleanupFallback?.();
+    };
+  }, [isOpen, onClose]);
 
   useEffect(() => {
     if (!isOpen) return;
+    let cancelled = false;
 
     const fetchPublicCrafts = async () => {
       try {
         setIsLoading(true);
         const results = await bitjitaApi.getPublicActiveCrafts(true);
+        if (cancelled) return;
         setCrafts(results.craftResults);
 
         const map = new Map<number, ItemMetadata>();
@@ -114,13 +186,20 @@ export const PublicCraftsModal: React.FC<PublicCraftsModalProps> = ({
         }
         setItemsMap(map);
       } catch (err) {
-        console.error('Failed to load public crafts:', err);
+        if (!cancelled) {
+          console.error('Failed to load public crafts:', err);
+        }
       } finally {
-        setIsLoading(false);
+        if (!cancelled) {
+          setIsLoading(false);
+        }
       }
     };
 
-    fetchPublicCrafts();
+    void fetchPublicCrafts();
+    return () => {
+      cancelled = true;
+    };
   }, [isOpen]);
 
   // Extract all unique regions and count how many active crafts exist in each
@@ -172,53 +251,65 @@ export const PublicCraftsModal: React.FC<PublicCraftsModalProps> = ({
       } else {
         next.add(craftId);
       }
-      setAssistedCraftIds(next);
+      setAssistedState({ playerId, ids: next });
       localStorage.setItem(key, JSON.stringify(Array.from(next)));
     } catch {
       // ignore
     }
   };
 
-  const isAssistedCraft = (c: CraftResult) => {
-    return assistedCraftIds.has(c.entityId);
-  };
+  const isAssistedCraft = useCallback(
+    (c: CraftResult) => assistedCraftIds.has(c.entityId),
+    [assistedCraftIds]
+  );
 
-  const matchingCrafts = crafts.filter((c) => {
-    if (onlyAssistedFilter && !isAssistedCraft(c)) return false;
-    if (selectedRegion !== 'all' && c.regionId !== selectedRegion) return false;
+  const matchingCrafts = useMemo(() => {
+    return crafts.filter((c) => {
+      if (onlyAssistedFilter && !isAssistedCraft(c)) return false;
+      if (selectedRegion !== 'all' && c.regionId !== selectedRegion) return false;
 
-    const craftSkillId = c.levelRequirements?.[0]?.skill_id || c.experiencePerProgress?.[0]?.skill_id;
-    if (selectedProfession !== 'all' && craftSkillId !== selectedProfession) return false;
+      const craftSkillId = c.levelRequirements?.[0]?.skill_id || c.experiencePerProgress?.[0]?.skill_id;
+      if (selectedProfession !== 'all' && craftSkillId !== selectedProfession) return false;
 
-    const targetId = c.craftedItem?.[0]?.item_id;
-    const itemMeta = targetId ? itemsMap.get(Number(targetId)) : undefined;
+      const targetId = c.craftedItem?.[0]?.item_id;
+      const itemMeta = targetId ? itemsMap.get(Number(targetId)) : undefined;
 
-    // Filter by Item Tier Range
-    const craftTier = itemMeta?.tier ?? 1;
-    if (craftTier < minTier || craftTier > maxTier) return false;
+      // Filter by Item Tier Range
+      const craftTier = itemMeta?.tier ?? 1;
+      if (craftTier < minTier || craftTier > maxTier) return false;
 
-    if (!searchTerm) return true;
-    const term = searchTerm.toLowerCase().trim();
+      if (!searchTerm) return true;
+      const term = searchTerm.toLowerCase().trim();
 
-    // Multi-format Region matching: matches "14", "region 14", "region14", "r14", or regionName
-    const regionIdStr = c.regionId ? String(c.regionId) : '';
-    const matchesRegion =
-      (c.regionName && c.regionName.toLowerCase().includes(term)) ||
-      (regionIdStr && (
-        regionIdStr === term ||
-        `region ${regionIdStr}`.includes(term) ||
-        `region${regionIdStr}`.includes(term) ||
-        `r${regionIdStr}`.includes(term)
-      ));
+      // Multi-format Region matching: matches "14", "region 14", "region14", "r14", or regionName
+      const regionIdStr = c.regionId ? String(c.regionId) : '';
+      const matchesRegion =
+        (c.regionName && c.regionName.toLowerCase().includes(term)) ||
+        (regionIdStr &&
+          (regionIdStr === term ||
+            `region ${regionIdStr}`.includes(term) ||
+            `region${regionIdStr}`.includes(term) ||
+            `r${regionIdStr}`.includes(term)));
 
-    return (
-      (c.buildingName && c.buildingName.toLowerCase().includes(term)) ||
-      (c.claimName && c.claimName.toLowerCase().includes(term)) ||
-      (c.ownerUsername && c.ownerUsername.toLowerCase().includes(term)) ||
-      matchesRegion ||
-      (itemMeta && itemMeta.name.toLowerCase().includes(term))
-    );
-  });
+      return (
+        (c.buildingName && c.buildingName.toLowerCase().includes(term)) ||
+        (c.claimName && c.claimName.toLowerCase().includes(term)) ||
+        (c.ownerUsername && c.ownerUsername.toLowerCase().includes(term)) ||
+        matchesRegion ||
+        (itemMeta && itemMeta.name.toLowerCase().includes(term))
+      );
+    });
+  }, [
+    crafts,
+    onlyAssistedFilter,
+    isAssistedCraft,
+    selectedRegion,
+    selectedProfession,
+    itemsMap,
+    minTier,
+    maxTier,
+    searchTerm,
+  ]);
 
   // Group matching crafts by profession and sort each group by level requirement descending (Highest -> Lowest)
   const professionGroups = React.useMemo(() => {
@@ -255,19 +346,12 @@ export const PublicCraftsModal: React.FC<PublicCraftsModalProps> = ({
   }, [matchingCrafts]);
 
   // Tracked crafts sorted by required level descending
-  const trackedCrafts = React.useMemo(() => {
-    return matchingCrafts
-      .filter(isAssistedCraft)
-      .sort(compareCraftsByLevelDesc);
-  }, [matchingCrafts, assistedCraftIds]);
+  const trackedCrafts = useMemo(() => {
+    return matchingCrafts.filter(isAssistedCraft).sort(compareCraftsByLevelDesc);
+  }, [matchingCrafts, isAssistedCraft]);
 
-  // Auto-expand groups when user searches or picks a specific profession
-  useEffect(() => {
-    if (searchTerm.trim() || selectedProfession !== 'all') {
-      const all = new Set<number | 'tracked'>(['tracked', ...professionGroups.map((g) => g.skillId)]);
-      setExpandedGroups(all);
-    }
-  }, [searchTerm, selectedProfession, professionGroups]);
+  const isAutoExpanded = Boolean(searchTerm.trim() || selectedProfession !== 'all');
+  const isGroupExpanded = (id: number | 'tracked') => isAutoExpanded || expandedGroups.has(id);
 
   const toggleGroup = (id: number | 'tracked') => {
     setExpandedGroups((prev) => {
@@ -461,8 +545,12 @@ export const PublicCraftsModal: React.FC<PublicCraftsModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-surface border border-surface-border rounded-xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+    <dialog
+      ref={dialogRef}
+      aria-labelledby="public-crafts-modal-title"
+      className="p-0 bg-transparent border-0 max-w-3xl w-[calc(100%-2rem)] max-h-[85vh] overflow-visible text-gray-100 open:flex open:flex-col m-auto"
+    >
+      <div className="bg-surface border border-surface-border rounded-xl shadow-2xl w-full max-h-[85vh] flex flex-col overflow-hidden animate-zoom-in">
         {/* Modal Header */}
         <div className="p-4 border-b border-surface-border flex items-center justify-between">
           <div className="flex items-center gap-2.5">
@@ -470,14 +558,18 @@ export const PublicCraftsModal: React.FC<PublicCraftsModalProps> = ({
               <Globe className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-gray-100">Public In-Progress Crafts</h3>
+              <h2 id="public-crafts-modal-title" className="text-base font-bold text-gray-100">
+                Public In-Progress Crafts
+              </h2>
               <p className="text-xs text-gray-400">
                 Explore active community crafting projects grouped by profession and level requirement
               </p>
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
+            aria-label="Close public crafts dialog"
             className="text-gray-400 hover:text-gray-200 p-1 rounded-lg hover:bg-surface-subtle transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
@@ -492,6 +584,7 @@ export const PublicCraftsModal: React.FC<PublicCraftsModalProps> = ({
               <Search className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
               <input
                 type="text"
+                autoFocus
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Search station, item, owner, claim, or region (e.g. 14, Region 14)..."
@@ -525,7 +618,7 @@ export const PublicCraftsModal: React.FC<PublicCraftsModalProps> = ({
 
           {/* Tier 1.5: Collapsible Filter Set (Dropdowns & Tier Range, Collapsed by default) */}
           {isFilterSetOpen && (
-            <div className="p-3 rounded-lg bg-surface/80 border border-surface-border space-y-3 animate-in fade-in zoom-in-95 duration-150">
+            <div className="p-3 rounded-lg bg-surface/80 border border-surface-border space-y-3 animate-zoom-in">
               <div className="flex items-center justify-between text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
                 <span>Filter Options</span>
                 {hasActiveDropdownFilters && (
@@ -837,12 +930,12 @@ export const PublicCraftsModal: React.FC<PublicCraftsModalProps> = ({
                     </div>
                     <ChevronDown
                       className={`w-4 h-4 text-indigo-300 transition-transform duration-200 ${
-                        expandedGroups.has('tracked') ? 'rotate-180' : ''
+                        isGroupExpanded('tracked') ? 'rotate-180' : ''
                       }`}
                     />
                   </button>
 
-                  {expandedGroups.has('tracked') && (
+                  {isGroupExpanded('tracked') && (
                     <div className="p-2.5 space-y-2 border-t border-indigo-800/40">
                       {trackedCrafts.map(renderCraftCard)}
                     </div>
@@ -852,7 +945,7 @@ export const PublicCraftsModal: React.FC<PublicCraftsModalProps> = ({
 
               {/* Profession Accordion Groups */}
               {professionGroups.map(({ skillId, def, crafts: groupCrafts, minLevel, maxLevel }) => {
-                const isExpanded = expandedGroups.has(skillId);
+                const isExpanded = isGroupExpanded(skillId);
                 return (
                   <div
                     key={skillId}
@@ -890,7 +983,7 @@ export const PublicCraftsModal: React.FC<PublicCraftsModalProps> = ({
                     </button>
 
                     {isExpanded && (
-                      <div className="p-2.5 space-y-2 border-t border-surface-border/60 bg-surface-subtle/20 animate-in fade-in duration-150">
+                      <div className="p-2.5 space-y-2 border-t border-surface-border/60 bg-surface-subtle/20 animate-fade-in">
                         {groupCrafts.map(renderCraftCard)}
                       </div>
                     )}
@@ -905,6 +998,7 @@ export const PublicCraftsModal: React.FC<PublicCraftsModalProps> = ({
         <div className="p-3 border-t border-surface-border bg-surface-subtle/30 flex justify-between items-center text-xs text-gray-400">
           <span>Found {matchingCrafts.length} public crafts across {professionGroups.length} professions</span>
           <button
+            type="button"
             onClick={onClose}
             className="px-3 py-1 bg-surface-subtle hover:bg-surface border border-surface-border rounded-lg text-gray-300 cursor-pointer"
           >
@@ -912,6 +1006,6 @@ export const PublicCraftsModal: React.FC<PublicCraftsModalProps> = ({
           </button>
         </div>
       </div>
-    </div>
+    </dialog>
   );
 };

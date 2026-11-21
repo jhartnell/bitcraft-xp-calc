@@ -4,7 +4,6 @@ import {
   CraftResult,
   PlayerDetails,
   EquipmentSlot,
-  ItemMetadata,
   PlayerBuff,
   PlayerStatsData,
   PlayerToolEntry,
@@ -18,75 +17,32 @@ import {
   FoodBuffOverride,
   SpeedBreakdownInfo,
   SpeedContributorItem,
-  ParticipantContributionSummary,
-  MultiUserCraftProjection,
-  LevelMilestone,
-  LevelProgressForecast,
   SkillOverrideMap,
 } from '../types/calculator';
 import {
   SKILL_DEFINITIONS,
   TOOL_TYPE_NAMES,
-  SKILL_TOOL_KEYWORDS,
   DEFAULT_SKILL_BASE_XP,
   calculateXpForLevel,
   getXpProgressForLevel,
   getItemPower,
-  resolveToolName,
-  resolveToolRarity,
-  LEVEL_TO_TIER,
   getProfessionLevelStats,
   getTierRequiredLevel,
   getCraftSkillId,
 } from './bitcraftData';
 import { bitjitaApi } from './apiClient';
+import {
+  ALL_PROFESSION_NAMES,
+  BASE_ACTION_DURATION_SECONDS,
+  PROFESSION_SPEED_STAT_IDS,
+  resolveEquippedTool,
+} from './toolMatching';
+import { calculateLevelProgressForecast } from './levelForecast';
 
-// BitCraft Online base crafting station action tick duration is exactly 1.6 seconds
-const BASE_ACTION_DURATION_SECONDS = 1.6;
-
-// BitCraft Profession-Specific Speed Multiplier Stat IDs (Stats 21 to 33 in SpacetimeDB)
-const PROFESSION_SPEED_STAT_IDS: Record<number, number> = {
-  2: 21,  // Forestry Speed
-  3: 22,  // Carpentry Speed
-  4: 23,  // Masonry Speed
-  5: 24,  // Mining Speed
-  6: 25,  // Smithing Speed
-  7: 26,  // Scholar Speed
-  8: 27,  // Leatherworking Speed
-  9: 28,  // Hunting Speed
-  10: 29, // Tailoring Speed
-  11: 30, // Farming Speed
-  12: 31, // Fishing Speed
-  13: 32, // Cooking Speed
-  14: 33, // Foraging Speed
-  15: 17, // Construction / Building Speed
-};
-
-const ALL_PROFESSION_NAMES = [
-  'forestry',
-  'carpentry',
-  'masonry',
-  'mining',
-  'smithing',
-  'scholar',
-  'leatherworking',
-  'hunting',
-  'tailoring',
-  'farming',
-  'fishing',
-  'cooking',
-  'foraging',
-  'construction',
-];
-
-export interface ContributorDetailPayload {
-  contribution: CraftContribution;
-  playerDetails?: PlayerDetails | null;
-  equipment?: EquipmentSlot[];
-  buffs?: PlayerBuff[];
-  stats?: PlayerStatsData | null;
-  isIncluded?: boolean;
-}
+export {
+  calculateMultiUserCraftProjection,
+  type ContributorDetailPayload,
+} from './multiUserProjection';
 
 export function calculateCraftXp(
   craft: CraftResult,
@@ -132,12 +88,25 @@ export function calculateCraftXp(
     }
   }
 
-  if (!hasManualOverride && player && player.experience && Array.isArray(player.experience) && player.experience.length > 0) {
+  if (
+    !hasManualOverride &&
+    player &&
+    player.experience &&
+    Array.isArray(player.experience) &&
+    player.experience.length > 0
+  ) {
     const expObj = player.experience.find(
-      (e) => e.skill_id === skillId || (e as unknown as Record<string, unknown>).skillId === skillId || (e as unknown as Record<string, unknown>).id === skillId
+      (e) =>
+        e.skill_id === skillId ||
+        (e as unknown as Record<string, unknown>).skillId === skillId ||
+        (e as unknown as Record<string, unknown>).id === skillId
     );
     if (expObj) {
-      const rawQty = expObj.quantity ?? (expObj as unknown as Record<string, unknown>).experience ?? (expObj as unknown as Record<string, unknown>).xp ?? 0;
+      const rawQty =
+        expObj.quantity ??
+        (expObj as unknown as Record<string, unknown>).experience ??
+        (expObj as unknown as Record<string, unknown>).xp ??
+        0;
       currentSkillXp = typeof rawQty === 'number' ? rawQty : Number(rawQty) || 0;
     }
   }
@@ -160,14 +129,16 @@ export function calculateCraftXp(
   const totalProgressRequired = craft.totalActionsRequired || progressPerItem * itemsTotal;
   const completedProgress = Math.min(totalProgressRequired, Math.max(0, craft.progress || 0));
   const remainingProgress = Math.max(0, totalProgressRequired - completedProgress);
-  const progressPercent = totalProgressRequired > 0 ? (completedProgress / totalProgressRequired) * 100 : 0;
+  const progressPercent =
+    totalProgressRequired > 0 ? (completedProgress / totalProgressRequired) * 100 : 0;
 
   const itemsCompleted = Math.min(itemsTotal, Math.floor(completedProgress / progressPerItem));
   const itemsRemaining = Math.max(0, itemsTotal - itemsCompleted);
 
   // 4. Required Tool & Equipped Tool Matching
-  const toolReq = craft.toolRequirements && craft.toolRequirements.length > 0 ? craft.toolRequirements[0] : null;
-  const reqToolType = toolReq?.tool_type ?? (skillDef.toolType ?? 0);
+  const toolReq =
+    craft.toolRequirements && craft.toolRequirements.length > 0 ? craft.toolRequirements[0] : null;
+  const reqToolType = toolReq?.tool_type ?? skillDef.toolType ?? 0;
   const reqToolLevel = toolReq?.level ?? 1;
   const reqToolPower = toolReq?.power ?? 1;
   const reqToolName = TOOL_TYPE_NAMES[reqToolType] || toolReq?.name || 'Tool';
@@ -175,193 +146,31 @@ export function calculateCraftXp(
   const profStatId = PROFESSION_SPEED_STAT_IDS[skillId];
   const isGatheringSkill = [2, 5, 11, 12, 14].includes(skillId);
 
-  // 4. Required Tool & Equipped Main Tool Matching (Multi-pass keyword & slot detection)
-  const isHandOrToolSlot = (slotPrimary?: string): boolean => {
-    if (!slotPrimary) return false;
-    const s = slotPrimary.toLowerCase();
-    return (
-      s.includes('tool') ||
-      s.includes('hand') ||
-      s.includes('weapon') ||
-      s.includes('pocket') ||
-      s.includes('held') ||
-      s.includes('primary') ||
-      s.includes('active')
-    );
-  };
-
-  const ACCESSORY_WORDS = new Set([
-    'charm', 'flute', 'lute', 'drum', 'horn', 'harp', 'instrument',
-    'ring', 'amulet', 'necklace', 'pendant', 'talisman', 'artifact',
-    'tunic', 'robe', 'shirt', 'vest', 'jacket', 'cloak', 'cape',
-    'pants', 'trousers', 'leggings', 'boots', 'shoes', 'gloves',
-    'gauntlets', 'bracers', 'belt', 'hat', 'helm', 'helmet', 'cap',
-    'hood', 'circlet', 'crown'
-  ]);
-
-  const isExcludedAccessoryOrGear = (item: ItemMetadata, slotPrimary?: string): boolean => {
-    const slot = (slotPrimary || '').toLowerCase();
-    if (
-      slot.includes('charm') ||
-      slot.includes('instrument') ||
-      slot.includes('finger') ||
-      slot.includes('ring') ||
-      slot.includes('neck') ||
-      slot.includes('amulet') ||
-      slot.includes('artifact') ||
-      slot.includes('torso') ||
-      slot.includes('chest') ||
-      slot.includes('legs') ||
-      slot.includes('feet') ||
-      slot.includes('head') ||
-      slot.includes('cape') ||
-      slot.includes('back')
-    ) {
-      return true;
-    }
-    const nameWords = item.name.toLowerCase().split(/[\s\-_,]+/);
-    return nameWords.some((w) => ACCESSORY_WORDS.has(w));
-  };
-
-  // Compile search keywords for the required tool
-  const toolKeywords = new Set<string>();
-  if (SKILL_TOOL_KEYWORDS[skillId]) {
-    for (const kw of SKILL_TOOL_KEYWORDS[skillId]) {
-      toolKeywords.add(kw.toLowerCase());
-    }
-  }
-  if (reqToolName) {
-    const parts = reqToolName.toLowerCase().split(/[\s\/\-_,]+/);
-    for (const p of parts) {
-      if (p.length >= 3 && p !== 'tool' && p !== 'type') toolKeywords.add(p);
-    }
-  }
-
-  const matchesToolKeywords = (item: ItemMetadata, slotPrimary?: string): boolean => {
-    if (isExcludedAccessoryOrGear(item, slotPrimary)) return false;
-
-    // 1. Direct toolStats match from /api/items/{itemId} (highest precision)
-    if (item.toolStats) {
-      if (item.toolStats.skillId === skillId) return true;
-      if (reqToolName && item.toolStats.toolType?.toLowerCase().includes(reqToolName.toLowerCase())) return true;
-    }
-
-    // 2. Keyword and tag matching
-    const name = item.name.toLowerCase();
-    const tag = (item.tag || item.tags || '').toLowerCase();
-    for (const kw of toolKeywords) {
-      if (name.includes(kw) || tag.includes(kw)) return true;
-    }
-    return false;
-  };
-
-  let equippedTool: EquipmentSlot['item'] = null;
-  let isEquipped = false;
-
-  // Pass 0: Dedicated Player Tools System (/players/{id}/tools) - Authoritative Tool Power & Level in BitCraft
-  if (playerTools && playerTools.length > 0) {
-    const matchedTool = playerTools.find((t) => t.toolType === reqToolType);
-    if (matchedTool) {
-      const toolTier = LEVEL_TO_TIER[matchedTool.level] || matchedTool.level;
-      const resolvedToolName = resolveToolName(reqToolType, matchedTool.level);
-      const toolRarity = resolveToolRarity(toolTier, matchedTool.power);
-      isEquipped = true;
-      equippedTool = {
-        id: `tool_${reqToolType}`,
-        name: resolvedToolName,
-        tier: toolTier,
-        rarityStr: toolRarity,
-        rarityString: toolRarity,
-        toolStats: {
-          power: matchedTool.power,
-          level: matchedTool.level,
-          toolType: reqToolName,
-          skillId: skillId,
-          skillName: skillDef.name,
-        },
-      };
-    }
-  }
-
-  // Pass 1: Check hand/tool slots for keyword or skill match
-  if (!equippedTool) {
-    for (const slot of equipment) {
-      if (slot.item && isHandOrToolSlot(slot.primary)) {
-        if (matchesToolKeywords(slot.item, slot.primary)) {
-          equippedTool = slot.item;
-          break;
-        }
-      }
-    }
-  }
-
-  // Pass 2: Check hand/tool slots for any tool with power or tier
-  if (!equippedTool) {
-    for (const slot of equipment) {
-      if (slot.item && isHandOrToolSlot(slot.primary) && !isExcludedAccessoryOrGear(slot.item, slot.primary)) {
-        const hasPowerStat = slot.item.stats?.some(
-          (st) => (st.name || '').toLowerCase().includes('power') || st.id === 2
-        );
-        if (hasPowerStat || (slot.item.tier && slot.item.tier > 0)) {
-          equippedTool = slot.item;
-          break;
-        }
-      }
-    }
-  }
-
-  // Pass 3: Check main_hand or default hand slot
-  if (!equippedTool) {
-    const mainHandSlot = equipment.find(
-      (s) => s.item && s.primary.toLowerCase().includes('main_hand') && !isExcludedAccessoryOrGear(s.item, s.primary)
-    );
-    if (mainHandSlot?.item) {
-      equippedTool = mainHandSlot.item;
-    }
-  }
-
-  // Pass 4: Check ANY equipment slot for a tool matching this skill
-  if (!equippedTool) {
-    for (const slot of equipment) {
-      if (slot.item && matchesToolKeywords(slot.item, slot.primary)) {
-        equippedTool = slot.item;
-        break;
-      }
-    }
-  }
-
-  // Pass 5: If the player is actively crafting at the station, infer valid tool
-  const userContrib = player && contributions.length > 0 ? contributions.find(
-    (c) =>
-      c.contributorEntityId === player.entityId ||
-      c.contributorUsername?.toLowerCase() === player.username.toLowerCase()
-  ) : null;
-  const isActivelyCrafting = Boolean(
-    (userContrib && userContrib.contributionCount > 0) ||
-    (player && craft.ownerEntityId === player.entityId && (craft.progress || 0) > 0)
-  );
-
-  if (equippedTool) {
-    isEquipped = true;
-  } else if (isActivelyCrafting) {
-    // Player is confirmed to be crafting at this station in-game
-    const inferredTier = Math.max(reqToolLevel, 1);
-    const inferredName = resolveToolName(reqToolType, inferredTier);
-    isEquipped = true;
-    equippedTool = {
-      id: 'active_tool',
-      name: inferredName,
-      tier: inferredTier,
-    };
-  }
+  const { equippedTool, isEquipped } = resolveEquippedTool({
+    skillId,
+    skillDef,
+    reqToolType,
+    reqToolLevel,
+    reqToolName,
+    craft,
+    player,
+    equipment,
+    contributions,
+    playerTools,
+  });
 
   // Smart Level Floor: Higher of Craft Level Requirement vs. Equipped Tool Tier Level Requirement
-  // (e.g. T7 Tool = 70+, T5 Craft = 50+ -> 70; or Craft 60 vs Tool 50 -> 60)
   let isSkillLevelInferred = false;
   const isSkillLevelOverridden = hasManualOverride;
 
-  if (!hasManualOverride && (!player?.experience || player.experience.length === 0 || currentLevelProgress.level <= 1)) {
-    const craftReqLevel = craft.levelRequirements?.find((r) => r.skill_id === skillId)?.level || craft.levelRequirements?.[0]?.level || 1;
+  if (
+    !hasManualOverride &&
+    (!player?.experience || player.experience.length === 0 || currentLevelProgress.level <= 1)
+  ) {
+    const craftReqLevel =
+      craft.levelRequirements?.find((r) => r.skill_id === skillId)?.level ||
+      craft.levelRequirements?.[0]?.level ||
+      1;
     const toolReqLevel = getTierRequiredLevel(equippedTool?.tier);
     const smartFloorLevel = Math.max(1, craftReqLevel, toolReqLevel);
     if (smartFloorLevel > currentLevelProgress.level) {
@@ -373,11 +182,9 @@ export function calculateCraftXp(
     }
   }
 
-  // 6. Equipment Modifiers (Crafting speed %, Experience Rate %, stamina, and power bonuses across all 36 slots)
+  // 5. Equipment Modifiers
   const equipmentModifiers: EquipmentModifier[] = [];
   let equipCraftingSpeedBonus = 0;
-  let equipGatheringSpeedBonus = 0;
-  let equipStaminaBonus = 0;
   let equipExpRateBonus = 0;
   let totalExtraPowerFromGear = 0;
 
@@ -397,16 +204,13 @@ export function calculateCraftXp(
         );
 
         if (belongsToOtherProfession) {
-          // Stat is dedicated to a different profession (e.g. Fishing Power on Smithing craft)
           continue;
         }
 
-        // 1. General Crafting Speed (Stat #15)
         if (stat.id === 15 || statNameLower.includes('crafting speed')) {
           slotCraftingSpeed += stat.value;
         }
 
-        // 2. Specific Profession Speed (Stat #21..#33 or "[Profession] Speed")
         if (
           (profStatId && stat.id === profStatId) ||
           (skillNameLower && statNameLower.includes(`${skillNameLower} speed`))
@@ -414,32 +218,25 @@ export function calculateCraftXp(
           slotProfessionSpeed += stat.value;
         }
 
-        // 3. Gathering Speed for Gathering/Resource Skills (Stat #16)
         if (stat.id === 16 || statNameLower.includes('gathering speed')) {
           slotGatheringSpeed += stat.value;
         }
 
-        // 4. Power (Tool Power, Charm Power, Instrument Power, Profession Power)
         if (
           stat.id === 2 ||
           statNameLower.includes('tool power') ||
           (skillNameLower && statNameLower.includes(`${skillNameLower} power`)) ||
           statNameLower === 'power'
         ) {
-          // If this is the main equipped tool, its power is already accounted for in baseToolPower
-          if (slot.item === equippedTool) {
-            // Handled directly by base tool power
-          } else {
+          if (slot.item !== equippedTool) {
             slotPowerBonus += stat.value;
           }
         }
 
-        // 5. Stamina (Stat #1)
         if (stat.id === 1 || statNameLower.includes('stamina')) {
           slotStamina += stat.value;
         }
 
-        // 6. Experience Rate (Stat #50 or "[Profession] Exp")
         if (
           stat.id === 50 ||
           statNameLower.includes('experience rate') ||
@@ -449,7 +246,6 @@ export function calculateCraftXp(
         }
       }
 
-      // Applicable speed for the active craft
       const applicableSpeedForCraft =
         slotCraftingSpeed + slotProfessionSpeed + (isGatheringSkill ? slotGatheringSpeed : 0);
 
@@ -461,8 +257,6 @@ export function calculateCraftXp(
         slotExpBonus !== 0
       ) {
         equipCraftingSpeedBonus += applicableSpeedForCraft;
-        equipGatheringSpeedBonus += slotGatheringSpeed;
-        equipStaminaBonus += slotStamina;
         equipExpRateBonus += slotExpBonus;
         totalExtraPowerFromGear += slotPowerBonus;
 
@@ -482,14 +276,13 @@ export function calculateCraftXp(
     }
   }
 
-  // Cumulative Profession Level Stat Increases (Power, Speed, Crit) from BitcraftLevelStatIncreases.csv
+  // Cumulative Profession Level Stat Increases
   const professionLevelStats = getProfessionLevelStats(skillId, currentLevelProgress.level);
   const levelPowerBonus = professionLevelStats.power;
   const levelSpeedBonus = professionLevelStats.speed;
   const levelCritBonus = professionLevelStats.crit;
 
-  // Calculate Total Effective Power (Base Tool Power + Charms + Instruments + Gear + Profession Level Bonus)
-  const baseToolPower = equippedTool ? getItemPower(equippedTool) : (isEquipped ? 1 : 1);
+  const baseToolPower = equippedTool ? getItemPower(equippedTool) : 1;
   const effectivePower = baseToolPower + totalExtraPowerFromGear + levelPowerBonus;
 
   const toolStatus: ToolStatusInfo = {
@@ -507,7 +300,7 @@ export function calculateCraftXp(
     levelCritBonus,
   };
 
-  // 5. Calculate Progress Per Physical Action (Effort per click/tick)
+  // 6. Progress Per Physical Action
   let progressPerAction = 20;
   let isMeasuredProgressPerAction = false;
 
@@ -520,8 +313,14 @@ export function calculateCraftXp(
           c.contributorEntityId === player.entityId ||
           c.contributorUsername?.toLowerCase() === player.username.toLowerCase()
       );
-      if (userContrib && userContrib.contributionCount > 0 && userContrib.totalProgressContributed > 0) {
-        progressPerAction = Math.round((userContrib.totalProgressContributed / userContrib.contributionCount) * 10) / 10;
+      if (
+        userContrib &&
+        userContrib.contributionCount > 0 &&
+        userContrib.totalProgressContributed > 0
+      ) {
+        progressPerAction =
+          Math.round((userContrib.totalProgressContributed / userContrib.contributionCount) * 10) /
+          10;
         isMeasuredProgressPerAction = true;
       }
     }
@@ -532,15 +331,14 @@ export function calculateCraftXp(
   }
 
   const physicalActionsTotal = Math.ceil(totalProgressRequired / progressPerAction);
-  const physicalActionsCompleted = Math.ceil(completedProgress / progressPerAction);
-  const physicalActionsRemaining = Math.max(0, physicalActionsTotal - physicalActionsCompleted);
+  const physicalActionsRemaining = Math.ceil(remainingProgress / progressPerAction);
+  const physicalActionsCompleted = Math.max(0, physicalActionsTotal - physicalActionsRemaining);
 
   // 7. Active Buff & Debuff Modifiers
   const activeBuffModifiers: ActiveBuffModifier[] = [];
   let buffCraftingSpeedBonus = 0;
-  let buffGatheringSpeedBonus = 0;
   let buffStaminaRegenBonus = 0;
-  let buffExpRateBonus = 0;
+  let serverBuffExpRateBonus = 0;
 
   for (const buff of buffs) {
     const isBuffActive = buff.status === 'active' || (buff.timeRemaining && buff.timeRemaining > 0);
@@ -564,13 +362,12 @@ export function calculateCraftXp(
         }
         if (st.id === 50 || st.name.toLowerCase().includes('experience rate')) {
           buffExpRate += st.value;
-          buffExpRateBonus += st.value;
+          serverBuffExpRateBonus += st.value;
         }
       }
     }
 
     buffCraftingSpeedBonus += buffCraftSpeed;
-    buffGatheringSpeedBonus += buffGatherSpeed;
     buffStaminaRegenBonus += buffStaminaRegen;
 
     const remainingSecs = Math.max(0, buff.timeRemaining || 0);
@@ -590,23 +387,23 @@ export function calculateCraftXp(
   }
 
   // Inject user active food buff override if enabled and valid
-  let manualFoodSpeedBonus = 0;
-  let manualFoodXpBonus = 0;
+  let buffExpRateBonus = serverBuffExpRateBonus;
+  let appliedManualFoodXpBonus = 0;
 
   if (foodBuffOverride && foodBuffOverride.enabled) {
     const elapsedSecs = Math.max(0, (Date.now() - foodBuffOverride.startedAt) / 1000);
     const remainingSecs = Math.max(0, Math.round(foodBuffOverride.durationSeconds - elapsedSecs));
 
     if (remainingSecs > 0) {
-      manualFoodSpeedBonus = foodBuffOverride.craftingSpeedBonus || 0;
-      manualFoodXpBonus = foodBuffOverride.xpRateBonus || 0;
+      const manualFoodSpeedBonus = foodBuffOverride.craftingSpeedBonus || 0;
+      const manualFoodXpBonus = foodBuffOverride.xpRateBonus || 0;
 
-      // If server does not already have an active crafting speed buff from food
       if (buffCraftingSpeedBonus === 0 && manualFoodSpeedBonus !== 0) {
         buffCraftingSpeedBonus += manualFoodSpeedBonus;
       }
-      if (buffExpRateBonus === 0 && manualFoodXpBonus !== 0) {
+      if (serverBuffExpRateBonus === 0 && manualFoodXpBonus !== 0) {
         buffExpRateBonus += manualFoodXpBonus;
+        appliedManualFoodXpBonus = manualFoodXpBonus;
       }
       if (buffStaminaRegenBonus === 0 && foodBuffOverride.staminaRegenBonus !== 0) {
         buffStaminaRegenBonus += foodBuffOverride.staminaRegenBonus;
@@ -629,30 +426,33 @@ export function calculateCraftXp(
     }
   }
 
-  // 8. Total Crafting Speed Multiplier (General Crafting Speed + Profession Skill Speed)
+  // 8. Total Crafting Speed Multiplier
   let professionSkillSpeedBonus = 0;
-  if (profStatId && stats && stats.values && typeof stats.values[profStatId] === 'number' && stats.values[profStatId] > 0) {
+  if (
+    profStatId &&
+    stats &&
+    stats.values &&
+    typeof stats.values[profStatId] === 'number' &&
+    stats.values[profStatId] > 0
+  ) {
     professionSkillSpeedBonus = stats.values[profStatId] - 1.0;
   } else if (levelSpeedBonus > 0) {
-    // Cumulative profession level speed bonus from BitcraftLevelStatIncreases.csv (e.g. +3.6 for +360% Speed at Lvl 72)
     professionSkillSpeedBonus = levelSpeedBonus;
   }
 
-  // Equipment speed: compute directly from all equipped gear pieces (ground truth item stats)
-  // Fall back to server stat 15 only if equipment data is not available
   const effectiveEquipmentSpeedBonus =
     equipmentModifiers.length > 0 || equipCraftingSpeedBonus > 0
       ? equipCraftingSpeedBonus
-      : (stats && stats.values && typeof stats.values[15] === 'number' && stats.values[15] > 0
-          ? stats.values[15] - 1.0
-          : 0);
+      : stats && stats.values && typeof stats.values[15] === 'number' && stats.values[15] > 0
+        ? stats.values[15] - 1.0
+        : 0;
 
-  const calculatedSum = 1.0 + effectiveEquipmentSpeedBonus + buffCraftingSpeedBonus + professionSkillSpeedBonus;
+  const calculatedSum =
+    1.0 + effectiveEquipmentSpeedBonus + buffCraftingSpeedBonus + professionSkillSpeedBonus;
   const totalCraftingSpeedMultiplier = Math.max(0.1, calculatedSum);
 
   const craftingSpeedBonusPercent = Math.round((totalCraftingSpeedMultiplier - 1.0) * 100 * 10) / 10;
 
-  // In-Game action duration
   const secondsPerAction = BASE_ACTION_DURATION_SECONDS / totalCraftingSpeedMultiplier;
   const effectiveActionsPerSecond = 1.0 / secondsPerAction;
 
@@ -694,7 +494,9 @@ export function calculateCraftXp(
       category: 'equipment',
       bonusPercent: equipmentBonusPercent,
       multiplierDelta: equipmentBonusPercent / 100,
-      detail: equipmentItemsWithSpeed.map((e) => `${e.name} (+${e.bonusPercent}%)`).join(', ') || 'Gear Stat #15',
+      detail:
+        equipmentItemsWithSpeed.map((e) => `${e.name} (+${e.bonusPercent}%)`).join(', ') ||
+        'Gear Stat #15',
     });
   }
 
@@ -704,7 +506,9 @@ export function calculateCraftXp(
       category: 'buff',
       bonusPercent: buffBonusPercent,
       multiplierDelta: buffBonusPercent / 100,
-      detail: buffItemsWithSpeed.map((b) => `${b.name} (${b.bonusPercent >= 0 ? '+' : ''}${b.bonusPercent}%)`).join(', '),
+      detail: buffItemsWithSpeed
+        .map((b) => `${b.name} (${b.bonusPercent >= 0 ? '+' : ''}${b.bonusPercent}%)`)
+        .join(', '),
     });
   }
 
@@ -734,17 +538,18 @@ export function calculateCraftXp(
     contributors: speedContributors,
   };
 
-  // 9. XP Multiplier (Server authoritative or equipment + buffs)
+  // 9. XP Multiplier (Server authoritative or equipment + buffs, preventing double-counting)
   let xpMultiplier = 1.0;
   if (stats && stats.values && typeof stats.values[50] === 'number' && stats.values[50] > 0) {
-    // Server stat 50 is total experience rate percentage (e.g. 108 = 1.08x)
-    xpMultiplier = Math.max(1.0, stats.values[50] / 100.0) + manualFoodXpBonus;
+    xpMultiplier = Math.max(0.1, Math.max(1.0, stats.values[50] / 100.0) + appliedManualFoodXpBonus);
   } else {
-    xpMultiplier = 1.0 + equipExpRateBonus + buffExpRateBonus;
-    const skillNameLower = skillDef.name.toLowerCase();
+    xpMultiplier = Math.max(0.1, 1.0 + equipExpRateBonus + buffExpRateBonus);
     for (const slot of equipment) {
       if (slot.primary.includes('instrument') && slot.item) {
-        if (slot.primary.includes(skillNameLower) || slot.item.name.toLowerCase().includes(skillNameLower)) {
+        if (
+          slot.primary.includes(skillNameLower) ||
+          slot.item.name.toLowerCase().includes(skillNameLower)
+        ) {
           xpMultiplier += 0.05;
         }
       }
@@ -780,11 +585,11 @@ export function calculateCraftXp(
     baseXpPerAction,
     effectiveXpPerAction,
     xpMultiplier,
-    
+
     totalCraftXp,
     earnedXp,
     remainingXp,
-    
+
     totalProgressRequired,
     completedProgress,
     remainingProgress,
@@ -795,12 +600,12 @@ export function calculateCraftXp(
     physicalActionsTotal,
     physicalActionsCompleted,
     physicalActionsRemaining,
-    
+
     itemsTotal,
     itemsCompleted,
     itemsRemaining,
     progressPerItem,
-    
+
     currentSkillLevel: currentLevelProgress.level,
     currentSkillXp,
     projectedSkillXp,
@@ -815,7 +620,7 @@ export function calculateCraftXp(
     levelsGained,
     isSkillLevelInferred,
     isSkillLevelOverridden,
-    
+
     baseActionDurationSeconds: BASE_ACTION_DURATION_SECONDS,
     secondsPerAction,
     totalCraftingSpeedMultiplier,
@@ -825,7 +630,7 @@ export function calculateCraftXp(
     xpPerHour,
     estimatedSecondsRemaining,
     estimatedCompletionTime,
-    
+
     toolStatus,
     activeBuffModifiers,
     equipmentModifiers,
@@ -842,349 +647,5 @@ export function calculateCraftXp(
       progressPerAction,
       secondsPerAction
     ),
-  };
-}
-
-// Level Milestone and Progression Timing Calculator
-function calculateLevelProgressForecast(
-  currentSkillXp: number,
-  remainingProgress: number,
-  completedProgress: number,
-  totalProgressRequired: number,
-  progressPerItem: number,
-  itemsTotal: number,
-  effectiveXpPerAction: number,
-  progressPerAction: number,
-  secondsPerAction: number
-): LevelProgressForecast {
-  const currentInfo = getXpProgressForLevel(currentSkillXp);
-  const remainingCraftXp = remainingProgress * effectiveXpPerAction;
-  const projectedFinalXp = currentSkillXp + remainingCraftXp;
-  const finalInfo = getXpProgressForLevel(projectedFinalXp);
-  const totalLevelsGained = Math.max(0, finalInfo.level - currentInfo.level);
-
-  const targetNextLevel = currentInfo.level + 1;
-  const xpForNext = calculateXpForLevel(targetNextLevel);
-  const xpNeededForNextLevel = Math.max(0, xpForNext - currentSkillXp);
-  const effortForNext = effectiveXpPerAction > 0 ? Math.ceil(xpNeededForNextLevel / effectiveXpPerAction) : 0;
-  const isNextLevelAchievable = effortForNext <= remainingProgress;
-
-  let secondsToNextLevel: number | null = null;
-  let nextLevelEtaTimestamp: string | null = null;
-  let itemsFinishedAtNextLevel: number | null = null;
-  let craftProgressPercentAtNextLevel: number | null = null;
-
-  if (isNextLevelAchievable && effortForNext > 0 && progressPerAction > 0) {
-    const actionsToNext = Math.ceil(effortForNext / progressPerAction);
-    secondsToNextLevel = Math.round(actionsToNext * secondsPerAction);
-    const date = new Date(Date.now() + secondsToNextLevel * 1000);
-    nextLevelEtaTimestamp = date.toLocaleTimeString([], {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    });
-    const progressAtNext = Math.min(totalProgressRequired, completedProgress + effortForNext);
-    itemsFinishedAtNextLevel = progressPerItem > 0 ? Math.min(itemsTotal, Math.floor(progressAtNext / progressPerItem)) : 0;
-    craftProgressPercentAtNextLevel =
-      totalProgressRequired > 0 ? (progressAtNext / totalProgressRequired) * 100 : 0;
-  }
-
-  // Generate milestone list for each level reached during craft
-  const milestones: LevelMilestone[] = [];
-  const maxForecastLevel = Math.max(targetNextLevel, finalInfo.level);
-
-  for (let lvl = targetNextLevel; lvl <= maxForecastLevel; lvl++) {
-    const threshold = calculateXpForLevel(lvl);
-    const needed = Math.max(0, threshold - currentSkillXp);
-    const effort = effectiveXpPerAction > 0 ? Math.ceil(needed / effectiveXpPerAction) : 0;
-    const achievable = effort <= remainingProgress;
-    const actions = progressPerAction > 0 ? Math.ceil(effort / progressPerAction) : 0;
-    const secs = Math.round(actions * secondsPerAction);
-    const progressAtMilestone = Math.min(totalProgressRequired, completedProgress + effort);
-    const itemsAtMilestone =
-      progressPerItem > 0 ? Math.min(itemsTotal, Math.floor(progressAtMilestone / progressPerItem)) : 0;
-    const pctAtMilestone =
-      totalProgressRequired > 0 ? (progressAtMilestone / totalProgressRequired) * 100 : 0;
-
-    let timestamp: string | null = null;
-    if (secs > 0 && isFinite(secs)) {
-      const d = new Date(Date.now() + secs * 1000);
-      timestamp = d.toLocaleTimeString([], {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-      });
-    }
-
-    milestones.push({
-      level: lvl,
-      xpThreshold: threshold,
-      xpNeededFromCurrent: needed,
-      effortRequired: effort,
-      physicalActionsRequired: actions,
-      itemsFinishedAtMilestone: itemsAtMilestone,
-      craftProgressPercentAtMilestone: pctAtMilestone,
-      estimatedSecondsFromNow: secs,
-      estimatedTimestamp: timestamp,
-      isAchievableInThisCraft: achievable,
-    });
-  }
-
-  return {
-    currentLevel: currentInfo.level,
-    currentSkillXp,
-    targetNextLevel,
-    xpNeededForNextLevel,
-    isNextLevelAchievable,
-    secondsToNextLevel,
-    nextLevelEtaTimestamp,
-    itemsFinishedAtNextLevel,
-    craftProgressPercentAtNextLevel,
-    totalLevelsGained,
-    projectedFinalLevel: finalInfo.level,
-    projectedFinalXp,
-    projectedFinalProgressPercent: finalInfo.progressPercent,
-    milestones,
-  };
-}
-
-// Multi-User Collaborative Crafting Projection Calculator
-export function calculateMultiUserCraftProjection(
-  _craft: CraftResult,
-  primaryPlayer: PlayerDetails | null,
-  primaryCalc: XpCalculationResult,
-  contributorPayloads: ContributorDetailPayload[],
-  activeWindowMinutes = 5.0
-): MultiUserCraftProjection {
-  const remainingEffort = primaryCalc.remainingProgress;
-  const now = Date.now();
-
-  const participants: ParticipantContributionSummary[] = [];
-
-  for (const payload of contributorPayloads) {
-    const cb = payload.contribution;
-    const isPrimary = Boolean(
-      primaryPlayer &&
-        (cb.contributorEntityId === primaryPlayer.entityId ||
-          cb.contributorUsername?.toLowerCase() === primaryPlayer.username.toLowerCase())
-    );
-
-    // Calculate recency
-    let minutesSinceLast = 999;
-    if (cb.lastContributedAt) {
-      try {
-        const lastTime = new Date(cb.lastContributedAt).getTime();
-        if (!isNaN(lastTime)) {
-          minutesSinceLast = Math.max(0, Math.round(((now - lastTime) / 60000) * 10) / 10);
-        }
-      } catch {
-        minutesSinceLast = 999;
-      }
-    }
-
-    // Determine activity status
-    const isActive = isPrimary ? true : minutesSinceLast <= activeWindowMinutes;
-    const isCurrentlyCrafting = isPrimary ? true : minutesSinceLast <= 1.0;
-    const secondsUntilInactive = isActive && !isPrimary
-      ? Math.max(0, Math.round(activeWindowMinutes * 60 - minutesSinceLast * 60))
-      : 0;
-
-    // Inclusion toggle: manual user override if set, otherwise follow dynamic activity
-    const isIncludedInProjection =
-      payload.isIncluded !== undefined ? payload.isIncluded : isActive;
-
-    // Progress per action
-    let ppa = 20;
-    if (cb.contributionCount > 0 && cb.totalProgressContributed > 0) {
-      ppa = Math.round((cb.totalProgressContributed / cb.contributionCount) * 10) / 10;
-    }
-
-    // Equipment, Buffs, and Speed calculation
-    let craftingSpeedBonusPercent = 0;
-    let secondsPerAction = primaryCalc.secondsPerAction;
-    let xpMultiplier = 1.0;
-    let equippedToolName = undefined;
-    let equippedToolTier = undefined;
-    const activeBuffsSummary: string[] = [];
-
-    if (isPrimary) {
-      craftingSpeedBonusPercent = primaryCalc.craftingSpeedBonusPercent;
-      secondsPerAction = primaryCalc.secondsPerAction;
-      xpMultiplier = primaryCalc.xpMultiplier;
-      equippedToolName = primaryCalc.toolStatus.equippedTool?.name;
-      equippedToolTier = primaryCalc.toolStatus.effectivePower;
-      for (const b of primaryCalc.activeBuffModifiers) {
-        if (b.craftingSpeedBonus !== 0) {
-          activeBuffsSummary.push(
-            `${b.name} (${b.craftingSpeedBonus > 0 ? '+' : ''}${(b.craftingSpeedBonus * 100).toFixed(0)}% Speed)`
-          );
-        }
-      }
-    } else if (payload.stats || payload.equipment || payload.buffs) {
-      // Calculate from contributor payload
-      let equipSpeed = 0;
-      let expRateBonus = 0;
-
-      if (payload.equipment) {
-        for (const eq of payload.equipment) {
-          if (eq.item) {
-            if (eq.item.tag?.toLowerCase().includes('tool') || eq.primary === 'main_hand') {
-              equippedToolName = eq.item.name;
-              equippedToolTier = eq.item.tier || 1;
-            }
-            if (eq.item.stats) {
-              for (const st of eq.item.stats) {
-                if (st.id === 15) equipSpeed += st.value;
-                if (st.id === 50) expRateBonus += st.value;
-              }
-            }
-          }
-        }
-      }
-
-      let buffSpeed = 0;
-      if (payload.buffs) {
-        for (const bf of payload.buffs) {
-          const isActiveBuff = bf.status === 'active' || (bf.timeRemaining && bf.timeRemaining > 0);
-          if (isActiveBuff && bf.stats) {
-            for (const st of bf.stats) {
-              if (st.id === 15) buffSpeed += st.value;
-              if (st.id === 50) expRateBonus += st.value;
-            }
-            if (bf.description) activeBuffsSummary.push(bf.description);
-          }
-        }
-      }
-
-      let totalSpeed = 1.0;
-      if (payload.stats?.values && typeof payload.stats.values[15] === 'number' && payload.stats.values[15] > 0) {
-        totalSpeed = payload.stats.values[15];
-      } else {
-        totalSpeed = Math.max(0.1, 1.0 + equipSpeed + buffSpeed);
-      }
-
-      craftingSpeedBonusPercent = Math.round((totalSpeed - 1.0) * 100 * 10) / 10;
-      secondsPerAction = BASE_ACTION_DURATION_SECONDS / totalSpeed;
-      xpMultiplier = 1.0 + expRateBonus;
-    }
-
-    const effortPerSecond = secondsPerAction > 0 ? ppa / secondsPerAction : 0;
-    const xpPerHour = Math.round(effortPerSecond * primaryCalc.baseXpPerAction * xpMultiplier * 3600);
-    const earnedXp = Math.round(cb.totalProgressContributed * primaryCalc.baseXpPerAction * xpMultiplier);
-
-    participants.push({
-      entityId: cb.contributorEntityId,
-      username: cb.contributorUsername || `Player #${cb.contributorEntityId.slice(0, 6)}`,
-      isOnline: payload.playerDetails?.signedIn ?? true,
-      isActive,
-      isCurrentlyCrafting,
-      isIncludedInProjection,
-      lastContributedAt: cb.lastContributedAt,
-      minutesSinceLastContribution: minutesSinceLast,
-      secondsUntilInactive,
-      totalProgressContributed: cb.totalProgressContributed,
-      contributionCount: cb.contributionCount,
-      progressPerAction: ppa,
-      equippedToolName,
-      equippedToolTier,
-      craftingSpeedBonusPercent,
-      secondsPerAction,
-      effortPerSecond,
-      xpPerHour,
-      xpMultiplier,
-      earnedXp,
-      projectedRemainingEffort: 0,
-      projectedRemainingXp: 0,
-      totalExpectedXp: earnedXp,
-      projectedSharePercent: 0,
-      activeBuffsSummary,
-    });
-  }
-
-  // Calculate Combined Collaborative Rate
-  const includedParticipants = participants.filter((p) => p.isIncludedInProjection);
-  const combinedEffortPerSecond = includedParticipants.reduce(
-    (sum, p) => sum + Math.max(0, p.effortPerSecond),
-    0
-  );
-
-  // Distribute remaining effort & compute projected XP
-  for (const p of participants) {
-    if (p.isIncludedInProjection && combinedEffortPerSecond > 0) {
-      const share = p.effortPerSecond / combinedEffortPerSecond;
-      p.projectedSharePercent = Math.round(share * 1000) / 10;
-      p.projectedRemainingEffort = Math.round(remainingEffort * share);
-      p.projectedRemainingXp = Math.round(
-        p.projectedRemainingEffort * primaryCalc.baseXpPerAction * p.xpMultiplier
-      );
-      p.totalExpectedXp = p.earnedXp + p.projectedRemainingXp;
-    } else {
-      p.projectedSharePercent = 0;
-      p.projectedRemainingEffort = 0;
-      p.projectedRemainingXp = 0;
-      p.totalExpectedXp = p.earnedXp;
-    }
-  }
-
-  const soloEstimatedSecondsRemaining = primaryCalc.estimatedSecondsRemaining;
-  const collaborativeEstimatedSecondsRemaining =
-    combinedEffortPerSecond > 0
-      ? Math.round(remainingEffort / combinedEffortPerSecond)
-      : soloEstimatedSecondsRemaining;
-
-  const secondsProjectedSaved = Math.max(
-    0,
-    soloEstimatedSecondsRemaining - collaborativeEstimatedSecondsRemaining
-  );
-
-  // Calculate time already saved by helpers' historical contributions
-  let helperEffortContributed = 0;
-  for (const p of participants) {
-    const isPrimary = Boolean(
-      primaryPlayer &&
-        (p.entityId === primaryPlayer.entityId ||
-          p.username?.toLowerCase() === primaryPlayer.username.toLowerCase())
-    );
-    if (!isPrimary) {
-      helperEffortContributed += Math.max(0, p.totalProgressContributed);
-    }
-  }
-
-  const helperActionsOwnerSaved =
-    primaryCalc.progressPerAction > 0
-      ? Math.ceil(helperEffortContributed / primaryCalc.progressPerAction)
-      : 0;
-
-  const secondsAlreadySaved = Math.round(
-    helperActionsOwnerSaved * primaryCalc.secondsPerAction
-  );
-
-  const secondsTotalSaved = secondsAlreadySaved + secondsProjectedSaved;
-
-  const soloEtaCompletionTime = primaryCalc.estimatedCompletionTime;
-  let collaborativeEtaCompletionTime: string | null = null;
-  if (collaborativeEstimatedSecondsRemaining > 0 && isFinite(collaborativeEstimatedSecondsRemaining)) {
-    const colDate = new Date(Date.now() + collaborativeEstimatedSecondsRemaining * 1000);
-    collaborativeEtaCompletionTime = colDate.toLocaleTimeString([], {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    });
-  }
-
-  return {
-    activeParticipantsCount: includedParticipants.length,
-    totalContributorsCount: participants.length,
-    inactivityTimeoutMinutes: activeWindowMinutes,
-    soloEstimatedSecondsRemaining,
-    collaborativeEstimatedSecondsRemaining,
-    secondsSaved: secondsProjectedSaved,
-    secondsProjectedSaved,
-    secondsAlreadySaved,
-    secondsTotalSaved,
-    soloEtaCompletionTime,
-    collaborativeEtaCompletionTime,
-    combinedEffortPerSecond,
-    participants,
   };
 }

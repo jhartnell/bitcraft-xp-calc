@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Utensils,
   Shield,
@@ -65,6 +65,34 @@ const SpeedBadge: React.FC<SpeedBadgeProps> = ({ calc, isCompact = false }) => {
   return badgeContent;
 };
 
+const FOOD_PRESETS = [
+  { name: 'Fine Crafting Feast (+9.4%)', speed: 0.094, xp: 0, duration: 3600, label: '🥧 +9.4% (60m)' },
+  { name: 'Refined Crafting Ration (+8.2%)', speed: 0.082, xp: 0, duration: 1800, label: '🍞 +8.2% (30m)' },
+  { name: 'Standard Crafting Stew (+4.2%)', speed: 0.042, xp: 0, duration: 1800, label: '🍲 +4.2% (30m)' },
+  { name: 'Grand Feast (+10% / +5% XP)', speed: 0.10, xp: 0.05, duration: 3600, label: '🌟 +10% & +5% XP' },
+  { name: "Scholar's Wisdom (+5% XP)", speed: 0, xp: 0.05, duration: 1800, label: '📜 +5% XP (30m)' },
+];
+
+function buildFoodOverride(
+  name: string,
+  craftingSpeedBonus: number,
+  xpRateBonus: number,
+  durationSeconds: number
+): FoodBuffOverride {
+  const now = Date.now();
+  return {
+    id: `food_${now}`,
+    name,
+    craftingSpeedBonus,
+    xpRateBonus,
+    staminaRegenBonus: 0,
+    durationSeconds,
+    startedAt: now,
+    remainingSeconds: durationSeconds,
+    enabled: true,
+  };
+}
+
 export const ModifiersPanel: React.FC<ModifiersPanelProps> = ({
   calc,
   isInitiallyCollapsed = false,
@@ -72,34 +100,30 @@ export const ModifiersPanel: React.FC<ModifiersPanelProps> = ({
   onSetFoodBuffOverride,
 }) => {
   const [activeTab, setActiveTab] = useState<'buffs' | 'equipment'>('buffs');
-  const [isCollapsed, setIsCollapsed] = useState(isInitiallyCollapsed);
+  const [collapseOverride, setCollapseOverride] = useState<{
+    base: boolean;
+    value: boolean;
+  } | null>(null);
   const [showOverrideForm, setShowOverrideForm] = useState(false);
   const [customSpeedPct, setCustomSpeedPct] = useState('9.4');
   const [customXpPct, setCustomXpPct] = useState('0');
   const [customDurationMin, setCustomDurationMin] = useState('50');
   const [customName, setCustomName] = useState('Crafting Food Buff');
 
-  const FOOD_PRESETS = [
-    { name: 'Fine Crafting Feast (+9.4%)', speed: 0.094, xp: 0, duration: 3600, label: '🥧 +9.4% (60m)' },
-    { name: 'Refined Crafting Ration (+8.2%)', speed: 0.082, xp: 0, duration: 1800, label: '🍞 +8.2% (30m)' },
-    { name: 'Standard Crafting Stew (+4.2%)', speed: 0.042, xp: 0, duration: 1800, label: '🍲 +4.2% (30m)' },
-    { name: 'Grand Feast (+10% / +5% XP)', speed: 0.10, xp: 0.05, duration: 3600, label: '🌟 +10% & +5% XP' },
-    { name: "Scholar's Wisdom (+5% XP)", speed: 0, xp: 0.05, duration: 1800, label: '📜 +5% XP (30m)' },
-  ];
+  const isCollapsed =
+    collapseOverride && collapseOverride.base === isInitiallyCollapsed
+      ? collapseOverride.value
+      : isInitiallyCollapsed;
 
-  const handleApplyPreset = (preset: typeof FOOD_PRESETS[0]) => {
+  const setIsCollapsed = (value: boolean) => {
+    setCollapseOverride({ base: isInitiallyCollapsed, value });
+  };
+
+  const handleApplyPreset = (preset: (typeof FOOD_PRESETS)[number]) => {
     if (!onSetFoodBuffOverride) return;
-    onSetFoodBuffOverride({
-      id: `food_${Date.now()}`,
-      name: preset.name,
-      craftingSpeedBonus: preset.speed,
-      xpRateBonus: preset.xp,
-      staminaRegenBonus: 0,
-      durationSeconds: preset.duration,
-      startedAt: Date.now(),
-      remainingSeconds: preset.duration,
-      enabled: true,
-    });
+    onSetFoodBuffOverride(
+      buildFoodOverride(preset.name, preset.speed, preset.xp, preset.duration)
+    );
   };
 
   const handleApplyCustom = (e: React.FormEvent) => {
@@ -110,23 +134,11 @@ export const ModifiersPanel: React.FC<ModifiersPanelProps> = ({
     const mins = parseFloat(customDurationMin) || 60;
     const durSecs = Math.round(mins * 60);
 
-    onSetFoodBuffOverride({
-      id: `food_${Date.now()}`,
-      name: customName || 'Custom Food Buff',
-      craftingSpeedBonus: speed,
-      xpRateBonus: xp,
-      staminaRegenBonus: 0,
-      durationSeconds: durSecs,
-      startedAt: Date.now(),
-      remainingSeconds: durSecs,
-      enabled: true,
-    });
+    onSetFoodBuffOverride(
+      buildFoodOverride(customName || 'Custom Food Buff', speed, xp, durSecs)
+    );
     setShowOverrideForm(false);
   };
-
-  useEffect(() => {
-    setIsCollapsed(isInitiallyCollapsed);
-  }, [isInitiallyCollapsed]);
 
   const activeBuffsCount = calc.activeBuffModifiers.length;
   const equipCount = calc.equipmentModifiers.length;
@@ -164,7 +176,7 @@ export const ModifiersPanel: React.FC<ModifiersPanelProps> = ({
   }
 
   return (
-    <div className="bg-surface rounded-xl border border-surface-border p-5 shadow-xl space-y-4 animate-in fade-in duration-200">
+    <div className="bg-surface rounded-xl border border-surface-border p-5 shadow-xl space-y-4 animate-fade-in">
       {/* Panel Header with Tabs & Collapse Button */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-surface-border pb-3">
         <div>

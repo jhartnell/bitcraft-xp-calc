@@ -1155,7 +1155,7 @@ describe('Level Milestone Timing & Multi-Level Forecast Engine', () => {
     const playerWithNullExp: PlayerDetails = {
       entityId: '1224979098660021941',
       username: 'Ikuria',
-      experience: null as any,
+      experience: null as unknown as PlayerDetails['experience'],
     };
 
     // Aurumite Axe is level 8 = Tier 7 (Level 70 requirement)
@@ -1211,7 +1211,7 @@ describe('Level Milestone Timing & Multi-Level Forecast Engine', () => {
     const playerWithNullExp: PlayerDetails = {
       entityId: '1224979098660021941',
       username: 'Ikuria',
-      experience: null as any,
+      experience: null as unknown as PlayerDetails['experience'],
     };
 
     // Luminite Axe is level 6 = Tier 5 (Level 50 requirement)
@@ -1267,7 +1267,7 @@ describe('Level Milestone Timing & Multi-Level Forecast Engine', () => {
     const playerWithNullExp: PlayerDetails = {
       entityId: '1224979098660021941',
       username: 'Ikuria',
-      experience: null as any,
+      experience: null as unknown as PlayerDetails['experience'],
     };
 
     const playerTools = [
@@ -1304,5 +1304,231 @@ describe('Level Milestone Timing & Multi-Level Forecast Engine', () => {
     expect(result.progressPerAction).toBe(43);
     expect(result.isSkillLevelInferred).toBe(false);
     expect(result.isSkillLevelOverridden).toBe(true);
+  });
+
+  it('maps primary participant equippedToolTier to tool tier rather than effectivePower', () => {
+    const craft: CraftResult = {
+      entityId: 'c_tier',
+      buildingEntityId: 'b_tier',
+      ownerEntityId: 'p_tier',
+      regionId: 1,
+      progress: 100,
+      recipeId: 1,
+      craftCount: 10,
+      lockExpiration: '2026-08-30T00:00:00Z',
+      actionsRequiredPerItem: 100,
+      totalActionsRequired: 1000,
+      craftedItem: [],
+      experiencePerProgress: [{ skill_id: 2, quantity: 2.0 }],
+      toolRequirements: [{ level: 7, power: 20, tool_type: 1 }],
+      completed: false,
+    };
+
+    const player: PlayerDetails = {
+      entityId: 'p_tier',
+      username: 'TierTester',
+      experience: [{ skill_id: 2, quantity: 25698250 }], // Level 80
+    };
+
+    const primaryCalc = calculateCraftXp(
+      craft,
+      player,
+      [],
+      [],
+      null,
+      [],
+      null,
+      null,
+      null,
+      [{ toolType: 1, power: 35, level: 8 }] // Aurumite Axe (Tier 7, Power 35 + Lvl 80 Power 8 = 43)
+    );
+
+    const projection = calculateMultiUserCraftProjection(
+      craft,
+      player,
+      primaryCalc,
+      [
+        {
+          contribution: {
+            id: 'cb1',
+            contributorEntityId: 'p_tier',
+            contributorUsername: 'TierTester',
+            contributionCount: 5,
+            totalProgressContributed: 215,
+            lastContributedAt: new Date().toISOString(),
+          },
+        },
+      ],
+      5
+    );
+
+    expect(primaryCalc.toolStatus.effectivePower).toBe(43);
+    expect(projection.participants[0].equippedToolTier).toBe(7);
+  });
+
+  it('guards max level 120 without reporting a phantom level 121 milestone', () => {
+    const craft: CraftResult = {
+      entityId: 'c_max',
+      buildingEntityId: 'b_max',
+      ownerEntityId: 'p_max',
+      regionId: 1,
+      progress: 0,
+      recipeId: 1,
+      craftCount: 10,
+      lockExpiration: '2026-08-30T00:00:00Z',
+      actionsRequiredPerItem: 100,
+      totalActionsRequired: 1000,
+      craftedItem: [],
+      experiencePerProgress: [{ skill_id: 4, quantity: 2.0 }],
+      completed: false,
+    };
+
+    const maxPlayer: PlayerDetails = {
+      entityId: 'p_max',
+      username: 'Grandmaster',
+      experience: [{ skill_id: 4, quantity: 2_053_471_040 }], // Level 120
+    };
+
+    const result = calculateCraftXp(craft, maxPlayer, [], [], null, [], 20);
+    expect(result.currentSkillLevel).toBe(120);
+    expect(result.levelForecast.targetNextLevel).toBe(120);
+    expect(result.levelForecast.isNextLevelAchievable).toBe(false);
+    expect(result.levelForecast.xpNeededForNextLevel).toBe(0);
+    expect(result.levelForecast.milestones).toEqual([]);
+  });
+
+  it('computes physicalActionsRemaining strictly from remainingProgress / progressPerAction', () => {
+    const craft: CraftResult = {
+      entityId: 'c_rem',
+      buildingEntityId: 'b_rem',
+      ownerEntityId: 'p_rem',
+      regionId: 1,
+      progress: 1, // remaining = 99
+      recipeId: 1,
+      craftCount: 1,
+      lockExpiration: '2026-08-30T00:00:00Z',
+      actionsRequiredPerItem: 100,
+      totalActionsRequired: 100,
+      craftedItem: [],
+      experiencePerProgress: [{ skill_id: 4, quantity: 2.0 }],
+      completed: false,
+    };
+
+    const result = calculateCraftXp(craft, null, [], [], null, [], 10);
+    // Remaining effort = 99 -> ceil(99 / 10) = 10 actions (not ceil(100/10) - ceil(1/10) = 9)
+    expect(result.physicalActionsRemaining).toBe(10);
+  });
+
+  it('does not double-count food XP override when server already includes an active XP buff', () => {
+    const craft: CraftResult = {
+      entityId: 'c_food',
+      buildingEntityId: 'b_food',
+      ownerEntityId: 'p_food',
+      regionId: 1,
+      progress: 0,
+      recipeId: 1,
+      craftCount: 10,
+      lockExpiration: '2026-08-30T00:00:00Z',
+      actionsRequiredPerItem: 50,
+      totalActionsRequired: 500,
+      craftedItem: [],
+      experiencePerProgress: [{ skill_id: 13, quantity: 2.0 }],
+      completed: false,
+    };
+
+    const statsValues = Array(60).fill(0);
+    statsValues[50] = 105; // Server already reflects +5% XP
+
+    const serverBuffs: PlayerBuff[] = [
+      {
+        buffId: 1,
+        buffStartTimestamp: 0,
+        buffDuration: 3600,
+        buffName: 'Food',
+        description: 'Grand Feast',
+        status: 'active',
+        timeRemaining: 2000,
+        stats: [{ id: 50, name: 'Experience Rate', value: 0.05, is_pct: true }],
+      },
+    ];
+
+    const result = calculateCraftXp(
+      craft,
+      null,
+      [],
+      serverBuffs,
+      { entityId: 'p_food', values: statsValues },
+      [],
+      20,
+      null,
+      {
+        id: 'food_override',
+        name: 'Grand Feast',
+        craftingSpeedBonus: 0,
+        xpRateBonus: 0.05,
+        staminaRegenBonus: 0,
+        durationSeconds: 3600,
+        startedAt: Date.now(),
+        remainingSeconds: 3600,
+        enabled: true,
+      }
+    );
+
+    expect(result.xpMultiplier).toBeCloseTo(1.05, 4);
+  });
+
+  it('applies profession speed and server XP stat #50 to non-primary contributors', () => {
+    const craft: CraftResult = {
+      entityId: 'c_coop',
+      buildingEntityId: 'b_coop',
+      ownerEntityId: 'p_owner',
+      regionId: 1,
+      progress: 0,
+      recipeId: 1,
+      craftCount: 10,
+      lockExpiration: '2026-08-30T00:00:00Z',
+      actionsRequiredPerItem: 100,
+      totalActionsRequired: 1000,
+      craftedItem: [],
+      experiencePerProgress: [{ skill_id: 4, quantity: 2.0 }], // Masonry (profStatId = 23)
+      completed: false,
+    };
+
+    const owner: PlayerDetails = {
+      entityId: 'p_owner',
+      username: 'Owner',
+      experience: [{ skill_id: 4, quantity: 50000 }],
+    };
+
+    const primaryCalc = calculateCraftXp(craft, owner, [], [], null, [], 20);
+    const helperStats = Array(60).fill(0);
+    helperStats[15] = 1.2; // +20% general crafting speed
+    helperStats[23] = 1.5; // +50% masonry speed
+    helperStats[50] = 110; // 1.10x XP
+
+    const projection = calculateMultiUserCraftProjection(
+      craft,
+      owner,
+      primaryCalc,
+      [
+        {
+          contribution: {
+            id: 'h1',
+            contributorEntityId: 'p_helper',
+            contributorUsername: 'Helper',
+            contributionCount: 10,
+            totalProgressContributed: 200,
+            lastContributedAt: new Date().toISOString(),
+          },
+          stats: { entityId: 'p_helper', values: helperStats },
+        },
+      ],
+      5
+    );
+
+    const helper = projection.participants[0];
+    // Total speed = 1.2 + (1.5 - 1.0) = 1.7 (+70%)
+    expect(helper.craftingSpeedBonusPercent).toBe(70);
+    expect(helper.xpMultiplier).toBeCloseTo(1.1, 4);
   });
 });

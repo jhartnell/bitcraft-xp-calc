@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { PlayerDetails } from '../types/api';
 import { SkillOverrideMap } from '../types/calculator';
 import { SKILL_DEFINITIONS, getXpProgressForLevel, formatXp, calculateXpForLevel } from '../services/bitcraftData';
@@ -22,13 +22,21 @@ export const SkillList: React.FC<SkillListProps> = ({
   onSetSkillLevel,
   onClearSkillOverride,
 }) => {
-  const [isCollapsed, setIsCollapsed] = useState(isInitiallyCollapsed);
+  const [collapseOverride, setCollapseOverride] = useState<{
+    base: boolean;
+    value: boolean;
+  } | null>(null);
   const [editingSkillId, setEditingSkillId] = useState<number | null>(null);
   const [editLevelInput, setEditLevelInput] = useState<string>('');
 
-  useEffect(() => {
-    setIsCollapsed(isInitiallyCollapsed);
-  }, [isInitiallyCollapsed]);
+  const isCollapsed =
+    collapseOverride && collapseOverride.base === isInitiallyCollapsed
+      ? collapseOverride.value
+      : isInitiallyCollapsed;
+
+  const setIsCollapsed = (value: boolean) => {
+    setCollapseOverride({ base: isInitiallyCollapsed, value });
+  };
 
   const experiences = player.experience || [];
   const expMap = new Map<number, number>();
@@ -90,7 +98,7 @@ export const SkillList: React.FC<SkillListProps> = ({
   }
 
   return (
-    <div className="bg-surface rounded-xl border border-surface-border p-5 shadow-xl space-y-3 animate-in fade-in duration-200">
+    <div className="bg-surface rounded-xl border border-surface-border p-5 shadow-xl space-y-3 animate-fade-in">
       <div className="flex items-center justify-between border-b border-surface-border pb-3">
         <div>
           <h3 className="text-base font-bold text-gray-100 flex items-center gap-2">

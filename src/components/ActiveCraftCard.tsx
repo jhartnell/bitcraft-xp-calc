@@ -313,7 +313,7 @@ export const ActiveCraftCard: React.FC<ActiveCraftCardProps> = ({
 
                 {/* Floating Dropdown Drawer */}
                 {isNearbyDropdownOpen && (
-                  <div className="absolute left-0 mt-1.5 w-80 bg-surface border border-surface-border rounded-xl shadow-2xl p-1.5 z-40 space-y-1 animate-in fade-in zoom-in-95 duration-150">
+                  <div className="absolute left-0 mt-1.5 w-80 bg-surface border border-surface-border rounded-xl shadow-2xl p-1.5 z-40 space-y-1 animate-zoom-in">
                     <div className="px-2 py-1 text-[10px] font-semibold text-gray-400 uppercase tracking-wider border-b border-surface-border/50 flex items-center justify-between">
                       <span>Nearby Claim Stations</span>
                       <span className="text-gray-500 font-mono">{idleNearbyCrafts.length} available</span>
@@ -325,7 +325,7 @@ export const ActiveCraftCard: React.FC<ActiveCraftCardProps> = ({
                           <button
                             key={nCraft.entityId}
                             onClick={() => {
-                              onSelectNearbyCraft && onSelectNearbyCraft(nCraft);
+                              onSelectNearbyCraft?.(nCraft);
                               setIsNearbyDropdownOpen(false);
                             }}
                             className={`w-full text-left px-2.5 py-2 rounded-lg text-xs flex flex-col gap-0.5 transition-colors cursor-pointer ${
@@ -612,7 +612,11 @@ export const ActiveCraftCard: React.FC<ActiveCraftCardProps> = ({
             </div>
           ) : (
             <button
-              onClick={() => setIsEditingEffort(true)}
+              type="button"
+              onClick={() => {
+                setEffortInput(String(calc.progressPerAction));
+                setIsEditingEffort(true);
+              }}
               className="flex items-center gap-1 text-gray-400 hover:text-gray-200 bg-surface border border-surface-border px-2.5 py-1 rounded-md transition-colors cursor-pointer font-medium"
             >
               <Sliders className="w-3.5 h-3.5 text-indigo-400" />
