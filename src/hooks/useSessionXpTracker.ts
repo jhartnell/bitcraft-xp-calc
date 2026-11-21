@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { SessionRateStats, SessionRatePoint } from '../types/calculator';
 
 export interface ProgressSnapshot {
@@ -108,10 +108,18 @@ export function useSessionXpTracker(
   resetSession: () => void;
 } {
   const [tracker, setTracker] = useState<SessionTrackerState | null>(null);
-  const trackerRef = useRef<SessionTrackerState | null>(null);
-  trackerRef.current = tracker;
+  const [clockMs, setClockMs] = useState<number>(() => Date.now());
 
-  // Initialize or update tracking when character, skill, craft, or progress updates
+  // Tick live session duration clock cleanly inside an interval callback
+  useEffect(() => {
+    if (!tracker) return;
+    const timer = setInterval(() => {
+      setClockMs(Date.now());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [tracker]);
+
+  // Initialize or update tracking asynchronously when character, skill, craft, or progress updates
   useEffect(() => {
     if (
       !characterId ||
@@ -123,150 +131,155 @@ export function useSessionXpTracker(
       return;
     }
 
-    setTracker((prev) => {
+    let cancelled = false;
+
+    queueMicrotask(() => {
+      if (cancelled) return;
       const now = Date.now();
+      setClockMs(now);
 
-      // If switching character or skill, try to hydrate cumulative totals but start rolling rate snapshots fresh
-      if (!prev || prev.characterId !== characterId || prev.skillId !== skillId) {
-        const persisted = loadPersistedSession(characterId, skillId);
-        const newState: SessionTrackerState = {
-          characterId,
-          skillId,
-          craftId,
-          lastProgress: currentProgress,
-          lastProgressTimestamp: now,
-          effectiveXpPerAction,
-          lastTheoreticalXpPerHour: theoreticalXpPerHour || 0,
-          cumulativeXp: persisted?.cumulativeXp ?? 0,
-          snapshots: [],
-          history: persisted?.history ?? [],
-          peakXpPerHour: persisted?.peakXpPerHour ?? null,
-          sessionStartTime: persisted?.sessionStartTime ?? now,
-        };
-        return newState;
-      }
-
-      // If switching craft on the same skill/character, retain cumulative XP but calibrate rolling rate cleanly
-      if (prev.craftId !== craftId) {
-        const updated: SessionTrackerState = {
-          ...prev,
-          craftId,
-          lastProgress: currentProgress,
-          lastProgressTimestamp: now,
-          effectiveXpPerAction,
-          lastTheoreticalXpPerHour: theoreticalXpPerHour || 0,
-          snapshots: [],
-        };
-        savePersistedSession(updated);
-        return updated;
-      }
-
-      // Same craft: if progress advanced, record new active snapshot and history point
-      if (currentProgress > prev.lastProgress) {
-        const deltaProgress = currentProgress - prev.lastProgress;
-        const deltaXp = deltaProgress * effectiveXpPerAction;
-        const newCumulativeXp = prev.cumulativeXp + deltaXp;
-
-        const timeSinceLastProgress = (now - prev.lastProgressTimestamp) / 1000;
-        const isFreshBurst = prev.snapshots.length === 0 || timeSinceLastProgress > 45;
-
-        let updatedSnapshots: ProgressSnapshot[];
-
-        if (isFreshBurst) {
-          // Fresh burst after idle: Anchor a clean baseline point without artificial micro-time guessing
-          updatedSnapshots = [
-            { timestamp: now, cumulativeXp: prev.cumulativeXp },
-          ];
-        } else {
-          // Append to rolling active window (keep last 120s)
-          updatedSnapshots = prev.snapshots.filter((s) => now - s.timestamp <= 120_000);
-          updatedSnapshots.push({ timestamp: now, cumulativeXp: newCumulativeXp });
+      setTracker((prev) => {
+        if (!prev || prev.characterId !== characterId || prev.skillId !== skillId) {
+          const persisted = loadPersistedSession(characterId, skillId);
+          return {
+            characterId,
+            skillId,
+            craftId,
+            lastProgress: currentProgress,
+            lastProgressTimestamp: now,
+            effectiveXpPerAction,
+            lastTheoreticalXpPerHour: theoreticalXpPerHour || 0,
+            cumulativeXp: persisted?.cumulativeXp ?? 0,
+            snapshots: [],
+            history: persisted?.history ?? [],
+            peakXpPerHour: persisted?.peakXpPerHour ?? null,
+            sessionStartTime: persisted?.sessionStartTime ?? now,
+          };
         }
 
-        // Calculate rate for this point
-        const { measuredXpPerHour } = calculateSnapshotRate(updatedSnapshots, theoreticalXpPerHour);
+        if (prev.craftId !== craftId) {
+          const updated: SessionTrackerState = {
+            ...prev,
+            craftId,
+            lastProgress: currentProgress,
+            lastProgressTimestamp: now,
+            effectiveXpPerAction,
+            lastTheoreticalXpPerHour: theoreticalXpPerHour || 0,
+            snapshots: [],
+          };
+          savePersistedSession(updated);
+          return updated;
+        }
 
-        let updatedHistory = [...prev.history];
-        let newPeak = prev.peakXpPerHour;
+        if (currentProgress > prev.lastProgress) {
+          const deltaProgress = currentProgress - prev.lastProgress;
+          const deltaXp = deltaProgress * effectiveXpPerAction;
+          const newCumulativeXp = prev.cumulativeXp + deltaXp;
 
-        if (measuredXpPerHour !== null && measuredXpPerHour > 0) {
-          const timeLabel = new Date(now).toLocaleTimeString([], {
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-          });
+          const timeSinceLastProgress = (now - prev.lastProgressTimestamp) / 1000;
+          const isFreshBurst = prev.snapshots.length === 0 || timeSinceLastProgress > 45;
 
-          updatedHistory.push({
-            timestamp: now,
-            timeLabel,
-            xpPerHour: measuredXpPerHour,
-            theoreticalXpPerHour: theoreticalXpPerHour || 0,
-            deltaXp: Math.round(deltaXp),
-          });
+          let updatedSnapshots: ProgressSnapshot[];
 
-          // Keep up to 50 historical points
-          if (updatedHistory.length > 50) {
-            updatedHistory = updatedHistory.slice(-50);
+          if (isFreshBurst) {
+            updatedSnapshots = [{ timestamp: now, cumulativeXp: prev.cumulativeXp }];
+          } else {
+            updatedSnapshots = prev.snapshots.filter((s) => now - s.timestamp <= 120_000);
+            updatedSnapshots.push({ timestamp: now, cumulativeXp: newCumulativeXp });
           }
 
-          newPeak = Math.max(prev.peakXpPerHour || 0, measuredXpPerHour);
-        }
+          const { measuredXpPerHour } = calculateSnapshotRate(
+            updatedSnapshots,
+            theoreticalXpPerHour
+          );
 
-        const newState: SessionTrackerState = {
-          ...prev,
-          lastProgress: currentProgress,
-          lastProgressTimestamp: now,
-          effectiveXpPerAction,
-          lastTheoreticalXpPerHour: theoreticalXpPerHour || 0,
-          cumulativeXp: newCumulativeXp,
-          snapshots: updatedSnapshots,
-          history: updatedHistory,
-          peakXpPerHour: newPeak,
-        };
+          let updatedHistory = [...prev.history];
+          let newPeak = prev.peakXpPerHour;
 
-        savePersistedSession(newState);
-        return newState;
-      }
+          if (measuredXpPerHour !== null && measuredXpPerHour > 0) {
+            const timeLabel = new Date(now).toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit',
+            });
 
-      // No progress change, but theoretical rate changed (e.g. food eaten, buff expired, or gear changed while resting)
-      const currentTheo = theoreticalXpPerHour || 0;
-      const prevTheo = prev.lastTheoreticalXpPerHour || 0;
-      if (currentTheo > 0 && prevTheo > 0 && Math.abs(currentTheo - prevTheo) >= 50 && prev.history.length > 0) {
-        const lastPt = prev.history[prev.history.length - 1];
-        // Only append transition if at least 3 seconds have passed since last point
-        if (now - lastPt.timestamp >= 3000) {
-          const timeLabel = new Date(now).toLocaleTimeString([], {
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-          });
-
-          const updatedHistory = [
-            ...prev.history,
-            {
+            updatedHistory.push({
               timestamp: now,
               timeLabel,
-              xpPerHour: lastPt.xpPerHour,
-              theoreticalXpPerHour: currentTheo,
-              deltaXp: 0,
-            },
-          ].slice(-50);
+              xpPerHour: measuredXpPerHour,
+              theoreticalXpPerHour: theoreticalXpPerHour || 0,
+              deltaXp: Math.round(deltaXp),
+            });
+
+            if (updatedHistory.length > 50) {
+              updatedHistory = updatedHistory.slice(-50);
+            }
+
+            newPeak = Math.max(prev.peakXpPerHour || 0, measuredXpPerHour);
+          }
 
           const newState: SessionTrackerState = {
             ...prev,
+            lastProgress: currentProgress,
+            lastProgressTimestamp: now,
             effectiveXpPerAction,
-            lastTheoreticalXpPerHour: currentTheo,
+            lastTheoreticalXpPerHour: theoreticalXpPerHour || 0,
+            cumulativeXp: newCumulativeXp,
+            snapshots: updatedSnapshots,
             history: updatedHistory,
+            peakXpPerHour: newPeak,
           };
 
           savePersistedSession(newState);
           return newState;
         }
-      }
 
-      // No progress change: keep existing state
-      return prev;
+        const currentTheo = theoreticalXpPerHour || 0;
+        const prevTheo = prev.lastTheoreticalXpPerHour || 0;
+        if (
+          currentTheo > 0 &&
+          prevTheo > 0 &&
+          Math.abs(currentTheo - prevTheo) >= 50 &&
+          prev.history.length > 0
+        ) {
+          const lastPt = prev.history[prev.history.length - 1];
+          if (now - lastPt.timestamp >= 3000) {
+            const timeLabel = new Date(now).toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit',
+            });
+
+            const updatedHistory = [
+              ...prev.history,
+              {
+                timestamp: now,
+                timeLabel,
+                xpPerHour: lastPt.xpPerHour,
+                theoreticalXpPerHour: currentTheo,
+                deltaXp: 0,
+              },
+            ].slice(-50);
+
+            const newState: SessionTrackerState = {
+              ...prev,
+              effectiveXpPerAction,
+              lastTheoreticalXpPerHour: currentTheo,
+              history: updatedHistory,
+            };
+
+            savePersistedSession(newState);
+            return newState;
+          }
+        }
+
+        return prev;
+      });
     });
+
+    return () => {
+      cancelled = true;
+    };
   }, [characterId, skillId, craftId, currentProgress, effectiveXpPerAction, theoreticalXpPerHour]);
 
   const resetSession = useCallback(() => {
@@ -280,6 +293,7 @@ export function useSessionXpTracker(
       // ignore
     }
 
+    setClockMs(now);
     setTracker({
       characterId,
       skillId,
@@ -296,13 +310,14 @@ export function useSessionXpTracker(
     });
   }, [characterId, skillId, craftId, currentProgress, effectiveXpPerAction, theoreticalXpPerHour]);
 
-  // Compute live session stats
   if (!tracker || tracker.characterId !== characterId || tracker.skillId !== skillId) {
     return { sessionStats: null, resetSession };
   }
 
-  const now = Date.now();
-  const sessionDurationSeconds = Math.max(1, Math.floor((now - tracker.sessionStartTime) / 1000));
+  const sessionDurationSeconds = Math.max(
+    1,
+    Math.floor((Math.max(clockMs, tracker.lastProgressTimestamp) - tracker.sessionStartTime) / 1000)
+  );
   const { measuredXpPerHour, efficiencyPercent } = calculateSnapshotRate(
     tracker.snapshots,
     theoreticalXpPerHour

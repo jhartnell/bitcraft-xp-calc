@@ -114,18 +114,18 @@ All network requests to the **BitJita API** (`https://bitjita.com/api`) route th
 
 ## 🛠️ Architecture & Tech Stack
 
-- **Frontend:** React 18, TypeScript, Tailwind CSS, Lucide Icons
-- **Build Tool:** Vite with proxy support for `https://bitjita.com`
-- **Testing:** Vitest with JSDOM test runner
-- **Styling:** Dark fantasy aesthetic with glassmorphism and animated progress indicators
+- **Frontend:** React 18, TypeScript, Tailwind CSS, Lucide Icons, native `<dialog>` top-layer modals, and a top-level `ErrorBoundary`
+- **Build & Lint Tooling:** Vite 6 (emitting `version.json` cleanly during production builds), ESLint 9 flat config (`npm run lint`), and proxy support for `https://bitjita.com`
+- **Testing:** Vitest 5 with JSDOM test runner
+- **Container Security:** Multi-stage Docker build serving via unprivileged, non-root `nginxinc/nginx-unprivileged:1.27-alpine` on port `8080`, hardened with read-only rootfs, dropped capabilities, rate-limited `GET`/`HEAD`-only `/api/` reverse proxy, and strict CSP/security headers on every route
 
 ---
 
 ## 🚀 Getting Started
 
 ### Prerequisites
-- Node.js (v18+ recommended)
-- npm or yarn
+- Node.js (`>=22.0.0`, Node 24 LTS recommended)
+- npm
 
 ### Installation
 ```bash
@@ -143,8 +143,9 @@ npm run dev
 ```
 Open [http://localhost:5173](http://localhost:5173) in your browser.
 
-### Running Unit Tests
+### Running Linter & Unit Tests
 ```bash
+npm run lint
 npm run test:run
 ```
 
@@ -154,13 +155,20 @@ npm run build
 npm run preview
 ```
 
-### Docker Deployment (Containerized with Reverse Proxy)
+### Docker Deployment (Non-Root Containerized Nginx Reverse Proxy)
+
+The container runs as the unprivileged `nginx` user (UID `101`) listening on port **`8080`**, adhering to the principle of least privilege.
 
 #### Option A: Pull & Run Official Image (GitHub Container Registry)
 ```bash
 # Pull and run the pre-built multi-arch image (no login required)
 docker run -d \
-  -p 8080:80 \
+  -p 8080:8080 \
+  --read-only \
+  --cap-drop=ALL \
+  --security-opt=no-new-privileges:true \
+  --tmpfs /tmp \
+  --tmpfs /var/cache/nginx \
   --name bitcraft-xp-calc \
   --restart unless-stopped \
   ghcr.io/jhartnell/bitcraft-xp-calc:latest
@@ -168,16 +176,22 @@ docker run -d \
 
 #### Option B: Run with Docker Compose
 ```bash
-# Pulls published image or builds locally
+# Pulls published image or builds locally with hardened least-privilege flags
 docker compose up -d
 ```
 
 #### Option C: Build from Source
 ```bash
 docker build -t bitcraft-xp-calc:latest .
-docker run -d -p 8080:80 --name bitcraft-xp-calc bitcraft-xp-calc:latest
+docker run -d -p 8080:8080 --read-only --cap-drop=ALL --security-opt=no-new-privileges:true --tmpfs /tmp --tmpfs /var/cache/nginx --name bitcraft-xp-calc bitcraft-xp-calc:latest
 ```
 Open [http://localhost:8080](http://localhost:8080) in your browser.
+
+#### Option D: Push to a Custom Registry
+```bash
+DOCKER_REGISTRY=ghcr.io/your-username ./builddocker.sh
+```
+Set `PUSH_IMAGE=false` to build and tag locally without pushing.
 
 ### Browser Extension Build (Zero-Hosting Client Distribution)
 ```bash

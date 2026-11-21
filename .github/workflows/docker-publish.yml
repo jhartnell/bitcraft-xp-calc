@@ -11,20 +11,23 @@ on:
         required: false
         default: 'latest'
 
-permissions:
-  contents: read
-  packages: write
+# Least-privilege default: deny all permissions unless explicitly granted per job
+permissions: {}
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   test:
-    name: Run Unit Tests & Build Verification
+    name: Lint, Unit Tests & Build Verification
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -34,6 +37,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Run ESLint
+        run: npm run lint
 
       - name: Run Vitest Suite
         run: npm run test:run
@@ -45,9 +51,14 @@ jobs:
     name: Build & Publish Multi-Arch Image to GHCR
     needs: test
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3

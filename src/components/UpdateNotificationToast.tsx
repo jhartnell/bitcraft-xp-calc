@@ -9,8 +9,7 @@ interface UpdateNotificationToastProps {
   onDismiss: () => void;
 }
 
-export const UpdateNotificationToast: React.FC<UpdateNotificationToastProps> = ({
-  hasUpdate,
+const UpdateToastContent: React.FC<Omit<UpdateNotificationToastProps, 'hasUpdate'>> = ({
   latestVersion,
   currentVersion,
   onReload,
@@ -20,8 +19,6 @@ export const UpdateNotificationToast: React.FC<UpdateNotificationToastProps> = (
   const [isAutoReloadPaused, setIsAutoReloadPaused] = useState<boolean>(false);
 
   useEffect(() => {
-    if (!hasUpdate) return;
-
     if (isAutoReloadPaused) return;
 
     if (secondsRemaining <= 0) {
@@ -34,13 +31,11 @@ export const UpdateNotificationToast: React.FC<UpdateNotificationToastProps> = (
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [hasUpdate, secondsRemaining, isAutoReloadPaused, onReload]);
-
-  if (!hasUpdate) return null;
+  }, [secondsRemaining, isAutoReloadPaused, onReload]);
 
   return (
     <div
-      className="fixed bottom-5 right-5 z-50 max-w-sm w-full bg-surface border-2 border-emerald-500/80 rounded-2xl p-4 shadow-2xl backdrop-blur-md animate-in slide-in-from-bottom-5 duration-300"
+      className="fixed bottom-5 right-5 z-50 max-w-sm w-full bg-surface border-2 border-emerald-500/80 rounded-2xl p-4 shadow-2xl backdrop-blur-md animate-slide-up"
       onMouseEnter={() => setIsAutoReloadPaused(true)}
       role="alert"
       aria-live="polite"
@@ -86,12 +81,14 @@ export const UpdateNotificationToast: React.FC<UpdateNotificationToastProps> = (
 
       <div className="flex items-center justify-end gap-2.5 mt-3 pt-2.5 border-t border-surface-border">
         <button
+          type="button"
           onClick={onDismiss}
           className="text-xs font-medium text-gray-400 hover:text-gray-200 px-3 py-1.5 rounded-lg hover:bg-surface-subtle transition-colors cursor-pointer"
         >
           Later
         </button>
         <button
+          type="button"
           onClick={onReload}
           className="text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 border border-emerald-400/40 px-3.5 py-1.5 rounded-lg shadow-md transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
         >
@@ -100,5 +97,24 @@ export const UpdateNotificationToast: React.FC<UpdateNotificationToastProps> = (
         </button>
       </div>
     </div>
+  );
+};
+
+export const UpdateNotificationToast: React.FC<UpdateNotificationToastProps> = ({
+  hasUpdate,
+  latestVersion,
+  currentVersion,
+  onReload,
+  onDismiss,
+}) => {
+  if (!hasUpdate) return null;
+  return (
+    <UpdateToastContent
+      key={latestVersion || 'update'}
+      latestVersion={latestVersion}
+      currentVersion={currentVersion}
+      onReload={onReload}
+      onDismiss={onDismiss}
+    />
   );
 };

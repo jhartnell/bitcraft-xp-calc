@@ -1,38 +1,34 @@
-import { defineConfig, Plugin } from 'vite';
+import { defineConfig } from 'vitest/config';
+import type { Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
-import fs from 'fs';
-import path from 'path';
 import pkg from './package.json';
 
 function versionPlugin(): Plugin {
-  return {
-    name: 'version-manifest-plugin',
-    buildStart() {
-      const publicDir = path.resolve(__dirname, 'public');
-      if (!fs.existsSync(publicDir)) {
-        fs.mkdirSync(publicDir, { recursive: true });
-      }
-      const versionData = {
+  const createPayload = () =>
+    JSON.stringify(
+      {
         version: pkg.version,
         buildTime: Date.now(),
         builtAt: new Date().toISOString(),
-      };
-      fs.writeFileSync(
-        path.resolve(publicDir, 'version.json'),
-        JSON.stringify(versionData, null, 2)
-      );
+      },
+      null,
+      2
+    );
+
+  return {
+    name: 'version-manifest-plugin',
+    generateBundle() {
+      this.emitFile({
+        type: 'asset',
+        fileName: 'version.json',
+        source: createPayload(),
+      });
     },
     configureServer(server) {
       server.middlewares.use('/version.json', (_req, res) => {
         res.setHeader('Content-Type', 'application/json');
         res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-        res.end(
-          JSON.stringify({
-            version: pkg.version,
-            buildTime: Date.now(),
-            builtAt: new Date().toISOString(),
-          }, null, 2)
-        );
+        res.end(createPayload());
       });
     },
   };

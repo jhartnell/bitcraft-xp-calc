@@ -7,6 +7,12 @@ services:
     container_name: bitcraft-xp-calc
     restart: unless-stopped
     ports:
-      - "8080:80"
-    environment:
-      - NODE_ENV=production
+      - "8080:8080"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp
+      - /var/cache/nginx

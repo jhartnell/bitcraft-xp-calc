@@ -25,8 +25,10 @@ client-side-only/
 
 ## 🔒 Security & Least Privilege Design
 
-* **Zero Data Exfiltration:** The extension never transmits user data or telemetry to external servers. All requests communicate strictly with `https://bitjita.com/api`.
-* **Least-Privilege Host Permissions:** Restricts network access strictly to `"host_permissions": ["https://bitjita.com/*"]` and uses standard `"alarms"` and `"storage"` APIs.
+* **Zero Data Exfiltration:** The extension never transmits user data or telemetry to external servers. All requests communicate strictly with `https://bitjita.com/api/*`.
+* **Least-Privilege Host Permissions:** Restricts network access strictly to `"host_permissions": ["https://bitjita.com/api/*"]` and uses standard `"alarms"` and `"storage"` APIs.
+* **Verified Internal Messaging:** The Manifest V3 service worker validates `sender.id === chrome.runtime.id` and message payloads, encodes all URL path segments with `encodeURIComponent`, and enforces 15s fetch timeouts via `AbortSignal.timeout`.
+* **Automatic Primary Sync:** Pinning or unpinning a Primary character in the popup/tab UI automatically sends `SYNC_PRIMARY_PLAYER` to the background service worker so toolbar badge alerts stay in sync.
 
 ---
 

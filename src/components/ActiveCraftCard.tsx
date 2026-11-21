@@ -44,6 +44,7 @@ interface ActiveCraftCardProps {
   nearbyCrafts?: NearbyCraftItem[];
   onSelectNearbyCraft?: (craft: CraftResult) => void;
   selectedCraftEntityId?: string;
+  isActiveCraftHelper?: boolean;
   calc: XpCalculationResult;
   itemMetadata?: ItemMetadata | null;
   onOverrideProgressPerAction?: (val: number | null) => void;
@@ -61,6 +62,7 @@ export const ActiveCraftCard: React.FC<ActiveCraftCardProps> = ({
   nearbyCrafts = [],
   onSelectNearbyCraft,
   selectedCraftEntityId,
+  isActiveCraftHelper = false,
   calc,
   itemMetadata,
   onOverrideProgressPerAction,
@@ -145,18 +147,26 @@ export const ActiveCraftCard: React.FC<ActiveCraftCardProps> = ({
   const helperCrafts = uniqueNearbyCrafts.filter((n) => n.isHelper);
   const idleNearbyCrafts = uniqueNearbyCrafts.filter((n) => !n.isHelper);
 
-  // If the active craft is a custom/helper craft not already in helperCrafts list, include it
+  // If the active craft is a custom craft not already in nearby lists, distinguish verified helper vs preview/analyzing
   const isCraftInHelper = helperCrafts.some((h) => h.craft.entityId === craft.entityId);
   const isCraftInIdle = idleNearbyCrafts.some((n) => n.craft.entityId === craft.entityId);
   const displayHelperCrafts = [...helperCrafts];
-  if (isCustomCraft && !isCraftInHelper && !isCraftInIdle) {
-    displayHelperCrafts.unshift({
-      craft,
-      distanceMeters: 0,
-      itemName: itemMetadata?.name,
-      isHelper: true,
-    });
+  const analyzingPublicCraft: NearbyCraftItem | null =
+    isCustomCraft && !isCraftInHelper && !isCraftInIdle
+      ? {
+          craft,
+          distanceMeters: 0,
+          itemName: itemMetadata?.name,
+          isHelper: isActiveCraftHelper,
+        }
+      : null;
+
+  if (analyzingPublicCraft && analyzingPublicCraft.isHelper) {
+    displayHelperCrafts.unshift(analyzingPublicCraft);
   }
+
+  const previewCraftTab =
+    analyzingPublicCraft && !analyzingPublicCraft.isHelper ? analyzingPublicCraft : null;
 
   const selectedIdleCraft = idleNearbyCrafts.find((n) => isCurrentCraftSelected(n.craft));
   const hasMultipleOptions = craftsList.length > 1 || uniqueNearbyCrafts.length > 0 || isCustomCraft;
@@ -260,13 +270,14 @@ export const ActiveCraftCard: React.FC<ActiveCraftCardProps> = ({
               );
             })}
 
-            {/* 2. Active Helper Crafts (Only stations where you've contributed or currently selected) */}
+            {/* 2. Verified Helper Crafts (Stations where this player has actually contributed) */}
             {displayHelperCrafts.map(({ craft: hCraft, distanceMeters, itemName: hItemName }) => {
               const isSelected = isCurrentCraftSelected(hCraft);
               return (
                 <button
+                  type="button"
                   key={hCraft.entityId}
-                  onClick={() => onSelectNearbyCraft && onSelectNearbyCraft(hCraft)}
+                  onClick={() => onSelectNearbyCraft?.(hCraft)}
                   className={`px-2.5 py-1 rounded-lg transition-all flex items-center gap-1.5 font-medium cursor-pointer ${
                     isSelected
                       ? 'bg-indigo-600 text-white font-semibold shadow-sm'
@@ -278,12 +289,29 @@ export const ActiveCraftCard: React.FC<ActiveCraftCardProps> = ({
                     Helping: {hCraft.buildingName?.replace(' Station', '') || 'Station'}
                     {hItemName ? ` (${hItemName})` : ''}
                   </span>
-                  <span className="text-[10px] font-mono text-gray-400 opacity-90">
+                  <span className="text-[10px] font-mono text-gray-300 opacity-90">
                     ({distanceMeters > 0 ? `${distanceMeters}m • ` : ''}{hCraft.ownerUsername || 'Public'})
                   </span>
                 </button>
               );
             })}
+
+            {/* 2.5. Previewing / Analyzing Public Craft (Player is NOT a contributor) */}
+            {previewCraftTab && (
+              <span
+                className="px-2.5 py-1 rounded-lg flex items-center gap-1.5 font-semibold bg-teal-950/80 border border-teal-600/70 text-teal-200 shadow-sm"
+                title="Analyzing a public craft without active player contributions"
+              >
+                <Globe className="w-3 h-3 text-teal-400" />
+                <span>
+                  Analyzing: {previewCraftTab.craft.buildingName?.replace(' Station', '') || 'Station'}
+                  {previewCraftTab.itemName ? ` (${previewCraftTab.itemName})` : ''}
+                </span>
+                <span className="text-[10px] font-mono text-teal-300/80">
+                  ({previewCraftTab.craft.ownerUsername || 'Public'})
+                </span>
+              </span>
+            )}
 
             {/* 3. Compact Dropdown for Other Idle Stations on Claim */}
             {idleNearbyCrafts.length > 0 && (
@@ -313,7 +341,7 @@ export const ActiveCraftCard: React.FC<ActiveCraftCardProps> = ({
 
                 {/* Floating Dropdown Drawer */}
                 {isNearbyDropdownOpen && (
-                  <div className="absolute left-0 mt-1.5 w-80 bg-surface border border-surface-border rounded-xl shadow-2xl p-1.5 z-40 space-y-1 animate-in fade-in zoom-in-95 duration-150">
+                  <div className="absolute left-0 mt-1.5 w-80 bg-surface border border-surface-border rounded-xl shadow-2xl p-1.5 z-40 space-y-1 animate-zoom-in">
                     <div className="px-2 py-1 text-[10px] font-semibold text-gray-400 uppercase tracking-wider border-b border-surface-border/50 flex items-center justify-between">
                       <span>Nearby Claim Stations</span>
                       <span className="text-gray-500 font-mono">{idleNearbyCrafts.length} available</span>
@@ -325,7 +353,7 @@ export const ActiveCraftCard: React.FC<ActiveCraftCardProps> = ({
                           <button
                             key={nCraft.entityId}
                             onClick={() => {
-                              onSelectNearbyCraft && onSelectNearbyCraft(nCraft);
+                              onSelectNearbyCraft?.(nCraft);
                               setIsNearbyDropdownOpen(false);
                             }}
                             className={`w-full text-left px-2.5 py-2 rounded-lg text-xs flex flex-col gap-0.5 transition-colors cursor-pointer ${
@@ -612,7 +640,11 @@ export const ActiveCraftCard: React.FC<ActiveCraftCardProps> = ({
             </div>
           ) : (
             <button
-              onClick={() => setIsEditingEffort(true)}
+              type="button"
+              onClick={() => {
+                setEffortInput(String(calc.progressPerAction));
+                setIsEditingEffort(true);
+              }}
               className="flex items-center gap-1 text-gray-400 hover:text-gray-200 bg-surface border border-surface-border px-2.5 py-1 rounded-md transition-colors cursor-pointer font-medium"
             >
               <Sliders className="w-3.5 h-3.5 text-indigo-400" />

@@ -1,9 +1,16 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest';
 import { bitjitaApi } from '../apiClient';
 
 describe('PoliteApiClient Cache & Inspector', () => {
   beforeEach(() => {
     bitjitaApi.clearCache();
+    bitjitaApi.clearAnomalies();
+    bitjitaApi.resetBackoff();
+    bitjitaApi.setMinIntervalMs(0);
+  });
+
+  afterAll(() => {
+    bitjitaApi.setMinIntervalMs(120);
   });
 
   it('starts with an empty cache list', () => {
@@ -219,6 +226,60 @@ describe('PoliteApiClient Cache & Inspector', () => {
 
     await bitjitaApi.getSkills();
     expect(bitjitaApi.getAnomalies().length).toBe(0);
+
+    vi.unstubAllGlobals();
+  });
+
+  it('encodes path parameters safely to prevent URL path injection', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ player: { entityId: 'a/b?c=1', username: 'Safe', experience: [{ skill_id: 2, quantity: 100 }] } }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await bitjitaApi.getPlayerDetails('../admin?foo=bar');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/players/..%2Fadmin%3Ffoo%3Dbar',
+      expect.any(Object)
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it('enriches equipment without mutating the cached equipment payload in-place', async () => {
+    const rawEquipmentPayload = {
+      equipment: [
+        {
+          primary: 'main_hand',
+          item: { id: 9001, name: 'Basic Axe', tier: 2 },
+        },
+      ],
+    };
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string) => {
+        if (url.includes('/equipment')) {
+          return Promise.resolve({ ok: true, json: async () => rawEquipmentPayload });
+        }
+        if (url.includes('/items/9001')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              item: { id: 9001, name: 'Basic Axe', tier: 2 },
+              toolStats: { power: 16, level: 3, toolType: 'Axe', skillId: 2, skillName: 'Forestry' },
+            }),
+          });
+        }
+        return Promise.resolve({ ok: true, json: async () => ({}) });
+      })
+    );
+
+    const enriched = await bitjitaApi.getPlayerEquipment('p_equip');
+    expect(enriched.equipment[0].item?.toolStats?.power).toBe(16);
+    // Original raw response object should remain unmutated
+    expect((rawEquipmentPayload.equipment[0].item as Record<string, unknown>).toolStats).toBeUndefined();
 
     vi.unstubAllGlobals();
   });

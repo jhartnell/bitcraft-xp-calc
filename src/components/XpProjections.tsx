@@ -286,7 +286,7 @@ export const XpProjections: React.FC<XpProjectionsProps> = ({ calc, onResetSessi
 
         {/* EXPANDED MILESTONE SECTION (Visible when clicked) */}
         {isMilestonesExpanded && levelForecast && (
-          <div className="pt-3 border-t border-surface-border space-y-3 animate-in fade-in duration-200">
+          <div className="pt-3 border-t border-surface-border space-y-3 animate-fade-in">
             {/* Detailed Next Level Banner */}
             <div className="bg-gradient-to-r from-indigo-950/70 via-purple-950/40 to-surface-subtle border border-indigo-700/50 rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-md">
               <div className="flex items-start gap-3">
@@ -327,7 +327,16 @@ export const XpProjections: React.FC<XpProjectionsProps> = ({ calc, onResetSessi
                   {levelForecast.xpNeededForNextLevel.toLocaleString()} XP
                 </div>
                 <div className="text-[10px] text-gray-500">
-                  {Math.ceil(levelForecast.xpNeededForNextLevel / (calc.progressPerAction * calc.baseXpPerAction * calc.xpMultiplier)).toLocaleString()} clicks away
+                  {(() => {
+                    const xpPerClick =
+                      calc.progressPerAction * calc.baseXpPerAction * calc.xpMultiplier;
+                    const clicks =
+                      levelForecast.milestones[0]?.physicalActionsRequired ??
+                      (xpPerClick > 0
+                        ? Math.ceil(levelForecast.xpNeededForNextLevel / xpPerClick)
+                        : 0);
+                    return `${clicks.toLocaleString()} clicks away`;
+                  })()}
                 </div>
               </div>
             </div>

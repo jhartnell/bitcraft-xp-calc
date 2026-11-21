@@ -28,33 +28,49 @@ export const PlayerSearch: React.FC<PlayerSearchProps> = ({
   const [isOpen, setIsOpen] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const searchContainerRef = useRef<HTMLDivElement>(null);
+  const searchSeqRef = useRef<number>(0);
 
   const showLoading = isSearching || isLoading;
 
-  // Debounced search
+  // Debounced search with sequence guard to discard stale out-of-order responses
   useEffect(() => {
-    if (!query || query.trim().length < 2) {
-      setSuggestions([]);
-      setIsSearching(false);
+    const trimmed = query.trim();
+    if (!trimmed || trimmed.length < 2) {
+      searchSeqRef.current += 1;
       return;
     }
+
+    const reqSeq = ++searchSeqRef.current;
 
     const timer = setTimeout(async () => {
       try {
         setIsSearching(true);
-        const res = await bitjitaApi.searchPlayers(query.trim());
+        const res = await bitjitaApi.searchPlayers(trimmed);
+        if (searchSeqRef.current !== reqSeq) return;
         setSuggestions(res.players.slice(0, 8));
         setIsOpen(true);
       } catch (err) {
+        if (searchSeqRef.current !== reqSeq) return;
         console.error('Player search error:', err);
         setSuggestions([]);
       } finally {
-        setIsSearching(false);
+        if (searchSeqRef.current === reqSeq) {
+          setIsSearching(false);
+        }
       }
     }, 300);
 
     return () => clearTimeout(timer);
   }, [query]);
+
+  const handleQueryChange = (nextQuery: string) => {
+    setQuery(nextQuery);
+    if (nextQuery.trim().length < 2) {
+      searchSeqRef.current += 1;
+      setSuggestions([]);
+      setIsSearching(false);
+    }
+  };
 
   // Click outside listener to close suggestions
   useEffect(() => {
@@ -89,7 +105,7 @@ export const PlayerSearch: React.FC<PlayerSearchProps> = ({
             <input
               type="text"
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => handleQueryChange(e.target.value)}
               onFocus={() => {
                 if (suggestions.length > 0) setIsOpen(true);
               }}
@@ -100,7 +116,8 @@ export const PlayerSearch: React.FC<PlayerSearchProps> = ({
               <Loader2 className="w-4 h-4 text-emerald-400 animate-spin absolute right-3" />
             ) : query ? (
               <button
-                onClick={() => setQuery('')}
+                type="button"
+                onClick={() => handleQueryChange('')}
                 className="text-gray-400 hover:text-gray-200 absolute right-3"
               >
                 <X className="w-4 h-4" />

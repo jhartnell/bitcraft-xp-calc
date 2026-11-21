@@ -2,83 +2,141 @@
 
 const ALARM_NAME = 'bitcraft-background-sync';
 const SYNC_INTERVAL_MINUTES = 1; // Check every 1 minute
+const FETCH_TIMEOUT_MS = 15000;
 
-// Set up periodic alarm on install or startup
+async function ensureSyncAlarm() {
+  const existing = await chrome.alarms.get(ALARM_NAME);
+  if (!existing) {
+    await chrome.alarms.create(ALARM_NAME, {
+      periodInMinutes: SYNC_INTERVAL_MINUTES,
+      delayInMinutes: 0.1,
+    });
+  }
+}
+
+// Set up periodic alarm on install or browser startup
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.alarms.create(ALARM_NAME, {
-    periodInMinutes: SYNC_INTERVAL_MINUTES,
-    delayInMinutes: 0.1,
-  });
-  runBackgroundSync();
+  (async () => {
+    await ensureSyncAlarm();
+    await runBackgroundSync();
+  })().catch((err) => console.error('onInstalled sync failed:', err));
 });
 
 chrome.runtime.onStartup.addListener(() => {
-  runBackgroundSync();
+  (async () => {
+    await ensureSyncAlarm();
+    await runBackgroundSync();
+  })().catch((err) => console.error('onStartup sync failed:', err));
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === ALARM_NAME) {
-    runBackgroundSync();
+    runBackgroundSync().catch((err) => console.error('Alarm sync failed:', err));
   }
 });
 
-// Listen for messages from popup or full tab UI
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+// Listen for messages strictly from this extension's own pages
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (sender.id !== chrome.runtime.id) {
+    sendResponse({ success: false, error: 'Unauthorized sender' });
+    return false;
+  }
+
+  if (!message || typeof message !== 'object') {
+    sendResponse({ success: false, error: 'Invalid message payload' });
+    return false;
+  }
+
   if (message.type === 'SYNC_PRIMARY_PLAYER') {
-    if (message.player) {
-      chrome.storage.local.set({ primaryPlayer: message.player }, () => {
-        runBackgroundSync().then(sendResponse);
-      });
-    } else {
-      chrome.storage.local.remove('primaryPlayer', () => {
-        updateBadgeNoPlayer();
-        sendResponse({ success: true });
-      });
-    }
+    (async () => {
+      try {
+        const player = message.player;
+        if (
+          player &&
+          typeof player === 'object' &&
+          typeof player.entityId === 'string' &&
+          player.entityId.trim().length > 0 &&
+          typeof player.username === 'string'
+        ) {
+          await chrome.storage.local.set({
+            primaryPlayer: {
+              entityId: player.entityId.trim(),
+              username: player.username,
+            },
+          });
+          await ensureSyncAlarm();
+          const result = await runBackgroundSync();
+          sendResponse({ success: true, result });
+        } else {
+          await chrome.storage.local.remove('primaryPlayer');
+          await updateBadgeNoPlayer();
+          sendResponse({ success: true, result: null });
+        }
+      } catch (err) {
+        sendResponse({
+          success: false,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    })();
     return true; // Keep message channel open for async response
   }
 
   if (message.type === 'FORCE_BACKGROUND_SYNC') {
-    runBackgroundSync().then(sendResponse);
+    (async () => {
+      try {
+        const result = await runBackgroundSync();
+        sendResponse({ success: true, result });
+      } catch (err) {
+        sendResponse({
+          success: false,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    })();
     return true;
   }
+
+  return false;
 });
+
+async function fetchJson(url) {
+  const response = await fetch(url, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+  if (!response.ok) {
+    throw new Error(`BitJita API error: ${response.status}`);
+  }
+  return response.json();
+}
 
 async function runBackgroundSync() {
   try {
     const data = await chrome.storage.local.get(['primaryPlayer']);
     const primaryPlayer = data.primaryPlayer;
 
-    if (!primaryPlayer || !primaryPlayer.entityId) {
+    if (!primaryPlayer || typeof primaryPlayer.entityId !== 'string' || !primaryPlayer.entityId) {
       await updateBadgeNoPlayer();
       return null;
     }
 
+    const encodedId = encodeURIComponent(primaryPlayer.entityId);
+
     // 1. Fetch live active crafts
-    const craftsRes = await fetch(
-      `https://bitjita.com/api/players/${primaryPlayer.entityId}/crafts?completed=all`,
-      { headers: { Accept: 'application/json' } }
+    const craftsData = await fetchJson(
+      `https://bitjita.com/api/players/${encodedId}/crafts?completed=all`
     );
-
-    if (!craftsRes.ok) {
-      throw new Error(`Crafts fetch error: ${craftsRes.status}`);
-    }
-
-    const craftsData = await craftsRes.json();
-    const activeCrafts = (craftsData.craftResults || []).filter((c) => !c.completed);
+    const activeCrafts = (craftsData.craftResults || []).filter(
+      (c) => !c.completed && (c.progress ?? 0) < (c.totalActionsRequired || Infinity)
+    );
 
     // 2. Fetch fresh player details, buffs, and stats to keep storage hot
     try {
-      const [detailsRes, buffsRes, statsRes] = await Promise.all([
-        fetch(`https://bitjita.com/api/players/${primaryPlayer.entityId}`, { headers: { Accept: 'application/json' } }),
-        fetch(`https://bitjita.com/api/players/${primaryPlayer.entityId}/buffs`, { headers: { Accept: 'application/json' } }),
-        fetch(`https://bitjita.com/api/players/${primaryPlayer.entityId}/stats`, { headers: { Accept: 'application/json' } }),
-      ]);
-
       const [details, buffs, stats] = await Promise.all([
-        detailsRes.ok ? detailsRes.json() : null,
-        buffsRes.ok ? buffsRes.json() : null,
-        statsRes.ok ? statsRes.json() : null,
+        fetchJson(`https://bitjita.com/api/players/${encodedId}`).catch(() => null),
+        fetchJson(`https://bitjita.com/api/players/${encodedId}/buffs`).catch(() => null),
+        fetchJson(`https://bitjita.com/api/players/${encodedId}/stats`).catch(() => null),
       ]);
 
       await chrome.storage.local.set({
@@ -97,7 +155,10 @@ async function runBackgroundSync() {
     // 3. Update Badge State based on active crafts
     if (activeCrafts.length > 0) {
       const activeCraft = activeCrafts[0];
-      const total = activeCraft.totalActionsRequired || (activeCraft.actionsRequiredPerItem * activeCraft.craftCount) || 1;
+      const total =
+        activeCraft.totalActionsRequired ||
+        activeCraft.actionsRequiredPerItem * activeCraft.craftCount ||
+        1;
       const progress = activeCraft.progress || 0;
       const pct = Math.min(100, Math.max(0, Math.round((progress / total) * 100)));
 
@@ -130,7 +191,7 @@ async function runBackgroundSync() {
         lastSyncedAt: new Date().toISOString(),
       };
     }
-  } catch (err) {
+  } catch {
     // Network or parse error: amber badge
     await chrome.action.setBadgeBackgroundColor({ color: '#F59E0B' });
     await chrome.action.setBadgeText({ text: 'ERR' });

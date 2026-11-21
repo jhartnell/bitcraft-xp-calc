@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { SkillOverrideMap } from '../types/calculator';
 
 const STORAGE_PREFIX = 'bitcraft_skill_overrides_';
@@ -11,36 +11,34 @@ export interface UseSkillOverridesReturn {
   clearAllSkillOverrides: () => void;
 }
 
+function readOverrides(storageKey: string | null): SkillOverrideMap {
+  if (!storageKey) return {};
+  try {
+    const raw = localStorage.getItem(storageKey);
+    return raw ? (JSON.parse(raw) as SkillOverrideMap) : {};
+  } catch {
+    return {};
+  }
+}
+
 export function useSkillOverrides(playerEntityId?: string | null): UseSkillOverridesReturn {
   const storageKey = playerEntityId ? `${STORAGE_PREFIX}${playerEntityId}` : null;
 
-  const [overrides, setOverrides] = useState<SkillOverrideMap>(() => {
-    if (!storageKey) return {};
-    try {
-      const raw = localStorage.getItem(storageKey);
-      return raw ? JSON.parse(raw) : {};
-    } catch {
-      return {};
-    }
-  });
+  const [state, setState] = useState<{
+    key: string | null;
+    data: SkillOverrideMap;
+  } | null>(null);
 
-  // Re-sync when playerEntityId changes
-  useEffect(() => {
-    if (!storageKey) {
-      setOverrides({});
-      return;
+  const overrides = useMemo<SkillOverrideMap>(() => {
+    if (state && state.key === storageKey) {
+      return state.data;
     }
-    try {
-      const raw = localStorage.getItem(storageKey);
-      setOverrides(raw ? JSON.parse(raw) : {});
-    } catch {
-      setOverrides({});
-    }
-  }, [storageKey]);
+    return readOverrides(storageKey);
+  }, [state, storageKey]);
 
   const saveOverrides = useCallback(
     (next: SkillOverrideMap) => {
-      setOverrides(next);
+      setState({ key: storageKey, data: next });
       if (storageKey) {
         try {
           localStorage.setItem(storageKey, JSON.stringify(next));

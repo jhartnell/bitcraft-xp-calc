@@ -77,17 +77,22 @@ export const PowerBreakdownPopover: React.FC<PowerBreakdownPopoverProps> = ({
       className={`relative inline-block ${className}`}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
-      onClick={toggle}
     >
-      {/* Target Trigger */}
-      <div className="cursor-help transition-transform hover:scale-[1.01]">
+      {/* Target Trigger with semantic button for keyboard & touch accessibility */}
+      <button
+        type="button"
+        onClick={toggle}
+        aria-expanded={isOpen}
+        aria-haspopup="true"
+        className="cursor-help transition-transform hover:scale-[1.01] bg-transparent border-0 p-0 text-inherit font-inherit text-left"
+      >
         {children}
-      </div>
+      </button>
 
       {/* Floating Popover */}
       {isOpen && (
         <div
-          className="absolute z-50 bottom-full left-0 sm:left-auto sm:right-0 mb-2 w-80 sm:w-96 p-4 rounded-xl bg-surface border border-surface-border shadow-2xl backdrop-blur-md text-xs space-y-3 animate-in fade-in zoom-in-95 duration-150 pointer-events-auto text-left"
+          className="absolute z-50 bottom-full left-0 sm:left-auto sm:right-0 mb-2 w-80 sm:w-96 p-4 rounded-xl bg-surface border border-surface-border shadow-2xl backdrop-blur-md text-xs space-y-3 animate-zoom-in pointer-events-auto text-left"
           onMouseEnter={handleMouseEnter}
           onMouseLeave={handleMouseLeave}
         >

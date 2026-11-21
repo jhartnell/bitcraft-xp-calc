@@ -206,5 +206,56 @@ describe('Active Craft Resolution & XP-Driven Persistence', () => {
     expect(res.customCraft).toBeNull();
     expect(res.reason).toBe('fallback_owned');
   });
+
+  it('does not auto-select unverified nearby public crafts when player is idle with no owned crafts', () => {
+    const res = resolveActiveCraftSelection({
+      currentTargetCraftId: null,
+      activeGainedSkillIds: new Set<number>(),
+      ownedActiveCrafts: [],
+      candidateSharedCrafts: [helperTailoringCraft],
+      verifiedHelperCraftIds: new Set<string>(),
+      playerEntityId,
+      playerUsername,
+    });
+
+    expect(res.isResolved).toBe(false);
+    expect(res.selectedCraftId).toBeNull();
+    expect(res.customCraft).toBeNull();
+    expect(res.reason).toBe('none');
+  });
+
+  it('auto-selects a verified helper craft when player has no owned crafts', () => {
+    const res = resolveActiveCraftSelection({
+      currentTargetCraftId: null,
+      activeGainedSkillIds: new Set<number>(),
+      ownedActiveCrafts: [],
+      candidateSharedCrafts: [helperTailoringCraft],
+      verifiedHelperCraftIds: new Set<string>([helperTailoringCraft.entityId]),
+      playerEntityId,
+      playerUsername,
+    });
+
+    expect(res.isResolved).toBe(true);
+    expect(res.selectedCraftId).toBe(helperTailoringCraft.entityId);
+    expect(res.customCraft).toEqual(helperTailoringCraft);
+    expect(res.reason).toBe('fallback_shared');
+  });
+
+  it('does not auto-switch via XP gain to an unverified public craft', () => {
+    const res = resolveActiveCraftSelection({
+      currentTargetCraftId: null,
+      activeGainedSkillIds: new Set<number>([10]), // Tailoring XP gained
+      ownedActiveCrafts: [],
+      candidateSharedCrafts: [helperTailoringCraft],
+      verifiedHelperCraftIds: new Set<string>(), // Player is NOT a verified contributor
+      playerEntityId,
+      playerUsername,
+    });
+
+    expect(res.isResolved).toBe(false);
+    expect(res.selectedCraftId).toBeNull();
+    expect(res.customCraft).toBeNull();
+    expect(res.reason).toBe('none');
+  });
 });
 

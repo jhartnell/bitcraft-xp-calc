@@ -6,6 +6,7 @@ export interface CraftResolutionInput {
   activeGainedSkillIds: Set<number>;
   ownedActiveCrafts: CraftResult[];
   candidateSharedCrafts: CraftResult[];
+  verifiedHelperCraftIds?: Set<string>;
   playerContribSnapshot?: Map<string, number>;
   playerEntityId?: string;
   playerUsername?: string;
@@ -64,6 +65,7 @@ export function resolveActiveCraftSelection(input: CraftResolutionInput): CraftR
     activeGainedSkillIds,
     ownedActiveCrafts,
     candidateSharedCrafts,
+    verifiedHelperCraftIds,
   } = input;
 
   // Deduplicate and filter ongoing candidate shared crafts that are not owned
@@ -129,8 +131,11 @@ export function resolveActiveCraftSelection(input: CraftResolutionInput): CraftR
       };
     }
 
-    // Second, check candidate shared crafts for a match
+    // Second, check candidate shared crafts for a match (only verified helper crafts when verification set is provided)
     const matchingSharedCraft = ongoingShared.find((c) => {
+      if (verifiedHelperCraftIds && !verifiedHelperCraftIds.has(c.entityId)) {
+        return false;
+      }
       const s = getCraftSkillId(c);
       return s !== null && activeGainedSkillIds.has(s);
     });
@@ -182,14 +187,21 @@ export function resolveActiveCraftSelection(input: CraftResolutionInput): CraftR
   }
 
   if (ongoingShared.length > 0) {
-    const bestShared = ongoingShared[0];
-    return {
-      selectedCraftId: bestShared.entityId,
-      selectedCraftIndex: 0,
-      customCraft: bestShared,
-      isResolved: true,
-      reason: 'fallback_shared',
-    };
+    // Only auto-fallback to a shared craft if the player is a verified contributor
+    // (avoids assuming the player is helping on random nearby or merely previewed stations)
+    const fallbackCandidate = verifiedHelperCraftIds
+      ? ongoingShared.find((c) => verifiedHelperCraftIds.has(c.entityId))
+      : ongoingShared[0];
+
+    if (fallbackCandidate) {
+      return {
+        selectedCraftId: fallbackCandidate.entityId,
+        selectedCraftIndex: 0,
+        customCraft: fallbackCandidate,
+        isResolved: true,
+        reason: 'fallback_shared',
+      };
+    }
   }
 
   return {

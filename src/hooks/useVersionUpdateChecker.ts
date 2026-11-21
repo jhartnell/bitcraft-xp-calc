@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { isExtensionContext } from '../services/apiClient';
 
 interface VersionInfo {
   version: string;
@@ -46,13 +47,16 @@ export async function checkForAppUpdate(
 export function useVersionUpdateChecker(
   pollIntervalMs: number = 60_000
 ): UseVersionUpdateCheckerReturn {
-  const currentVersion = (import.meta.env.VITE_APP_VERSION as string) || '1.8.4';
+  const currentVersion = (import.meta.env.VITE_APP_VERSION as string) || '0.0.0';
   const [hasUpdate, setHasUpdate] = useState<boolean>(false);
   const [latestVersion, setLatestVersion] = useState<string | null>(null);
   const dismissedUntilRef = useRef<number>(0);
 
   const checkNow = useCallback(async (): Promise<boolean> => {
-    // If dismissed recently, don't re-trigger notification
+    if (isExtensionContext()) {
+      return false;
+    }
+
     if (Date.now() < dismissedUntilRef.current) {
       return false;
     }
@@ -78,30 +82,29 @@ export function useVersionUpdateChecker(
   }, []);
 
   useEffect(() => {
-    // Initial check after 5s
+    if (isExtensionContext()) return;
+
     const initialTimer = setTimeout(() => {
       checkNow();
     }, 5000);
 
-    // Periodic polling
     const intervalTimer = setInterval(() => {
       checkNow();
     }, pollIntervalMs);
 
-    // Check when user focuses the tab
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         checkNow();
       }
     };
 
-    window.addEventListener('visibilitychange', handleVisibilityChange);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('focus', handleVisibilityChange);
 
     return () => {
       clearTimeout(initialTimer);
       clearInterval(intervalTimer);
-      window.removeEventListener('visibilitychange', handleVisibilityChange);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleVisibilityChange);
     };
   }, [checkNow, pollIntervalMs]);

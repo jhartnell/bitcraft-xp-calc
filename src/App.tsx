@@ -1,23 +1,10 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import {
-  PlayerSummary,
-  PlayerDetails,
-  CraftResult,
-  EquipmentSlot,
-  PlayerBuff,
-  PlayerStatsData,
-  PlayerToolEntry,
-  ItemMetadata,
-} from './types/api';
-import { ApiClientStatus, FoodBuffOverride } from './types/calculator';
-import { bitjitaApi } from './services/apiClient';
-import { resolveCraftCoordinates } from './services/bitcraftData';
-import { resolveActiveCraftSelection } from './services/craftResolution';
+import React, { useState, useMemo, useCallback } from 'react';
 import { calculateCraftXp, calculateMultiUserCraftProjection } from './services/xpCalculator';
+import { isContributionByPlayer } from './services/bitcraftData';
 import { Header } from './components/Header';
 import { PlayerSearch } from './components/PlayerSearch';
 import { RefreshControls } from './components/RefreshControls';
-import { ActiveCraftCard, NearbyCraftItem } from './components/ActiveCraftCard';
+import { ActiveCraftCard } from './components/ActiveCraftCard';
 import { XpProjections } from './components/XpProjections';
 import { ModifiersPanel } from './components/ModifiersPanel';
 import { ContributorsPanel } from './components/ContributorsPanel';
@@ -28,14 +15,15 @@ import { UpdateNotificationToast } from './components/UpdateNotificationToast';
 import { useVersionUpdateChecker } from './hooks/useVersionUpdateChecker';
 import { useSessionXpTracker } from './hooks/useSessionXpTracker';
 import { useSkillOverrides } from './hooks/useSkillOverrides';
+import { usePersistentPreferences } from './hooks/usePersistentPreferences';
+import { usePlayerDashboardData } from './hooks/usePlayerDashboardData';
 import { Hammer, AlertCircle, Info, MapPin, Star, Globe } from 'lucide-react';
 
-const RECENT_PLAYERS_KEY = 'bitcraft_xp_recent_players';
-const REFRESH_INTERVAL_KEY = 'bitcraft_xp_refresh_interval';
-const PRIMARY_PLAYER_KEY = 'bitcraft_primary_player';
-const INACTIVITY_TIMEOUT_KEY = 'bitcraft_inactivity_timeout';
+const SAMPLE_PLAYER_NAMES = ['wiz', 'DOOM', 'Ameger', 'Hydrivett', 'Socrates'];
 
 export const App: React.FC = () => {
+  const [isPublicModalOpen, setIsPublicModalOpen] = useState(false);
+
   // Update Notification Checker
   const {
     hasUpdate,
@@ -45,731 +33,180 @@ export const App: React.FC = () => {
     dismiss: handleDismissUpdate,
   } = useVersionUpdateChecker();
 
-  // State
-  const [selectedPlayer, setSelectedPlayer] = useState<PlayerSummary | null>(null);
-  const [primaryPlayer, setPrimaryPlayer] = useState<PlayerSummary | null>(() => {
-    try {
-      const saved = localStorage.getItem(PRIMARY_PLAYER_KEY);
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
-  });
-  const [inactivityTimeout, setInactivityTimeout] = useState<number>(() => {
-    try {
-      const saved = localStorage.getItem(INACTIVITY_TIMEOUT_KEY);
-      return saved !== null ? Number(saved) : 2.0;
-    } catch {
-      return 2.0;
-    }
+  // Persistent user preferences & Chrome Extension primary player sync
+  const {
+    primaryPlayer,
+    togglePrimaryPlayer,
+    inactivityTimeout,
+    handleInactivityTimeoutChange,
+    refreshInterval,
+    handleIntervalChange,
+    recentPlayers,
+    saveRecentPlayer,
+    removeRecentPlayer,
+    foodBuffOverride,
+    handleSetFoodBuffOverride,
+  } = usePersistentPreferences();
+
+  // Live player, craft, nearby station, and contributor data orchestration
+  const {
+    selectedPlayer,
+    playerDetails,
+    equipment,
+    playerTools,
+    buffs,
+    stats,
+    crafts,
+    selectedCraftIndex,
+    customCraft,
+    activeCraft,
+    activeCraftMetadata,
+    nearbyCrafts,
+    contributions,
+    contributorPayloads,
+    includedContributors,
+    setIncludedContributors,
+    customProgressPerAction,
+    setCustomProgressPerAction,
+    isLoading,
+    error,
+    isPaused,
+    setIsPaused,
+    lastUpdated,
+    nextRefreshAt,
+    handleSelectPlayer,
+    handleSelectSamplePlayer,
+    handleManualRefresh,
+    handleClearCache,
+    handleSelectCustomCraft,
+    handleClearCustomCraft,
+    handleSelectOwnedCraftIndex,
+    handleReturnToOwnedCraft,
+  } = usePlayerDashboardData({
+    primaryPlayer,
+    recentPlayers,
+    refreshInterval,
+    saveRecentPlayer,
   });
 
-  const [playerDetails, setPlayerDetails] = useState<PlayerDetails | null>(null);
-  const [equipment, setEquipment] = useState<EquipmentSlot[]>([]);
-  const [playerTools, setPlayerTools] = useState<PlayerToolEntry[]>([]);
-  const [buffs, setBuffs] = useState<PlayerBuff[]>([]);
-  const [stats, setStats] = useState<PlayerStatsData | null>(null);
-  const [crafts, setCrafts] = useState<CraftResult[]>([]);
-  const [selectedCraftIndex, setSelectedCraftIndex] = useState<number>(0);
-  const [customCraft, setCustomCraft] = useState<CraftResult | null>(null);
-  const [nearbyCrafts, setNearbyCrafts] = useState<NearbyCraftItem[]>([]);
-  const [contributions, setContributions] = useState<import('./types/api').CraftContribution[]>([]);
-  const [contributorPayloads, setContributorPayloads] = useState<import('./services/xpCalculator').ContributorDetailPayload[]>([]);
-  const [includedContributors, setIncludedContributors] = useState<Record<string, boolean>>({});
-  const [itemMetadataMap, setItemMetadataMap] = useState<Map<number, ItemMetadata>>(new Map());
-  const [customProgressPerAction, setCustomProgressPerAction] = useState<number | null>(null);
-  
-  // Persistent user skill level overrides (for BitJita experience null gaps or manual tuning)
+  // Persistent user skill level overrides
   const {
     overrides: skillOverrides,
     setSkillLevel,
     clearSkillOverride,
   } = useSkillOverrides(selectedPlayer?.entityId || playerDetails?.entityId);
 
-  const [foodBuffOverride, setFoodBuffOverride] = useState<FoodBuffOverride | null>(() => {
-    try {
-      const saved = sessionStorage.getItem('bitcraft_food_buff_override');
-      if (!saved) return null;
-      const parsed: FoodBuffOverride = JSON.parse(saved);
-      const elapsed = (Date.now() - parsed.startedAt) / 1000;
-      if (elapsed < parsed.durationSeconds) {
-        return {
-          ...parsed,
-          remainingSeconds: Math.max(0, Math.round(parsed.durationSeconds - elapsed)),
-        };
-      }
-      return null;
-    } catch {
-      return null;
-    }
-  });
+  // Memoized XP & Modifiers calculation result
+  const baseCalcResult = useMemo(() => {
+    if (!activeCraft) return null;
+    return calculateCraftXp(
+      activeCraft,
+      playerDetails,
+      equipment,
+      buffs,
+      stats,
+      contributions,
+      customProgressPerAction,
+      null,
+      foodBuffOverride,
+      playerTools,
+      skillOverrides
+    );
+  }, [
+    activeCraft,
+    playerDetails,
+    equipment,
+    buffs,
+    stats,
+    contributions,
+    customProgressPerAction,
+    foodBuffOverride,
+    playerTools,
+    skillOverrides,
+  ]);
 
-  const handleSetFoodBuffOverride = useCallback((override: FoodBuffOverride | null) => {
-    setFoodBuffOverride(override);
-    try {
-      if (override) {
-        sessionStorage.setItem('bitcraft_food_buff_override', JSON.stringify(override));
-      } else {
-        sessionStorage.removeItem('bitcraft_food_buff_override');
-      }
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  // Ticking countdown effect for active food override
-  useEffect(() => {
-    if (!foodBuffOverride || !foodBuffOverride.enabled) return;
-    const timer = setInterval(() => {
-      const elapsed = (Date.now() - foodBuffOverride.startedAt) / 1000;
-      if (elapsed >= foodBuffOverride.durationSeconds) {
-        handleSetFoodBuffOverride(null);
-      } else {
-        setFoodBuffOverride((prev) =>
-          prev
-            ? {
-                ...prev,
-                remainingSeconds: Math.max(0, Math.round(prev.durationSeconds - elapsed)),
-              }
-            : null
-        );
-      }
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [foodBuffOverride?.startedAt, foodBuffOverride?.durationSeconds, foodBuffOverride?.enabled, handleSetFoodBuffOverride]);
-  
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
-  const [apiStatus, setApiStatus] = useState<ApiClientStatus>({
-    lastFetchedAt: null,
-    cachedEntriesCount: 0,
-    cachedEntries: [],
-    anomalies: [],
-    activeRequestsCount: 0,
-    isFetching: false,
-    lastResponseTimeMs: null,
-    rateLimitBackoffMs: 0,
-    error: null,
-  });
-
-  const [refreshInterval, setRefreshInterval] = useState<number>(() => {
-    try {
-      const saved = localStorage.getItem(REFRESH_INTERVAL_KEY);
-      return saved !== null ? Number(saved) : 30;
-    } catch {
-      return 30;
-    }
-  });
-
-  const [isPaused, setIsPaused] = useState<boolean>(false);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [isPublicModalOpen, setIsPublicModalOpen] = useState(false);
-  const [recentPlayers, setRecentPlayers] = useState<PlayerSummary[]>(() => {
-    try {
-      const saved = localStorage.getItem(RECENT_PLAYERS_KEY);
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
-
-  const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const selectedCraftIdRef = useRef<string | null>(null);
-  const playerExpSnapshotRef = useRef<Map<number, number>>(new Map());
-  const playerContribSnapshotRef = useRef<Map<string, number>>(new Map());
-
-  // Subscribe to live API client status (cache size, latency, fetching state)
-  useEffect(() => {
-    return bitjitaApi.subscribe((status) => {
-      setApiStatus(status);
-    });
-  }, []);
-
-  // Clear cache handler: clears in-memory network cache and immediately re-fetches fresh data
-  const handleClearCache = () => {
-    bitjitaApi.clearCache();
-    if (selectedPlayer) {
-      loadPlayerData(selectedPlayer, true);
-    }
-  };
-
-  // Primary player toggle
-  const togglePrimaryPlayer = (player: PlayerSummary) => {
-    if (primaryPlayer?.entityId === player.entityId) {
-      setPrimaryPlayer(null);
-      localStorage.removeItem(PRIMARY_PLAYER_KEY);
-    } else {
-      setPrimaryPlayer(player);
-      localStorage.setItem(PRIMARY_PLAYER_KEY, JSON.stringify(player));
-    }
-  };
-
-  // Inactivity timeout setting
-  const handleInactivityTimeoutChange = (minutes: number) => {
-    setInactivityTimeout(minutes);
-    try {
-      localStorage.setItem(INACTIVITY_TIMEOUT_KEY, String(minutes));
-    } catch (err) {
-      console.error('Failed to save inactivity timeout:', err);
-    }
-  };
-
-  // Recent players helper
-  const saveRecentPlayer = (player: PlayerSummary) => {
-    setRecentPlayers((prev) => {
-      const filtered = prev.filter((p) => p.entityId !== player.entityId);
-      const updated = [player, ...filtered].slice(0, 8);
-      try {
-        localStorage.setItem(RECENT_PLAYERS_KEY, JSON.stringify(updated));
-      } catch (err) {
-        console.error('Failed to save recent players:', err);
-      }
-      return updated;
-    });
-  };
-
-  const removeRecentPlayer = (entityId: string) => {
-    setRecentPlayers((prev) => {
-      const updated = prev.filter((p) => p.entityId !== entityId);
-      try {
-        localStorage.setItem(RECENT_PLAYERS_KEY, JSON.stringify(updated));
-      } catch (err) {
-        console.error('Failed to remove recent player:', err);
-      }
-      return updated;
-    });
-  };
-
-  const handleIntervalChange = (secs: number) => {
-    setRefreshInterval(secs);
-    try {
-      localStorage.setItem(REFRESH_INTERVAL_KEY, String(secs));
-    } catch (err) {
-      console.error('Failed to save refresh interval:', err);
-    }
-  };
-
-  // Background loader for other contributors' gear & stats
-  const loadContributorPayloads = async (
-    contribs: import('./types/api').CraftContribution[],
-    primaryId: string
-  ) => {
-    const payloads: import('./services/xpCalculator').ContributorDetailPayload[] = [];
-
-    for (const cb of contribs) {
-      if (cb.contributorEntityId === primaryId) {
-        payloads.push({
-          contribution: cb,
-          isIncluded: includedContributors[cb.contributorEntityId],
-        });
-      } else {
-        try {
-          const [equip, buffs, stats] = await Promise.all([
-            bitjitaApi.getPlayerEquipment(cb.contributorEntityId).catch(() => null),
-            bitjitaApi.getPlayerBuffs(cb.contributorEntityId).catch(() => null),
-            bitjitaApi.getPlayerStats(cb.contributorEntityId).catch(() => null),
-          ]);
-
-          payloads.push({
-            contribution: cb,
-            equipment: equip?.equipment || [],
-            buffs: buffs?.buffs || [],
-            stats: stats || undefined,
-            isIncluded: includedContributors[cb.contributorEntityId],
-          });
-        } catch {
-          payloads.push({
-            contribution: cb,
-            isIncluded: includedContributors[cb.contributorEntityId],
-          });
-        }
-      }
-    }
-
-    setContributorPayloads(payloads);
-  };
-
-  const updateItemMetadataMap = (items?: ItemMetadata[], cargos?: ItemMetadata[]) => {
-    if (!items && !cargos) return;
-    setItemMetadataMap((prev) => {
-      const next = new Map(prev);
-      if (items) {
-        for (const itm of items) {
-          next.set(Number(itm.id), itm);
-        }
-      }
-      if (cargos) {
-        for (const crg of cargos) {
-          next.set(Number(crg.id), crg);
-        }
-      }
-      return next;
-    });
-  };
-
-  const fetchCraftContributions = async (
-    craftId: string,
-    playerEntityId: string,
-    forceFresh = false
-  ) => {
-    try {
-      const cb = await bitjitaApi.getCraftContributions(craftId, forceFresh);
-      setContributions(cb);
-      loadContributorPayloads(cb, playerEntityId);
-      return cb;
-    } catch {
-      setContributions([]);
-      setContributorPayloads([]);
-      return [];
-    }
-  };
-
-  const handleSelectCustomCraft = (craft: CraftResult) => {
-    selectedCraftIdRef.current = craft.entityId;
-    setCustomCraft(craft);
-    setCustomProgressPerAction(null);
-    setContributions([]);
-    setContributorPayloads([]);
-
-    // Fetch craft details to cache any item or cargo metadata and update with full craft payload
-    bitjitaApi
-      .getCraft(craft.entityId, true)
-      .then((res) => {
-        if (res?.craft) {
-          setCustomCraft(res.craft);
-        }
-        updateItemMetadataMap(res?.items, res?.cargos);
-      })
-      .catch(() => {});
-
-    if (selectedPlayer?.entityId) {
-      try {
-        const key = `bitcraft_assisted_crafts_${selectedPlayer.entityId}`;
-        const raw = localStorage.getItem(key);
-        const set = new Set<string>(raw ? JSON.parse(raw) : []);
-        set.add(craft.entityId);
-        localStorage.setItem(key, JSON.stringify(Array.from(set)));
-      } catch {
-        // ignore
-      }
-    }
-
-    if (playerDetails) {
-      fetchCraftContributions(craft.entityId, playerDetails.entityId, true);
-    }
-  };
-
-  // Fetch full player data
-  const loadPlayerData = useCallback(
-    async (player: PlayerSummary, forceFresh = false) => {
-      if (!player || !player.entityId) return;
-
-      try {
-        setIsLoading(true);
-        setError(null);
-
-        // Fetch parallel endpoints with polite rate-limiting
-        const [detailsRes, craftsRes, equipRes, buffsRes, statsRes, toolsRes] = await Promise.all([
-          bitjitaApi.getPlayerDetails(player.entityId, forceFresh),
-          bitjitaApi.getPlayerCrafts(player.entityId, forceFresh),
-          bitjitaApi.getPlayerEquipment(player.entityId, forceFresh),
-          bitjitaApi.getPlayerBuffs(player.entityId, forceFresh),
-          bitjitaApi.getPlayerStats(player.entityId, forceFresh).catch(() => null),
-          bitjitaApi.getPlayerTools(player.entityId, forceFresh).catch(() => ({ tools: [] })),
-        ]);
-
-        setPlayerDetails(detailsRes);
-        const rawEquip = equipRes?.equipment || [];
-        setEquipment(rawEquip);
-        setBuffs(buffsRes?.buffs || []);
-        setStats(statsRes);
-        setPlayerTools(toolsRes?.tools || []);
-
-        // Background-enrich equipment items with full /api/items/{itemId} metadata (including toolStats)
-        const toolSlotItems = rawEquip.filter(
-          (s) => s.item && s.item.id && !s.item.toolStats
-        );
-        if (toolSlotItems.length > 0) {
-          Promise.all(
-            toolSlotItems.map(async (slot) => {
-              if (slot.item?.id) {
-                const fullItem = await bitjitaApi.getItem(Number(slot.item.id));
-                if (fullItem) {
-                  return { slotPrimary: slot.primary, fullItem };
-                }
-              }
-              return null;
-            })
-          ).then((enriched) => {
-            const updates = enriched.filter(Boolean);
-            if (updates.length > 0) {
-              setEquipment((prev) =>
-                prev.map((slot) => {
-                  const match = updates.find((u) => u?.slotPrimary === slot.primary);
-                  if (match && match.fullItem) {
-                    return {
-                      ...slot,
-                      item: {
-                        ...slot.item,
-                        ...match.fullItem,
-                        toolStats: match.fullItem.toolStats || slot.item?.toolStats,
-                        stats: match.fullItem.stats && match.fullItem.stats.length > 0 ? match.fullItem.stats : (slot.item?.stats || []),
-                      },
-                    };
-                  }
-                  return slot;
-                })
-              );
-            }
-          }).catch(() => {});
-        }
-
-        // 1. Skill Experience Delta Tracking (identify skills where this player gained XP since last poll)
-        const oldExpMap = playerExpSnapshotRef.current;
-        const currentExpMap = new Map<number, number>();
-        const activeGainedSkillIds = new Set<number>();
-
-        if (detailsRes?.experience && Array.isArray(detailsRes.experience)) {
-          for (const exp of detailsRes.experience) {
-            if (exp && exp.skill_id !== undefined && exp.quantity !== undefined) {
-              currentExpMap.set(exp.skill_id, exp.quantity);
-              const oldVal = oldExpMap.get(exp.skill_id);
-              if (oldVal !== undefined && exp.quantity > oldVal) {
-                activeGainedSkillIds.add(exp.skill_id);
-              }
-            }
-          }
-        }
-        playerExpSnapshotRef.current = currentExpMap;
-
-        // 2. Filter active (incomplete) owned crafts
-        const activeCrafts = (craftsRes?.craftResults || []).filter(
-          (c) => !c.completed && (c.progress ?? 0) < (c.totalActionsRequired || Infinity)
-        );
-        setCrafts(activeCrafts);
-
-        // 3. Resolve player coordinates and fetch candidate shared/nearby crafts
-        const activeRegionId = detailsRes?.regionId || buffsRes?.regionId;
-        const rawPlayerX = detailsRes?.locationX ?? detailsRes?.location?.locationX ?? detailsRes?.teleportLocationX;
-        const rawPlayerZ = detailsRes?.locationZ ?? detailsRes?.location?.locationZ ?? detailsRes?.teleportLocationZ;
-        const activeCraftStationCoords = activeCrafts.length > 0 ? resolveCraftCoordinates(activeCrafts[0] as unknown as Record<string, unknown>) : null;
-        const effectivePlayerX = rawPlayerX !== undefined && rawPlayerX !== null && !isNaN(Number(rawPlayerX)) && Number(rawPlayerX) !== 0 ? Number(rawPlayerX) : activeCraftStationCoords?.x;
-        const effectivePlayerZ = rawPlayerZ !== undefined && rawPlayerZ !== null && !isNaN(Number(rawPlayerZ)) && Number(rawPlayerZ) !== 0 ? Number(rawPlayerZ) : activeCraftStationCoords?.z;
-
-        // Collect candidate helper craft IDs from localStorage and current target
-        const trackedAssistedIds = new Set<string>();
-        try {
-          const key = `bitcraft_assisted_crafts_${player.entityId}`;
-          const raw = localStorage.getItem(key);
-          if (raw) {
-            for (const id of JSON.parse(raw)) {
-              if (id) trackedAssistedIds.add(String(id));
-            }
-          }
-        } catch {
-          // ignore
-        }
-        if (selectedCraftIdRef.current) {
-          trackedAssistedIds.add(selectedCraftIdRef.current);
-        }
-
-        // Fetch nearby crafts in active region
-        let nearList: NearbyCraftItem[] = [];
-        if (activeRegionId) {
-          try {
-            nearList = await bitjitaApi.getNearbyActiveCrafts(
-              activeRegionId,
-              effectivePlayerX,
-              effectivePlayerZ,
-              500,
-              forceFresh
-            );
-          } catch {
-            nearList = [];
-          }
-        }
-
-        // Build candidate shared crafts map and cache item metadata
-        const candidateMap = new Map<string, CraftResult>();
-        for (const item of nearList) {
-          if (item.craft && !candidateMap.has(item.craft.entityId)) {
-            candidateMap.set(item.craft.entityId, item.craft);
-          }
-          if (item.itemMetadata) {
-            setItemMetadataMap((prev) => {
-              const next = new Map(prev);
-              next.set(Number(item.itemMetadata!.id), item.itemMetadata!);
-              return next;
-            });
-          }
-        }
-
-        // Fetch any tracked helper crafts not in nearby list
-        for (const assistedId of trackedAssistedIds) {
-          if (!candidateMap.has(assistedId) && !activeCrafts.some((c) => c.entityId === assistedId)) {
-            try {
-              const res = await bitjitaApi.getCraft(assistedId, forceFresh);
-              if (res?.craft) {
-                candidateMap.set(res.craft.entityId, res.craft);
-                updateItemMetadataMap(res.items, res.cargos);
-              }
-            } catch {
-              // ignore
-            }
-          }
-        }
-
-        const candidateHelperCrafts = Array.from(candidateMap.values());
-
-        // 4. Resolve active craft selection (bidirectional XP matching, sticky persistence, or fallback)
-        const currentTargetCraftId = selectedCraftIdRef.current;
-        const resolution = resolveActiveCraftSelection({
-          currentTargetCraftId,
-          activeGainedSkillIds,
-          ownedActiveCrafts: activeCrafts,
-          candidateSharedCrafts: candidateHelperCrafts,
-          playerEntityId: player.entityId,
-          playerUsername: player.username,
-        });
-
-        selectedCraftIdRef.current = resolution.selectedCraftId;
-        setSelectedCraftIndex(resolution.selectedCraftIndex);
-        setCustomCraft(resolution.customCraft);
-
-        if (resolution.selectedCraftId) {
-          fetchCraftContributions(resolution.selectedCraftId, player.entityId, forceFresh);
-          if (resolution.customCraft) {
-            try {
-              const key = `bitcraft_assisted_crafts_${player.entityId}`;
-              const raw = localStorage.getItem(key);
-              const set = new Set<string>(raw ? JSON.parse(raw) : []);
-              set.add(resolution.customCraft.entityId);
-              localStorage.setItem(key, JSON.stringify(Array.from(set)));
-            } catch {
-              // ignore
-            }
-          }
-        } else {
-          setContributions([]);
-          setContributorPayloads([]);
-        }
-
-        // 5. Build enhanced nearby list for UI tabs and dropdown
-        if (nearList.length > 0) {
-          const enhancedNearby: NearbyCraftItem[] = [];
-          for (const item of nearList.slice(0, 8)) {
-            let isHelper = false;
-            try {
-              const cbs = await bitjitaApi.getCraftContributions(item.craft.entityId);
-              isHelper = cbs.some(
-                (cb) =>
-                  cb.contributorEntityId === player.entityId ||
-                  cb.contributorUsername?.toLowerCase() === player.username.toLowerCase()
-              );
-            } catch {
-              // ignore
-            }
-            enhancedNearby.push({ ...item, isHelper });
-          }
-
-          enhancedNearby.sort((a, b) => {
-            if (a.isHelper && !b.isHelper) return -1;
-            if (!a.isHelper && b.isHelper) return 1;
-            return a.distanceMeters - b.distanceMeters;
-          });
-
-          setNearbyCrafts(enhancedNearby);
-        } else {
-          setNearbyCrafts([]);
-        }
-
-        // Map item and cargo metadata (merge into existing cache so assisted/custom craft items are preserved)
-        setItemMetadataMap((prev) => {
-          const next = new Map(prev);
-          if (craftsRes?.items) {
-            for (const item of craftsRes.items) {
-              next.set(Number(item.id), item);
-            }
-          }
-          if (craftsRes?.cargos) {
-            for (const cargo of craftsRes.cargos) {
-              next.set(Number(cargo.id), cargo);
-            }
-          }
-          return next;
-        });
-
-        setLastUpdated(new Date());
-        saveRecentPlayer(player);
-      } catch (err) {
-        console.error('Failed to load player data:', err);
-        setError(err instanceof Error ? err.message : 'Failed to load player details.');
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    []
+  // Live Session XP Tracker (isolating personal progress from other helpers)
+  const activeUserContrib = useMemo(
+    () =>
+      contributions.find(
+        (c) =>
+          isContributionByPlayer(c, selectedPlayer?.entityId, selectedPlayer?.username) &&
+          c.totalProgressContributed > 0
+      ),
+    [contributions, selectedPlayer?.entityId, selectedPlayer?.username]
   );
 
-  // Initial load: pick primary player if available, else first recent player
-  useEffect(() => {
-    if (primaryPlayer) {
-      setSelectedPlayer(primaryPlayer);
-      loadPlayerData(primaryPlayer);
-    } else if (recentPlayers.length > 0) {
-      setSelectedPlayer(recentPlayers[0]);
-      loadPlayerData(recentPlayers[0]);
-    }
-  }, []);
+  const isActiveCraftHelper = Boolean(customCraft && activeUserContrib);
 
-  // Polling setup
-  useEffect(() => {
-    if (refreshTimerRef.current) {
-      clearInterval(refreshTimerRef.current);
-      refreshTimerRef.current = null;
-    }
-
-    if (refreshInterval > 0 && !isPaused && selectedPlayer) {
-      refreshTimerRef.current = setInterval(() => {
-        loadPlayerData(selectedPlayer, true);
-      }, refreshInterval * 1000);
-    }
-
-    return () => {
-      if (refreshTimerRef.current) {
-        clearInterval(refreshTimerRef.current);
-      }
-    };
-  }, [refreshInterval, isPaused, selectedPlayer, loadPlayerData]);
-
-  const handleSelectPlayer = (player: PlayerSummary) => {
-    selectedCraftIdRef.current = null;
-    playerExpSnapshotRef.current = new Map();
-    playerContribSnapshotRef.current = new Map();
-    setCustomCraft(null);
-    setSelectedCraftIndex(0);
-    setSelectedPlayer(player);
-    loadPlayerData(player);
-  };
-
-  const handleManualRefresh = () => {
-    if (selectedPlayer) {
-      loadPlayerData(selectedPlayer, true);
-    }
-  };
-
-  // Active craft to calculate
-  const activeCraft = customCraft || (crafts.length > 0 ? crafts[selectedCraftIndex] : null);
-  const activeCraftItemId =
-    activeCraft && activeCraft.craftedItem && activeCraft.craftedItem.length > 0
-      ? Number(activeCraft.craftedItem[0].item_id)
-      : null;
-  const activeCraftItemType = activeCraft?.craftedItem?.[0]?.item_type;
-  const activeCraftMetadata = activeCraftItemId ? itemMetadataMap.get(activeCraftItemId) || null : null;
-
-  // Fallback: if active craft's item metadata is not in cache, fetch it automatically!
-  useEffect(() => {
-    if (activeCraftItemId && !itemMetadataMap.has(activeCraftItemId)) {
-      if (activeCraftItemType === 'cargo') {
-        bitjitaApi
-          .getCargo(activeCraftItemId)
-          .then((crg) => {
-            if (crg) {
-              setItemMetadataMap((prev) => {
-                const next = new Map(prev);
-                next.set(activeCraftItemId, crg);
-                return next;
-              });
-            }
-          })
-          .catch(() => {});
-      } else {
-        bitjitaApi
-          .getItem(activeCraftItemId)
-          .then((itm) => {
-            if (itm) {
-              setItemMetadataMap((prev) => {
-                const next = new Map(prev);
-                next.set(activeCraftItemId, itm);
-                return next;
-              });
-            }
-          })
-          .catch(() => {});
-      }
-    }
-  }, [activeCraftItemId, activeCraftItemType, itemMetadataMap]);
-
-  // XP & Modifiers calculation result
-  const calcResult = activeCraft
-    ? calculateCraftXp(
-        activeCraft,
-        playerDetails,
-        equipment,
-        buffs,
-        stats,
-        contributions,
-        customProgressPerAction,
-        null,
-        foodBuffOverride,
-        playerTools,
-        skillOverrides
-      )
-    : null;
-
-  // Live Session XP Tracker (Measured vs Theoretical Rate)
-  // Track strictly the active player's personal progress to isolate individual rate from other helpers!
-  const activeUserContrib = contributions.find(
-    (c) =>
-      c.contributorEntityId === selectedPlayer?.entityId ||
-      c.contributorUsername?.toLowerCase() === selectedPlayer?.username.toLowerCase()
-  );
+  // Never attribute other players' progress on a previewed public craft to this character's live session XP
   const trackedPlayerProgress = activeUserContrib
     ? activeUserContrib.totalProgressContributed
-    : calcResult?.completedProgress;
+    : customCraft
+      ? undefined
+      : baseCalcResult?.completedProgress;
 
   const { sessionStats, resetSession } = useSessionXpTracker(
     selectedPlayer?.entityId,
-    calcResult?.skillId,
+    baseCalcResult?.skillId,
     activeCraft?.entityId,
     trackedPlayerProgress,
-    calcResult?.effectiveXpPerAction,
-    calcResult?.xpPerHour
+    baseCalcResult?.effectiveXpPerAction,
+    baseCalcResult?.xpPerHour
   );
 
-  if (calcResult) {
-    calcResult.sessionStats = sessionStats;
-  }
+  const calcResult = useMemo(() => {
+    if (!baseCalcResult) return null;
+    return {
+      ...baseCalcResult,
+      sessionStats,
+    };
+  }, [baseCalcResult, sessionStats]);
 
-  // Multi-User Collaborative Crafting Projection
-  const multiUserProjection =
-    activeCraft && calcResult && (contributorPayloads.length > 0 || contributions.length > 0)
-      ? calculateMultiUserCraftProjection(
-          activeCraft,
-          playerDetails,
-          calcResult,
-          contributorPayloads.length > 0
-            ? contributorPayloads.map((cp) => ({
-                ...cp,
-                isIncluded: includedContributors[cp.contribution.contributorEntityId],
-              }))
-            : contributions.map((cb) => ({
-                contribution: cb,
-                isIncluded: includedContributors[cb.contributorEntityId],
-              })),
-          inactivityTimeout
-        )
-      : null;
+  // Memoized Multi-User Collaborative Crafting Projection
+  const multiUserProjection = useMemo(() => {
+    if (!activeCraft || !calcResult || (contributorPayloads.length === 0 && contributions.length === 0)) {
+      return null;
+    }
+    const payloads =
+      contributorPayloads.length > 0
+        ? contributorPayloads.map((cp) => ({
+            ...cp,
+            isIncluded: includedContributors[cp.contribution.contributorEntityId],
+          }))
+        : contributions.map((cb) => ({
+            contribution: cb,
+            isIncluded: includedContributors[cb.contributorEntityId],
+          }));
 
-  const handleToggleParticipant = (entityId: string) => {
-    setIncludedContributors((prev) => {
-      const current = prev[entityId];
-      const participant = multiUserProjection?.participants.find((p) => p.entityId === entityId);
-      const defaultState = participant ? participant.isActive : true;
-      const nextVal = current !== undefined ? !current : !defaultState;
-      return { ...prev, [entityId]: nextVal };
-    });
-  };
+    return calculateMultiUserCraftProjection(
+      activeCraft,
+      playerDetails,
+      calcResult,
+      payloads,
+      inactivityTimeout
+    );
+  }, [
+    activeCraft,
+    playerDetails,
+    calcResult,
+    contributorPayloads,
+    contributions,
+    includedContributors,
+    inactivityTimeout,
+  ]);
+
+  const handleToggleParticipant = useCallback(
+    (entityId: string) => {
+      setIncludedContributors((prev) => {
+        const current = prev[entityId];
+        const participant = multiUserProjection?.participants.find((p) => p.entityId === entityId);
+        const defaultState = participant ? participant.isActive : true;
+        const nextVal = current !== undefined ? !current : !defaultState;
+        return { ...prev, [entityId]: nextVal };
+      });
+    },
+    [multiUserProjection?.participants, setIncludedContributors]
+  );
 
   const otherContributorsCount = multiUserProjection
     ? multiUserProjection.participants.filter(
@@ -779,14 +216,17 @@ export const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-background text-gray-100 flex flex-col font-sans selection:bg-emerald-500 selection:text-white">
-      {/* Top Navigation & Status */}
-      <Header apiStatus={apiStatus} onClearCache={handleClearCache} />
+      {/* Top Navigation & Self-Contained API Status */}
+      <Header onClearCache={handleClearCache} />
 
       {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
         {/* Global Error Notice */}
         {error && (
-          <div className="bg-red-950/80 border border-red-800 text-red-200 p-4 rounded-xl flex items-start gap-3 shadow-lg animate-in fade-in duration-200 text-sm">
+          <div
+            role="alert"
+            className="bg-red-950/80 border border-red-800 text-red-200 p-4 rounded-xl flex items-start gap-3 shadow-lg animate-fade-in text-sm"
+          >
             <AlertCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
             <div className="flex-1">
               <strong className="font-semibold text-red-100">BitJita API Notice:</strong> {error}
@@ -811,38 +251,61 @@ export const App: React.FC = () => {
               intervalSeconds={refreshInterval}
               onIntervalChange={handleIntervalChange}
               isPaused={isPaused}
-              onTogglePause={() => setIsPaused(!isPaused)}
+              onTogglePause={() => setIsPaused((prev) => !prev)}
               onRefreshNow={handleManualRefresh}
               isRefreshing={isLoading}
               lastUpdated={lastUpdated}
+              nextRefreshAt={nextRefreshAt}
             />
           )}
         </div>
 
         {/* Selected Player Dashboard View */}
         {selectedPlayer && (
-          <div className="space-y-5 animate-in fade-in duration-300">
+          <div className="space-y-5 animate-fade-in">
             {/* Active Craft Section */}
             {activeCraft && calcResult ? (
               <div className="space-y-5">
                 {customCraft && (
-                  <div className="bg-indigo-950/60 border border-indigo-700/60 rounded-xl px-4 py-2.5 flex items-center justify-between text-xs text-indigo-200 shadow-md">
-                    <span className="flex items-center gap-1.5">
-                      <Info className="w-4 h-4 text-indigo-400" />
-                      Station: <strong>{customCraft.buildingName || 'Crafting Station'}</strong> ({customCraft.claimName || `Region ${customCraft.regionId}`}) • Owner: <strong>{customCraft.ownerUsername || 'Public'}</strong>
+                  <div
+                    className={`rounded-xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs shadow-md border ${
+                      isActiveCraftHelper
+                        ? 'bg-indigo-950/60 border-indigo-700/60 text-indigo-200'
+                        : 'bg-teal-950/50 border-teal-700/60 text-teal-200'
+                    }`}
+                  >
+                    <span className="flex items-center gap-1.5 flex-wrap">
+                      <Info
+                        className={`w-4 h-4 shrink-0 ${
+                          isActiveCraftHelper ? 'text-indigo-400' : 'text-teal-400'
+                        }`}
+                      />
+                      <span className="font-semibold">
+                        {isActiveCraftHelper ? 'Helping on Shared Station:' : 'Analyzing Public Craft (Not Contributing):'}
+                      </span>
+                      <strong>{customCraft.buildingName || 'Crafting Station'}</strong> (
+                      {customCraft.claimName || `Region ${customCraft.regionId}`}) • Owner:{' '}
+                      <strong>{customCraft.ownerUsername || 'Public'}</strong>
                     </span>
-                    {crafts.length > 0 && (
-                      <button
-                        onClick={() => {
-                          selectedCraftIdRef.current = crafts[0].entityId;
-                          setCustomCraft(null);
-                          setSelectedCraftIndex(0);
-                        }}
-                        className="text-indigo-300 hover:text-white underline cursor-pointer"
-                      >
-                        Return to my owned craft
-                      </button>
-                    )}
+                    <div className="flex items-center gap-3">
+                      {crafts.length > 0 ? (
+                        <button
+                          type="button"
+                          onClick={handleReturnToOwnedCraft}
+                          className="text-indigo-300 hover:text-white underline cursor-pointer"
+                        >
+                          Return to my owned craft
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={handleClearCustomCraft}
+                          className="text-teal-300 hover:text-white underline cursor-pointer"
+                        >
+                          Exit preview
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
 
@@ -852,26 +315,10 @@ export const App: React.FC = () => {
                   craftsList={crafts}
                   selectedIndex={selectedCraftIndex}
                   selectedCraftEntityId={activeCraft.entityId}
+                  isActiveCraftHelper={isActiveCraftHelper}
                   nearbyCrafts={nearbyCrafts}
                   onSelectNearbyCraft={handleSelectCustomCraft}
-                  onSelectIndex={(idx) => {
-                    if (crafts[idx]) {
-                      selectedCraftIdRef.current = crafts[idx].entityId;
-                      setCustomCraft(null);
-                      setSelectedCraftIndex(idx);
-                      setCustomProgressPerAction(null);
-                      bitjitaApi
-                        .getCraftContributions(crafts[idx].entityId)
-                        .then((cb) => {
-                          setContributions(cb);
-                          loadContributorPayloads(cb, selectedPlayer.entityId);
-                        })
-                        .catch(() => {
-                          setContributions([]);
-                          setContributorPayloads([]);
-                        });
-                    }
-                  }}
+                  onSelectIndex={handleSelectOwnedCraftIndex}
                   calc={calcResult}
                   itemMetadata={activeCraftMetadata}
                   onOverrideProgressPerAction={(val) => setCustomProgressPerAction(val)}
@@ -886,7 +333,7 @@ export const App: React.FC = () => {
                 {multiUserProjection && multiUserProjection.totalContributorsCount > 0 && (
                   <ContributorsPanel
                     projection={multiUserProjection}
-                    primaryEntityId={playerDetails?.entityId}
+                    primaryEntityId={selectedPlayer?.entityId || playerDetails?.entityId}
                     onToggleParticipant={handleToggleParticipant}
                     onInactivityTimeoutChange={handleInactivityTimeoutChange}
                     isInitiallyCollapsed={otherContributorsCount === 0}
@@ -921,40 +368,45 @@ export const App: React.FC = () => {
                   <div className="pt-3 max-w-lg mx-auto space-y-2">
                     <div className="text-xs text-indigo-300 font-semibold flex items-center justify-center gap-1.5">
                       <MapPin className="w-3.5 h-3.5" />
-                      <span>Found {nearbyCrafts.length} nearby crafting stations within ~100m:</span>
+                      <span>Found {nearbyCrafts.length} nearby crafting stations within 500m:</span>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                      {nearbyCrafts.map(({ craft: nCraft, distanceMeters, isHelper, itemName: nItemName, itemTier: nItemTier }) => (
-                        <button
-                          key={nCraft.entityId}
-                          onClick={() => handleSelectCustomCraft(nCraft)}
-                          className={`p-2.5 rounded-lg border text-left flex flex-col gap-1 transition-all cursor-pointer ${
-                            isHelper
-                              ? 'bg-indigo-950/80 border-indigo-600/80 text-indigo-200 shadow'
-                              : 'bg-surface-subtle border-surface-border hover:bg-surface-border text-gray-300'
-                          }`}
-                        >
-                          <div className="font-bold flex items-center gap-1">
-                            {isHelper && <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />}
-                            <span>{nCraft.buildingName || 'Station'}</span>
-                          </div>
-                          <div className="text-[11px] text-amber-300 font-sans">
-                            📦 {nItemName || `Recipe #${nCraft.recipeId}`} {nItemTier ? `(T${nItemTier})` : ''}
-                          </div>
-                          <div className="text-[10px] text-gray-400 flex items-center justify-between font-mono">
-                            <span>{nCraft.claimName || 'Local Claim'}</span>
-                            <span className="text-emerald-400 font-bold">{distanceMeters}m away</span>
-                          </div>
-                        </button>
-                      ))}
+                      {nearbyCrafts.map(
+                        ({ craft: nCraft, distanceMeters, isHelper, itemName: nItemName, itemTier: nItemTier }) => (
+                          <button
+                            type="button"
+                            key={nCraft.entityId}
+                            onClick={() => handleSelectCustomCraft(nCraft)}
+                            className={`p-2.5 rounded-lg border text-left flex flex-col gap-1 transition-all cursor-pointer ${
+                              isHelper
+                                ? 'bg-indigo-950/80 border-indigo-600/80 text-indigo-200 shadow'
+                                : 'bg-surface-subtle border-surface-border hover:bg-surface-border text-gray-300'
+                            }`}
+                          >
+                            <div className="font-bold flex items-center gap-1">
+                              {isHelper && <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />}
+                              <span>{nCraft.buildingName || 'Station'}</span>
+                            </div>
+                            <div className="text-[11px] text-amber-300 font-sans">
+                              📦 {nItemName || `Recipe #${nCraft.recipeId}`}{' '}
+                              {nItemTier ? `(T${nItemTier})` : ''}
+                            </div>
+                            <div className="text-[10px] text-gray-400 flex items-center justify-between font-mono">
+                              <span>{nCraft.claimName || 'Local Claim'}</span>
+                              <span className="text-emerald-400 font-bold">{distanceMeters}m away</span>
+                            </div>
+                          </button>
+                        )
+                      )}
                     </div>
                   </div>
                 )}
 
                 <div className="pt-2">
                   <button
+                    type="button"
                     onClick={() => setIsPublicModalOpen(true)}
-                    className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs px-4 py-2.5 rounded-lg shadow-lg shadow-emerald-950/50 transition-colors"
+                    className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs px-4 py-2.5 rounded-lg shadow-lg shadow-emerald-950/50 transition-colors cursor-pointer"
                   >
                     <Globe className="w-4 h-4" />
                     <span>Browse Public Crafts to Analyze</span>
@@ -997,11 +449,13 @@ export const App: React.FC = () => {
                 Try with sample players:
               </div>
               <div className="flex flex-wrap gap-2">
-                {['wiz', 'DOOM', 'Ameger', 'Hydrivett', 'Socrates'].map((name) => (
+                {SAMPLE_PLAYER_NAMES.map((name) => (
                   <button
+                    type="button"
                     key={name}
-                    onClick={() => handleSelectPlayer({ entityId: '', username: name })}
-                    className="text-xs bg-surface-subtle hover:bg-emerald-950/70 hover:border-emerald-700/60 border border-surface-border text-gray-300 hover:text-emerald-300 px-3 py-1.5 rounded-lg font-medium transition-colors cursor-pointer"
+                    onClick={() => void handleSelectSamplePlayer(name)}
+                    disabled={isLoading}
+                    className="text-xs bg-surface-subtle hover:bg-emerald-950/70 hover:border-emerald-700/60 border border-surface-border text-gray-300 hover:text-emerald-300 px-3 py-1.5 rounded-lg font-medium transition-colors cursor-pointer disabled:opacity-50"
                   >
                     👤 {name}
                   </button>
@@ -1016,7 +470,7 @@ export const App: React.FC = () => {
       <PublicCraftsModal
         isOpen={isPublicModalOpen}
         onClose={() => setIsPublicModalOpen(false)}
-        onSelectCraft={(craft) => handleSelectCustomCraft(craft)}
+        onSelectCraft={handleSelectCustomCraft}
         playerId={selectedPlayer?.entityId}
         playerUsername={selectedPlayer?.username}
         playerRegionId={playerDetails?.regionId}

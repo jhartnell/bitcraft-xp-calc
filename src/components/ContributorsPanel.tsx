@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Users,
   Zap,
@@ -26,12 +26,19 @@ export const ContributorsPanel: React.FC<ContributorsPanelProps> = ({
   onInactivityTimeoutChange,
   isInitiallyCollapsed = false,
 }) => {
-  const [isCollapsed, setIsCollapsed] = useState(isInitiallyCollapsed);
+  const [collapseOverride, setCollapseOverride] = useState<{
+    base: boolean;
+    value: boolean;
+  } | null>(null);
 
-  // Sync default collapse state when switching crafts or helpers count changes
-  useEffect(() => {
-    setIsCollapsed(isInitiallyCollapsed);
-  }, [isInitiallyCollapsed]);
+  const isCollapsed =
+    collapseOverride && collapseOverride.base === isInitiallyCollapsed
+      ? collapseOverride.value
+      : isInitiallyCollapsed;
+
+  const setIsCollapsed = (value: boolean) => {
+    setCollapseOverride({ base: isInitiallyCollapsed, value });
+  };
 
   const {
     participants,
@@ -87,7 +94,7 @@ export const ContributorsPanel: React.FC<ContributorsPanelProps> = ({
   }
 
   return (
-    <div className="bg-surface rounded-xl border border-surface-border p-5 shadow-xl space-y-4 animate-in fade-in duration-200">
+    <div className="bg-surface rounded-xl border border-surface-border p-5 shadow-xl space-y-4 animate-fade-in">
       {/* Panel Header */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-surface-border pb-3">
         <div className="flex items-center gap-2.5">

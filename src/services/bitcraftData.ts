@@ -657,6 +657,38 @@ export function getCraftSkillId(
   return null;
 }
 
+export function isContributionByPlayer(
+  cb: CraftContribution,
+  playerEntityId?: string | null,
+  playerUsername?: string | null
+): boolean {
+  const matchesEntity = Boolean(
+    playerEntityId &&
+      cb.contributorEntityId &&
+      String(cb.contributorEntityId) === String(playerEntityId)
+  );
+  const matchesUsername = Boolean(
+    playerUsername &&
+      cb.contributorUsername &&
+      cb.contributorUsername.toLowerCase() === playerUsername.toLowerCase()
+  );
+  return matchesEntity || matchesUsername;
+}
+
+export function isPlayerVerifiedContributor(
+  contribs: CraftContribution[],
+  playerEntityId?: string | null,
+  playerUsername?: string | null
+): boolean {
+  if (!contribs || contribs.length === 0) return false;
+  if (!playerEntityId && !playerUsername) return false;
+  return contribs.some(
+    (cb) =>
+      isContributionByPlayer(cb, playerEntityId, playerUsername) &&
+      cb.totalProgressContributed > 0
+  );
+}
+
 export function extractPlayerContribution(
   contribs: CraftContribution[],
   playerEntityId: string,
@@ -664,11 +696,8 @@ export function extractPlayerContribution(
 ): number {
   if (!contribs || contribs.length === 0) return 0;
   return (
-    contribs.find(
-      (cb) =>
-        cb.contributorEntityId === playerEntityId ||
-        (playerUsername && cb.contributorUsername?.toLowerCase() === playerUsername.toLowerCase())
-    )?.totalProgressContributed || 0
+    contribs.find((cb) => isContributionByPlayer(cb, playerEntityId, playerUsername))
+      ?.totalProgressContributed || 0
   );
 }
 

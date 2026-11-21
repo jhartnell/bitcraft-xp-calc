@@ -12,26 +12,33 @@
     "build": "tsc && vite build",
     "build:extension": "vite build --outDir client-side-only/browser-extension/dist --base ./ && cp client-side-only/browser-extension/manifest.json client-side-only/browser-extension/icon.png client-side-only/browser-extension/background.js client-side-only/browser-extension/dist/",
     "preview": "vite preview",
+    "lint": "eslint .",
     "test": "vitest",
     "test:run": "vitest run"
   },
   "dependencies": {
     "lucide-react": "^0.475.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "tailwindcss": "^3.4.17"
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
     "@types/chrome": "^0.2.7",
     "@types/node": "^22.13.4",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
+    "eslint": "^9.39.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.8",
+    "globals": "^17.14.0",
     "jsdom": "^26.0.0",
     "postcss": "^8.5.2",
+    "tailwindcss": "^3.4.17",
     "typescript": "^5.7.3",
-    "vite": "^6.1.0",
-    "vitest": "^3.0.5"
+    "typescript-eslint": "^8.73.0",
+    "vite": "^6.4.6",
+    "vitest": "^5.1.1"
   }
 }
