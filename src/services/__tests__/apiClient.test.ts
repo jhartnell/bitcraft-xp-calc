@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest';
-import { bitjitaApi } from '../apiClient';
+import { ApiHttpError, bitjitaApi, isHttpStatusError } from '../apiClient';
 
 describe('PoliteApiClient Cache & Inspector', () => {
   beforeEach(() => {
@@ -280,6 +280,87 @@ describe('PoliteApiClient Cache & Inspector', () => {
     expect(enriched.equipment[0].item?.toolStats?.power).toBe(16);
     // Original raw response object should remain unmutated
     expect((rawEquipmentPayload.equipment[0].item as Record<string, unknown>).toolStats).toBeUndefined();
+
+    vi.unstubAllGlobals();
+  });
+
+  it('throws typed ApiHttpError with statusCode on 404 and matches isHttpStatusError', async () => {
+    bitjitaApi.clearAnomalies();
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 404,
+        statusText: 'Not Found',
+      })
+    );
+
+    let caughtError: unknown;
+    try {
+      await bitjitaApi.getCraft('expired_craft_1', true);
+    } catch (err) {
+      caughtError = err;
+    }
+
+    expect(caughtError).toBeInstanceOf(ApiHttpError);
+    expect(isHttpStatusError(caughtError, 404)).toBe(true);
+    expect(isHttpStatusError(caughtError, 500)).toBe(false);
+
+    const anomalies = bitjitaApi.getAnomalies();
+    expect(anomalies.length).toBe(1);
+    expect(anomalies[0].endpoint).toBe('/crafts/expired_craft_1');
+    expect(anomalies[0].statusCode).toBe(404);
+
+    vi.unstubAllGlobals();
+  });
+
+  it('retireCraft evicts cached craft endpoints and clears only matching craft anomalies', async () => {
+    bitjitaApi.clearAnomalies();
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string) => {
+        if (url.includes('/crafts/c_old/contributions')) {
+          return Promise.resolve({ ok: false, status: 404, statusText: 'Not Found' });
+        }
+        if (url.includes('/crafts/c_old')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ craft: { entityId: 'c_old', completed: true }, items: [], cargos: [] }),
+          });
+        }
+        if (url.includes('/crafts/c_active')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ craft: { entityId: 'c_active', completed: false }, items: [], cargos: [] }),
+          });
+        }
+        if (url.includes('/skills')) {
+          return Promise.resolve({ ok: false, status: 500, statusText: 'Internal Server Error' });
+        }
+        return Promise.resolve({ ok: true, json: async () => ({}) });
+      })
+    );
+
+    await bitjitaApi.getCraft('c_old', true);
+    await bitjitaApi.getCraft('c_active', true);
+    await expect(bitjitaApi.getCraftContributions('c_old', true)).rejects.toThrow();
+    await expect(bitjitaApi.getSkills()).rejects.toThrow();
+
+    expect(bitjitaApi.getCachedEntries().map((e) => e.endpoint)).toContain('/crafts/c_old');
+    expect(bitjitaApi.getCachedEntries().map((e) => e.endpoint)).toContain('/crafts/c_active');
+    expect(bitjitaApi.getAnomalies().length).toBe(2);
+
+    bitjitaApi.retireCraft('c_old');
+
+    const remainingEndpoints = bitjitaApi.getCachedEntries().map((e) => e.endpoint);
+    expect(remainingEndpoints).not.toContain('/crafts/c_old');
+    expect(remainingEndpoints).toContain('/crafts/c_active');
+
+    const remainingAnomalies = bitjitaApi.getAnomalies();
+    expect(remainingAnomalies.length).toBe(1);
+    expect(remainingAnomalies[0].endpoint).toBe('/skills');
 
     vi.unstubAllGlobals();
   });

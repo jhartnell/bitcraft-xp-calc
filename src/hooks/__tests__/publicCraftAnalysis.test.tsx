@@ -345,4 +345,169 @@ describe('Public Craft Analysis vs Verified Helping Lifecycle', () => {
     expect(container.textContent).toContain('Helping on Shared Station');
     expect(container.textContent).toContain('Helping: Exquisite Forestry');
   });
+
+  it('automatically prunes localStorage tracked crafts returning 404, clears Cache Inspector anomalies, and stops re-polling them', async () => {
+    const ikuria = { entityId: '576460752768705987', username: 'Ikuria' };
+    const expiredCraftId = '999000000000000404';
+    localStorage.setItem('bitcraft_primary_player', JSON.stringify(ikuria));
+    localStorage.setItem(
+      `bitcraft_assisted_crafts_${ikuria.entityId}`,
+      JSON.stringify([expiredCraftId])
+    );
+
+    let expiredCraftFetchCount = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string) => {
+        if (url.includes('/version.json')) {
+          return Promise.resolve({ ok: true, json: async () => ({ version: '1.9.0' }) });
+        }
+        if (url.endsWith(`/players/${ikuria.entityId}`)) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              player: { ...ikuria, regionId: 8, locationX: 60, locationZ: 31, experience: [{ skill_id: 2, quantity: 779107 }] },
+            }),
+          });
+        }
+        if (url.includes(`/players/${ikuria.entityId}/crafts`)) {
+          return Promise.resolve({ ok: true, json: async () => ({ craftResults: [], items: [], cargos: [], count: 0 }) });
+        }
+        if (url.includes('/equipment')) {
+          return Promise.resolve({ ok: true, json: async () => ({ equipment: [] }) });
+        }
+        if (url.includes('/buffs')) {
+          return Promise.resolve({ ok: true, json: async () => ({ buffs: [], count: 0, regionId: 8 }) });
+        }
+        if (url.includes('/stats')) {
+          return Promise.resolve({ ok: true, json: async () => ({ stats: { entityId: ikuria.entityId, values: [] } }) });
+        }
+        if (url.includes('/tools')) {
+          return Promise.resolve({ ok: true, json: async () => ({ tools: [] }) });
+        }
+        if (url.includes(`/crafts/${expiredCraftId}`)) {
+          expiredCraftFetchCount += 1;
+          return Promise.resolve({ ok: false, status: 404, statusText: 'Not Found' });
+        }
+        if (url.includes('/crafts?completed=false')) {
+          return Promise.resolve({ ok: true, json: async () => ({ craftResults: [], items: [], cargos: [] }) });
+        }
+        return Promise.resolve({ ok: true, json: async () => ({}) });
+      })
+    );
+
+    await act(async () => {
+      root.render(React.createElement(App));
+      await new Promise((r) => setTimeout(r, 40));
+    });
+
+    // Fetched once, received 404, automatically pruned from localStorage and retired from Cache Inspector anomalies
+    expect(expiredCraftFetchCount).toBe(1);
+    expect(localStorage.getItem(`bitcraft_assisted_crafts_${ikuria.entityId}`)).toBeNull();
+    expect(bitjitaApi.getAnomalies()).toEqual([]);
+
+    // Subsequent manual refresh must NOT poll the retired 404 craft again
+    const refreshBtn = Array.from(container.querySelectorAll('button')).find(
+      (b) => b.textContent?.trim() === 'Refresh'
+    );
+    expect(refreshBtn).toBeTruthy();
+
+    await act(async () => {
+      refreshBtn!.click();
+      await new Promise((r) => setTimeout(r, 40));
+    });
+
+    expect(expiredCraftFetchCount).toBe(1);
+    expect(bitjitaApi.getAnomalies()).toEqual([]);
+  });
+
+  it('automatically prunes completed tracked crafts from localStorage and retains crafts on transient 500 errors', async () => {
+    const ikuria = { entityId: '576460752768705987', username: 'Ikuria' };
+    const completedCraftId = '999000000000000200';
+    const transientErrCraftId = '999000000000000500';
+    localStorage.setItem('bitcraft_primary_player', JSON.stringify(ikuria));
+    localStorage.setItem(
+      `bitcraft_assisted_crafts_${ikuria.entityId}`,
+      JSON.stringify([completedCraftId, transientErrCraftId])
+    );
+
+    let completedCraftFetchCount = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string) => {
+        if (url.includes('/version.json')) {
+          return Promise.resolve({ ok: true, json: async () => ({ version: '1.9.0' }) });
+        }
+        if (url.endsWith(`/players/${ikuria.entityId}`)) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              player: { ...ikuria, regionId: 8, locationX: 60, locationZ: 31, experience: [{ skill_id: 2, quantity: 779107 }] },
+            }),
+          });
+        }
+        if (url.includes(`/players/${ikuria.entityId}/crafts`)) {
+          return Promise.resolve({ ok: true, json: async () => ({ craftResults: [], items: [], cargos: [], count: 0 }) });
+        }
+        if (url.includes('/equipment')) {
+          return Promise.resolve({ ok: true, json: async () => ({ equipment: [] }) });
+        }
+        if (url.includes('/buffs')) {
+          return Promise.resolve({ ok: true, json: async () => ({ buffs: [], count: 0, regionId: 8 }) });
+        }
+        if (url.includes('/stats')) {
+          return Promise.resolve({ ok: true, json: async () => ({ stats: { entityId: ikuria.entityId, values: [] } }) });
+        }
+        if (url.includes('/tools')) {
+          return Promise.resolve({ ok: true, json: async () => ({ tools: [] }) });
+        }
+        if (url.includes(`/crafts/${completedCraftId}`)) {
+          completedCraftFetchCount += 1;
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              craft: {
+                entityId: completedCraftId,
+                buildingName: 'Finished Forge',
+                progress: 500,
+                totalActionsRequired: 500,
+                completed: true,
+              },
+              items: [],
+              cargos: [],
+            }),
+          });
+        }
+        if (url.includes(`/crafts/${transientErrCraftId}`)) {
+          return Promise.resolve({ ok: false, status: 500, statusText: 'Internal Server Error' });
+        }
+        if (url.includes('/crafts?completed=false')) {
+          return Promise.resolve({ ok: true, json: async () => ({ craftResults: [], items: [], cargos: [] }) });
+        }
+        return Promise.resolve({ ok: true, json: async () => ({}) });
+      })
+    );
+
+    await act(async () => {
+      root.render(React.createElement(App));
+      await new Promise((r) => setTimeout(r, 40));
+    });
+
+    // Completed craft is pruned & retired from cache; transient 500 craft is preserved in localStorage
+    expect(completedCraftFetchCount).toBe(1);
+    const stored = JSON.parse(localStorage.getItem(`bitcraft_assisted_crafts_${ikuria.entityId}`) || '[]');
+    expect(stored).toEqual([transientErrCraftId]);
+    expect(bitjitaApi.getCachedEntries().map((e) => e.endpoint)).not.toContain(`/crafts/${completedCraftId}`);
+
+    // Subsequent refresh should not re-fetch the completed craft
+    const refreshBtn = Array.from(container.querySelectorAll('button')).find(
+      (b) => b.textContent?.trim() === 'Refresh'
+    );
+    await act(async () => {
+      refreshBtn!.click();
+      await new Promise((r) => setTimeout(r, 40));
+    });
+
+    expect(completedCraftFetchCount).toBe(1);
+  });
 });

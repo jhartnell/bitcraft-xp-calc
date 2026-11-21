@@ -56,7 +56,7 @@ A high-performance, real-time web application to track active crafting progress,
 - **Owned Station Immunity & Personal XP Isolation:** Retains focus on active helper stations even if third parties work on owned stations, only returning to owned stations when the player physically gains XP on their own craft.
 - **2D World Coordinate Tracking:** Ingests character coordinates and region to detect all active crafting stations within interaction distance ($\le 500\text{m}$).
 - **Automatic Helper Station Tabs:** Identifies stations where the player has contributed effort and pins a prominent **`⭐ Helping: Station (Item Name)`** tab directly to the dashboard.
-- **Active Task Rollover:** Automatically transitions to new crafts or helper stations when a tracked craft finishes.
+- **Active Task Rollover & Automatic Stale Craft Pruning:** Automatically transitions to new crafts or helper stations when a tracked craft finishes, and automatically prunes completed or BitJita-purged (`HTTP 404`) craft IDs from `localStorage` (`bitcraft_assisted_crafts_<entityId>`) so long-running sessions never re-poll disappeared stations.
 - **Nearby Station Dropdown Drawer:** Tucks idle claim stations into a compact menu to keep the dashboard clean.
 
 ### 9. Public Crafts Explorer & BitCraftMap Integration
@@ -64,7 +64,7 @@ A high-performance, real-time web application to track active crafting progress,
 - **Direct BitCraftMap Links:** Station claim coordinates link directly to **[BitCraftMap.com](https://bitcraftmap.com)** (`/?center=X%2CZ&zoom=1.0`).
 - **Collapsible Profession Groups:** Categorized into alphabetical profession accordions with stations ordered by required skill level (Highest ➔ Lowest).
 - **3-Tier Filter Controls:** Full-width search, Region & Profession dropdowns, dynamic quick filters, and a **2-point Item Tier Range Slider (`T1 – T10`)**.
-- **Track / Untrack Management:** Pin or unpin public stations (`⭐ Tracked Station`) with instant `localStorage` synchronization.
+- **Track / Untrack Management:** Pin or unpin public stations (`⭐ Tracked Station`) with instant `localStorage` synchronization and automatic removal when stations complete or expire (`HTTP 404`).
 
 ### 10. Equipment, Buffs & Debuff Engine
 - **Item & Cargo Resolution:** Unified metadata resolution for both standard inventory items and heavy cargo items.
@@ -76,7 +76,7 @@ A high-performance, real-time web application to track active crafting progress,
 - **Dual-Tab Inspector Popover:** Hover or click the header's `Cache` indicator to open the interactive cache and data health dashboard.
 - **Categorized URL Path Feeds:** Live inspection of all in-memory endpoints partitioned into Character & Equipment, Crafting & Contributions, Items & Cargo Metadata, and Master Catalogs.
 - **Real-Time Timestamps & Expiration:** Real-time age timers (`Fetched 4s ago`), TTL countdowns (`Expires in 16s` or `1h Static TTL`), and expired status tags.
-- **Server Data Health Anomaly Tracker:** Automatically logs null/empty SpacetimeDB arrays (e.g. `experience: null`), missing stats tables, rate limits, and network errors with itemized diagnostic cards explaining active fallbacks.
+- **Server Data Health Anomaly Tracker:** Automatically logs null/empty SpacetimeDB arrays (e.g. `experience: null`), missing stats tables, rate limits, and network errors with itemized diagnostic cards explaining active fallbacks. Automatically clears anomalies and evicts cache entries when completed or purged (`HTTP 404`) crafts are retired.
 - **Granular Eviction & Retry:** 1-click individual endpoint cache eviction (`✕`) and single-URL retry buttons (`[ 🔄 Retry Endpoint ]`) alongside global cache flushing.
 
 ---
@@ -98,8 +98,8 @@ All network requests to the **BitJita API** (`https://bitjita.com/api`) route th
 | **`GET /api/players/{id}/stats`** | GET | **30s** | SpacetimeDB stats registry (Stat #50 XP rate, #15 speed) | Bypassed on poll cycle (`forceFresh=true`) |
 | **`GET /api/crafts?completed=false&limit=100`** | GET | **20s** | Public crafting stations search & recipe XP cache priming | Background seeded & modal search |
 | **`GET /api/crafts?completed=false&region_id={r}`** | GET | **20s** | Nearby stations within 500m ranked by distance | Bypassed on poll cycle when player moves |
-| **`GET /api/crafts/{craftId}`** | GET | **10s** | Single crafting station details & progress state | Bypassed on custom craft selection (`forceFresh=true`) |
-| **`GET /api/crafts/{craftId}/contributions`** | GET | **15s** | Real-time action ticks, progress deltas, and helpers | Bypassed on poll cycle to calculate live action speed |
+| **`GET /api/crafts/{craftId}`** | GET | **10s** | Single crafting station details & progress state | Bypassed on custom craft selection (`forceFresh=true`); auto-retired & pruned on completion or HTTP `404` |
+| **`GET /api/crafts/{craftId}/contributions`** | GET | **15s** | Real-time action ticks, progress deltas, and helpers | Bypassed on poll cycle to calculate live action speed; auto-retired & pruned on HTTP `404` |
 | **`GET /api/items/{itemId}`** | GET | **3,600s** (1h) | Static item metadata, toolStats, rarity, and stats | Long-lived static cache |
 | **`GET /api/cargos/{cargoId}`** | GET | **3,600s** (1h) | Static cargo item metadata, tier, and stats | Long-lived static cache |
 | **`GET /api/skills`** | GET | **3,600s** (1h) | Static skills and profession catalog | Long-lived static cache |
