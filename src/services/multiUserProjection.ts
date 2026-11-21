@@ -232,15 +232,31 @@ export function calculateMultiUserCraftProjection(
     soloEstimatedSecondsRemaining - collaborativeEstimatedSecondsRemaining
   );
 
+  const primaryIsOwner = Boolean(
+    primaryPlayer?.entityId && _craft.ownerEntityId === primaryPlayer.entityId
+  );
+  const primaryIsContributor = participants.some(
+    (p) =>
+      Boolean(
+        primaryPlayer &&
+          ((primaryPlayer.entityId && p.entityId === primaryPlayer.entityId) ||
+            (primaryPlayer.username &&
+              p.username?.toLowerCase() === primaryPlayer.username.toLowerCase()))
+      ) && p.totalProgressContributed > 0
+  );
+
   let helperEffortContributed = 0;
-  for (const p of participants) {
-    const isPrimary = Boolean(
-      primaryPlayer &&
-        (p.entityId === primaryPlayer.entityId ||
-          p.username?.toLowerCase() === primaryPlayer.username.toLowerCase())
-    );
-    if (!isPrimary) {
-      helperEffortContributed += Math.max(0, p.totalProgressContributed);
+  if (primaryIsOwner || primaryIsContributor) {
+    for (const p of participants) {
+      const isPrimary = Boolean(
+        primaryPlayer &&
+          ((primaryPlayer.entityId && p.entityId === primaryPlayer.entityId) ||
+            (primaryPlayer.username &&
+              p.username?.toLowerCase() === primaryPlayer.username.toLowerCase()))
+      );
+      if (!isPrimary) {
+        helperEffortContributed += Math.max(0, p.totalProgressContributed);
+      }
     }
   }
 

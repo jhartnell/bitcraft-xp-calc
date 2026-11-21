@@ -1,0 +1,348 @@
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import React, { act } from 'react';
+import { createRoot, Root } from 'react-dom/client';
+import { App } from '../../App';
+import { bitjitaApi } from '../../services/apiClient';
+
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+describe('Public Craft Analysis vs Verified Helping Lifecycle', () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    bitjitaApi.clearCache();
+    bitjitaApi.clearAnomalies();
+    bitjitaApi.resetBackoff();
+    bitjitaApi.setMinIntervalMs(0);
+
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(async () => {
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+    vi.unstubAllGlobals();
+    bitjitaApi.setMinIntervalMs(120);
+  });
+
+  it('keeps an analyzed public craft as Analyzing (never Helping) before and after refresh when player is not a contributor', async () => {
+    const ikuria = { entityId: '576460752768705987', username: 'Ikuria' };
+    localStorage.setItem('bitcraft_primary_player', JSON.stringify(ikuria));
+
+    const publicCraft = {
+      entityId: '1008806317066192960',
+      buildingEntityId: '1008806317042828046',
+      ownerEntityId: '576460752766901931',
+      ownerUsername: 'Oaktavia',
+      buildingName: 'Exquisite Forestry Station',
+      claimName: 'Newsolis',
+      regionId: 14,
+      progress: 125000,
+      recipeId: 501003,
+      craftCount: 11092,
+      lockExpiration: '2026-11-21 20:26:29+00',
+      actionsRequiredPerItem: 115,
+      totalActionsRequired: 1275580,
+      craftedItem: [{ item_id: 338345776, quantity: 1, item_type: 'item', durability: 0 }],
+      levelRequirements: [{ level: 50, skill_id: 2 }],
+      toolRequirements: [{ level: 5, power: 1, tool_type: 1 }],
+      experiencePerProgress: [{ quantity: 2.24, skill_id: 2 }],
+      completed: false,
+      isPublic: true,
+    };
+
+    let pollCount = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string) => {
+        if (url.includes('/version.json')) {
+          return Promise.resolve({ ok: true, json: async () => ({ version: '1.8.5' }) });
+        }
+        if (url.endsWith(`/players/${ikuria.entityId}`)) {
+          pollCount += 1;
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              player: {
+                ...ikuria,
+                regionId: 8,
+                locationX: 60,
+                locationZ: 31,
+                experience: [{ skill_id: 2, quantity: 779107 + pollCount * 50 }],
+              },
+            }),
+          });
+        }
+        if (url.includes(`/players/${ikuria.entityId}/crafts`)) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ craftResults: [], items: [], cargos: [], count: 0 }),
+          });
+        }
+        if (url.includes('/equipment')) {
+          return Promise.resolve({ ok: true, json: async () => ({ equipment: [] }) });
+        }
+        if (url.includes('/buffs')) {
+          return Promise.resolve({ ok: true, json: async () => ({ buffs: [], count: 0, regionId: 8 }) });
+        }
+        if (url.includes('/stats')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ stats: { entityId: ikuria.entityId, values: [] } }),
+          });
+        }
+        if (url.includes('/tools')) {
+          return Promise.resolve({ ok: true, json: async () => ({ tools: [] }) });
+        }
+        if (url.includes(`/crafts/${publicCraft.entityId}/contributions`)) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              contributions: [
+                {
+                  id: 'cb-honcho',
+                  contributorEntityId: '1297036693020599412',
+                  contributorUsername: 'honcho',
+                  totalProgressContributed: 103680,
+                  contributionCount: 3840,
+                  lastContributedAt: new Date().toISOString(),
+                },
+              ],
+            }),
+          });
+        }
+        if (url.includes(`/crafts/${publicCraft.entityId}`)) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              craft: publicCraft,
+              items: [{ id: 338345776, name: 'Exquisite Wood Log Output', tier: 5 }],
+              cargos: [],
+            }),
+          });
+        }
+        if (url.includes('/crafts?completed=false')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              craftResults: [publicCraft],
+              items: [{ id: 338345776, name: 'Exquisite Wood Log Output', tier: 5 }],
+              cargos: [],
+            }),
+          });
+        }
+        return Promise.resolve({ ok: true, json: async () => ({}) });
+      })
+    );
+
+    // 1. Mount App and wait for initial Ikuria load
+    await act(async () => {
+      root.render(React.createElement(App));
+      await new Promise((r) => setTimeout(r, 30));
+    });
+
+    expect(container.textContent).toContain('No Active In-Progress Craft');
+
+    // 2. Open Public Crafts modal, switch to All Stations, and click "Analyze Craft"
+    const browseBtn = Array.from(container.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes('Browse Public Crafts')
+    );
+    expect(browseBtn).toBeTruthy();
+
+    await act(async () => {
+      browseBtn!.click();
+      await new Promise((r) => setTimeout(r, 30));
+    });
+
+    const allStationsBtn = Array.from(container.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes('All Stations')
+    );
+    expect(allStationsBtn).toBeTruthy();
+
+    await act(async () => {
+      allStationsBtn!.click();
+      await new Promise((r) => setTimeout(r, 10));
+    });
+
+    const forestryAccordion = Array.from(container.querySelectorAll('button')).find(
+      (b) => b.textContent?.includes('Forestry') && b.textContent?.includes('station')
+    );
+    expect(forestryAccordion).toBeTruthy();
+
+    await act(async () => {
+      forestryAccordion!.click();
+      await new Promise((r) => setTimeout(r, 10));
+    });
+
+    const analyzeBtn = Array.from(container.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes('Analyze Craft')
+    );
+    expect(analyzeBtn).toBeTruthy();
+
+    await act(async () => {
+      analyzeBtn!.click();
+      await new Promise((r) => setTimeout(r, 40));
+    });
+
+    // Verify immediate state: Analyzing, NOT Helping
+    expect(container.textContent).toContain('Analyzing Public Craft (Not Contributing)');
+    expect(container.textContent).toContain('Analyzing: Exquisite Forestry');
+    expect(container.textContent).not.toContain('Helping:');
+    expect(container.textContent).not.toContain('Helping on Shared Station');
+    expect(localStorage.getItem(`bitcraft_assisted_crafts_${ikuria.entityId}`)).toBeNull();
+
+    // 3. Trigger a full refresh (even while gaining Forestry XP in-game)
+    const refreshBtn = Array.from(container.querySelectorAll('button')).find(
+      (b) => b.textContent?.trim() === 'Refresh'
+    );
+    expect(refreshBtn).toBeTruthy();
+
+    await act(async () => {
+      refreshBtn!.click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    // Verify post-refresh state: STILL Analyzing, STILL NOT Helping, NOT saved to localStorage
+    expect(container.textContent).toContain('Analyzing Public Craft (Not Contributing)');
+    expect(container.textContent).toContain('Analyzing: Exquisite Forestry');
+    expect(container.textContent).not.toContain('Helping:');
+    expect(container.textContent).not.toContain('Helping on Shared Station');
+    expect(localStorage.getItem(`bitcraft_assisted_crafts_${ikuria.entityId}`)).toBeNull();
+  });
+
+  it('shows the Helping marker only when the player is verified as a contributor with progress > 0', async () => {
+    const ikuria = { entityId: '576460752768705987', username: 'Ikuria' };
+    localStorage.setItem('bitcraft_primary_player', JSON.stringify(ikuria));
+
+    const sharedCraft = {
+      entityId: '1008806317066192961',
+      buildingEntityId: '1008806317042828047',
+      ownerEntityId: '576460752766901931',
+      ownerUsername: 'Oaktavia',
+      buildingName: 'Exquisite Forestry Station',
+      claimName: 'Newsolis',
+      regionId: 8,
+      progress: 125000,
+      recipeId: 501003,
+      craftCount: 11092,
+      lockExpiration: '2026-11-21 20:26:29+00',
+      actionsRequiredPerItem: 115,
+      totalActionsRequired: 1275580,
+      craftedItem: [{ item_id: 338345776, quantity: 1, item_type: 'item', durability: 0 }],
+      levelRequirements: [{ level: 50, skill_id: 2 }],
+      toolRequirements: [{ level: 5, power: 1, tool_type: 1 }],
+      experiencePerProgress: [{ quantity: 2.24, skill_id: 2 }],
+      completed: false,
+      isPublic: true,
+    };
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string) => {
+        if (url.includes('/version.json')) {
+          return Promise.resolve({ ok: true, json: async () => ({ version: '1.8.5' }) });
+        }
+        if (url.endsWith(`/players/${ikuria.entityId}`)) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              player: { ...ikuria, regionId: 8, locationX: 60, locationZ: 31, experience: [{ skill_id: 2, quantity: 779107 }] },
+            }),
+          });
+        }
+        if (url.includes(`/players/${ikuria.entityId}/crafts`)) {
+          return Promise.resolve({ ok: true, json: async () => ({ craftResults: [], items: [], cargos: [], count: 0 }) });
+        }
+        if (url.includes('/equipment')) {
+          return Promise.resolve({ ok: true, json: async () => ({ equipment: [] }) });
+        }
+        if (url.includes('/buffs')) {
+          return Promise.resolve({ ok: true, json: async () => ({ buffs: [], count: 0, regionId: 8 }) });
+        }
+        if (url.includes('/stats')) {
+          return Promise.resolve({ ok: true, json: async () => ({ stats: { entityId: ikuria.entityId, values: [] } }) });
+        }
+        if (url.includes('/tools')) {
+          return Promise.resolve({ ok: true, json: async () => ({ tools: [] }) });
+        }
+        if (url.includes(`/crafts/${sharedCraft.entityId}/contributions`)) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              contributions: [
+                {
+                  id: 'cb-ikuria',
+                  contributorEntityId: ikuria.entityId,
+                  contributorUsername: ikuria.username,
+                  totalProgressContributed: 1200,
+                  contributionCount: 40,
+                  lastContributedAt: new Date().toISOString(),
+                },
+              ],
+            }),
+          });
+        }
+        if (url.includes(`/crafts/${sharedCraft.entityId}`)) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              craft: sharedCraft,
+              items: [{ id: 338345776, name: 'Exquisite Wood Log Output', tier: 5 }],
+              cargos: [],
+            }),
+          });
+        }
+        if (url.includes('/crafts?completed=false')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              craftResults: [sharedCraft],
+              items: [{ id: 338345776, name: 'Exquisite Wood Log Output', tier: 5 }],
+              cargos: [],
+            }),
+          });
+        }
+        return Promise.resolve({ ok: true, json: async () => ({}) });
+      })
+    );
+
+    await act(async () => {
+      root.render(React.createElement(App));
+      await new Promise((r) => setTimeout(r, 30));
+    });
+
+    const browseBtn = Array.from(container.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes('Browse Public Crafts')
+    );
+    await act(async () => {
+      browseBtn!.click();
+      await new Promise((r) => setTimeout(r, 30));
+    });
+
+    const forestryAccordion = Array.from(container.querySelectorAll('button')).find(
+      (b) => b.textContent?.includes('Forestry') && b.textContent?.includes('station')
+    );
+    await act(async () => {
+      forestryAccordion!.click();
+      await new Promise((r) => setTimeout(r, 10));
+    });
+
+    const analyzeBtn = Array.from(container.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes('Analyze Craft')
+    );
+    await act(async () => {
+      analyzeBtn!.click();
+      await new Promise((r) => setTimeout(r, 40));
+    });
+
+    expect(container.textContent).toContain('Helping on Shared Station');
+    expect(container.textContent).toContain('Helping: Exquisite Forestry');
+  });
+});

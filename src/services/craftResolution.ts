@@ -131,8 +131,11 @@ export function resolveActiveCraftSelection(input: CraftResolutionInput): CraftR
       };
     }
 
-    // Second, check candidate shared crafts for a match
+    // Second, check candidate shared crafts for a match (only verified helper crafts when verification set is provided)
     const matchingSharedCraft = ongoingShared.find((c) => {
+      if (verifiedHelperCraftIds && !verifiedHelperCraftIds.has(c.entityId)) {
+        return false;
+      }
       const s = getCraftSkillId(c);
       return s !== null && activeGainedSkillIds.has(s);
     });

@@ -12,7 +12,7 @@ import {
 } from '../types/api';
 import { NearbyCraftItem } from '../components/ActiveCraftCard';
 import { bitjitaApi } from '../services/apiClient';
-import { resolveCraftCoordinates } from '../services/bitcraftData';
+import { resolveCraftCoordinates, isPlayerVerifiedContributor } from '../services/bitcraftData';
 import { resolveActiveCraftSelection } from '../services/craftResolution';
 import { ContributorDetailPayload } from '../services/xpCalculator';
 
@@ -22,6 +22,9 @@ interface UsePlayerDashboardDataParams {
   refreshInterval: number;
   saveRecentPlayer: (player: PlayerSummary) => void;
 }
+
+const EMPTY_CONTRIBUTIONS: CraftContribution[] = [];
+const EMPTY_PAYLOADS: ContributorDetailPayload[] = [];
 
 function addAssistedCraftId(playerEntityId: string, craftEntityId: string): void {
   try {
@@ -54,8 +57,14 @@ export function usePlayerDashboardData({
   const [selectedCraftIndex, setSelectedCraftIndex] = useState<number>(0);
   const [customCraft, setCustomCraft] = useState<CraftResult | null>(null);
   const [nearbyCrafts, setNearbyCrafts] = useState<NearbyCraftItem[]>([]);
-  const [contributions, setContributions] = useState<CraftContribution[]>([]);
-  const [contributorPayloads, setContributorPayloads] = useState<ContributorDetailPayload[]>([]);
+  const [contributionsState, setContributionsState] = useState<{
+    craftId: string | null;
+    list: CraftContribution[];
+  }>({ craftId: null, list: [] });
+  const [contributorPayloadsState, setContributorPayloadsState] = useState<{
+    craftId: string | null;
+    list: ContributorDetailPayload[];
+  }>({ craftId: null, list: [] });
   const [includedContributors, setIncludedContributors] = useState<Record<string, boolean>>({});
   const [itemMetadataMap, setItemMetadataMap] = useState<Map<number, ItemMetadata>>(new Map());
   const [customProgressPerAction, setCustomProgressPerAction] = useState<number | null>(null);
@@ -92,7 +101,12 @@ export function usePlayerDashboardData({
   }, []);
 
   const loadContributorPayloads = useCallback(
-    async (contribs: CraftContribution[], primaryId: string, craftReqId: number) => {
+    async (
+      craftId: string,
+      contribs: CraftContribution[],
+      primaryId: string,
+      craftReqId: number
+    ) => {
       const payloads = await Promise.all(
         contribs.map(async (cb): Promise<ContributorDetailPayload> => {
           if (cb.contributorEntityId === primaryId) {
@@ -119,7 +133,7 @@ export function usePlayerDashboardData({
 
       // Ignore stale contributor loads if user switched craft or player
       if (craftRequestIdRef.current === craftReqId) {
-        setContributorPayloads(payloads);
+        setContributorPayloadsState({ craftId, list: payloads });
       }
     },
     []
@@ -131,24 +145,17 @@ export function usePlayerDashboardData({
       try {
         const cb = await bitjitaApi.getCraftContributions(craftId, forceFresh);
         if (craftRequestIdRef.current !== reqId) return [];
-        setContributions(cb);
+        setContributionsState({ craftId, list: cb });
         // Only persist into assisted crafts if the player is actually a verified contributor
-        const isVerifiedContributor = cb.some(
-          (entry) =>
-            (entry.contributorEntityId === playerEntityId ||
-              (playerUsername &&
-                entry.contributorUsername?.toLowerCase() === playerUsername.toLowerCase())) &&
-            (entry.contributionCount > 0 || entry.totalProgressContributed > 0)
-        );
-        if (isVerifiedContributor) {
+        if (isPlayerVerifiedContributor(cb, playerEntityId, playerUsername)) {
           addAssistedCraftId(playerEntityId, craftId);
         }
-        void loadContributorPayloads(cb, playerEntityId, reqId);
+        void loadContributorPayloads(craftId, cb, playerEntityId, reqId);
         return cb;
       } catch {
         if (craftRequestIdRef.current === reqId) {
-          setContributions([]);
-          setContributorPayloads([]);
+          setContributionsState({ craftId, list: [] });
+          setContributorPayloadsState({ craftId, list: [] });
         }
         return [];
       }
@@ -312,12 +319,7 @@ export function usePlayerDashboardData({
               let isHelper = false;
               try {
                 const cbs = await bitjitaApi.getCraftContributions(item.craft.entityId);
-                isHelper = cbs.some(
-                  (cb) =>
-                    (cb.contributorEntityId === player.entityId ||
-                      cb.contributorUsername?.toLowerCase() === player.username.toLowerCase()) &&
-                    (cb.contributionCount > 0 || cb.totalProgressContributed > 0)
-                );
+                isHelper = isPlayerVerifiedContributor(cbs, player.entityId, player.username);
               } catch {
                 // ignore
               }
@@ -364,8 +366,8 @@ export function usePlayerDashboardData({
             forceFresh
           );
         } else {
-          setContributions([]);
-          setContributorPayloads([]);
+          setContributionsState({ craftId: null, list: [] });
+          setContributorPayloadsState({ craftId: null, list: [] });
         }
 
         setLastUpdated(new Date());
@@ -480,8 +482,8 @@ export function usePlayerDashboardData({
       selectedCraftIdRef.current = targetCraftId;
       setCustomCraft(craft);
       setCustomProgressPerAction(null);
-      setContributions([]);
-      setContributorPayloads([]);
+      setContributionsState({ craftId: targetCraftId, list: [] });
+      setContributorPayloadsState({ craftId: targetCraftId, list: [] });
 
       bitjitaApi
         .getCraft(targetCraftId, true)
@@ -514,8 +516,8 @@ export function usePlayerDashboardData({
     } else {
       selectedCraftIdRef.current = null;
       setSelectedCraftIndex(0);
-      setContributions([]);
-      setContributorPayloads([]);
+      setContributionsState({ craftId: null, list: [] });
+      setContributorPayloadsState({ craftId: null, list: [] });
     }
   }, [crafts, fetchCraftContributions, selectedPlayer]);
 
@@ -539,6 +541,14 @@ export function usePlayerDashboardData({
 
   // Active craft & item metadata resolution
   const activeCraft = customCraft || (crafts.length > 0 ? crafts[selectedCraftIndex] : null);
+  const contributions =
+    activeCraft && contributionsState.craftId === activeCraft.entityId
+      ? contributionsState.list
+      : EMPTY_CONTRIBUTIONS;
+  const contributorPayloads =
+    activeCraft && contributorPayloadsState.craftId === activeCraft.entityId
+      ? contributorPayloadsState.list
+      : EMPTY_PAYLOADS;
   const activeCraftItemId =
     activeCraft && activeCraft.craftedItem && activeCraft.craftedItem.length > 0
       ? Number(activeCraft.craftedItem[0].item_id)

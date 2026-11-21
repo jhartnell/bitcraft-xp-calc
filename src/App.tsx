@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { calculateCraftXp, calculateMultiUserCraftProjection } from './services/xpCalculator';
+import { isContributionByPlayer } from './services/bitcraftData';
 import { Header } from './components/Header';
 import { PlayerSearch } from './components/PlayerSearch';
 import { RefreshControls } from './components/RefreshControls';
@@ -129,9 +130,8 @@ export const App: React.FC = () => {
     () =>
       contributions.find(
         (c) =>
-          (c.contributorEntityId === selectedPlayer?.entityId ||
-            c.contributorUsername?.toLowerCase() === selectedPlayer?.username.toLowerCase()) &&
-          (c.contributionCount > 0 || c.totalProgressContributed > 0)
+          isContributionByPlayer(c, selectedPlayer?.entityId, selectedPlayer?.username) &&
+          c.totalProgressContributed > 0
       ),
     [contributions, selectedPlayer?.entityId, selectedPlayer?.username]
   );

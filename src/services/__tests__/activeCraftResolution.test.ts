@@ -240,5 +240,22 @@ describe('Active Craft Resolution & XP-Driven Persistence', () => {
     expect(res.customCraft).toEqual(helperTailoringCraft);
     expect(res.reason).toBe('fallback_shared');
   });
+
+  it('does not auto-switch via XP gain to an unverified public craft', () => {
+    const res = resolveActiveCraftSelection({
+      currentTargetCraftId: null,
+      activeGainedSkillIds: new Set<number>([10]), // Tailoring XP gained
+      ownedActiveCrafts: [],
+      candidateSharedCrafts: [helperTailoringCraft],
+      verifiedHelperCraftIds: new Set<string>(), // Player is NOT a verified contributor
+      playerEntityId,
+      playerUsername,
+    });
+
+    expect(res.isResolved).toBe(false);
+    expect(res.selectedCraftId).toBeNull();
+    expect(res.customCraft).toBeNull();
+    expect(res.reason).toBe('none');
+  });
 });
 
