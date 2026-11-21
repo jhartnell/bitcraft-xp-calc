@@ -206,5 +206,39 @@ describe('Active Craft Resolution & XP-Driven Persistence', () => {
     expect(res.customCraft).toBeNull();
     expect(res.reason).toBe('fallback_owned');
   });
+
+  it('does not auto-select unverified nearby public crafts when player is idle with no owned crafts', () => {
+    const res = resolveActiveCraftSelection({
+      currentTargetCraftId: null,
+      activeGainedSkillIds: new Set<number>(),
+      ownedActiveCrafts: [],
+      candidateSharedCrafts: [helperTailoringCraft],
+      verifiedHelperCraftIds: new Set<string>(),
+      playerEntityId,
+      playerUsername,
+    });
+
+    expect(res.isResolved).toBe(false);
+    expect(res.selectedCraftId).toBeNull();
+    expect(res.customCraft).toBeNull();
+    expect(res.reason).toBe('none');
+  });
+
+  it('auto-selects a verified helper craft when player has no owned crafts', () => {
+    const res = resolveActiveCraftSelection({
+      currentTargetCraftId: null,
+      activeGainedSkillIds: new Set<number>(),
+      ownedActiveCrafts: [],
+      candidateSharedCrafts: [helperTailoringCraft],
+      verifiedHelperCraftIds: new Set<string>([helperTailoringCraft.entityId]),
+      playerEntityId,
+      playerUsername,
+    });
+
+    expect(res.isResolved).toBe(true);
+    expect(res.selectedCraftId).toBe(helperTailoringCraft.entityId);
+    expect(res.customCraft).toEqual(helperTailoringCraft);
+    expect(res.reason).toBe('fallback_shared');
+  });
 });
 

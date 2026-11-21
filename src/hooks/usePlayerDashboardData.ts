@@ -126,12 +126,23 @@ export function usePlayerDashboardData({
   );
 
   const fetchCraftContributions = useCallback(
-    async (craftId: string, playerEntityId: string, forceFresh = false) => {
+    async (craftId: string, playerEntityId: string, playerUsername?: string, forceFresh = false) => {
       const reqId = ++craftRequestIdRef.current;
       try {
         const cb = await bitjitaApi.getCraftContributions(craftId, forceFresh);
         if (craftRequestIdRef.current !== reqId) return [];
         setContributions(cb);
+        // Only persist into assisted crafts if the player is actually a verified contributor
+        const isVerifiedContributor = cb.some(
+          (entry) =>
+            (entry.contributorEntityId === playerEntityId ||
+              (playerUsername &&
+                entry.contributorUsername?.toLowerCase() === playerUsername.toLowerCase())) &&
+            (entry.contributionCount > 0 || entry.totalProgressContributed > 0)
+        );
+        if (isVerifiedContributor) {
+          addAssistedCraftId(playerEntityId, craftId);
+        }
         void loadContributorPayloads(cb, playerEntityId, reqId);
         return cb;
       } catch {
@@ -293,31 +304,8 @@ export function usePlayerDashboardData({
 
         mergeItemMetadata(collectedItems, collectedCargos);
 
-        // 4. Resolve active craft selection
-        const resolution = resolveActiveCraftSelection({
-          currentTargetCraftId: selectedCraftIdRef.current,
-          activeGainedSkillIds,
-          ownedActiveCrafts: activeCrafts,
-          candidateSharedCrafts: Array.from(candidateMap.values()),
-          playerEntityId: player.entityId,
-          playerUsername: player.username,
-        });
-
-        selectedCraftIdRef.current = resolution.selectedCraftId;
-        setSelectedCraftIndex(resolution.selectedCraftIndex);
-        setCustomCraft(resolution.customCraft);
-
-        if (resolution.selectedCraftId) {
-          void fetchCraftContributions(resolution.selectedCraftId, player.entityId, forceFresh);
-          if (resolution.customCraft) {
-            addAssistedCraftId(player.entityId, resolution.customCraft.entityId);
-          }
-        } else {
-          setContributions([]);
-          setContributorPayloads([]);
-        }
-
-        // 5. Build enhanced nearby list in parallel (non-blocking serial waits avoided)
+        // 4. Build enhanced nearby list first so we know which nearby stations the player actually helps on
+        const verifiedHelperCraftIds = new Set<string>();
         if (nearList.length > 0) {
           const enhancedNearby = await Promise.all(
             nearList.slice(0, 8).map(async (item): Promise<NearbyCraftItem> => {
@@ -326,11 +314,15 @@ export function usePlayerDashboardData({
                 const cbs = await bitjitaApi.getCraftContributions(item.craft.entityId);
                 isHelper = cbs.some(
                   (cb) =>
-                    cb.contributorEntityId === player.entityId ||
-                    cb.contributorUsername?.toLowerCase() === player.username.toLowerCase()
+                    (cb.contributorEntityId === player.entityId ||
+                      cb.contributorUsername?.toLowerCase() === player.username.toLowerCase()) &&
+                    (cb.contributionCount > 0 || cb.totalProgressContributed > 0)
                 );
               } catch {
                 // ignore
+              }
+              if (isHelper) {
+                verifiedHelperCraftIds.add(item.craft.entityId);
               }
               return { ...item, isHelper };
             })
@@ -347,6 +339,33 @@ export function usePlayerDashboardData({
           setNearbyCrafts(enhancedNearby);
         } else {
           setNearbyCrafts([]);
+        }
+
+        // 5. Resolve active craft selection (only auto-fallback to verified helper crafts)
+        const resolution = resolveActiveCraftSelection({
+          currentTargetCraftId: selectedCraftIdRef.current,
+          activeGainedSkillIds,
+          ownedActiveCrafts: activeCrafts,
+          candidateSharedCrafts: Array.from(candidateMap.values()),
+          verifiedHelperCraftIds,
+          playerEntityId: player.entityId,
+          playerUsername: player.username,
+        });
+
+        selectedCraftIdRef.current = resolution.selectedCraftId;
+        setSelectedCraftIndex(resolution.selectedCraftIndex);
+        setCustomCraft(resolution.customCraft);
+
+        if (resolution.selectedCraftId) {
+          void fetchCraftContributions(
+            resolution.selectedCraftId,
+            player.entityId,
+            player.username,
+            forceFresh
+          );
+        } else {
+          setContributions([]);
+          setContributorPayloads([]);
         }
 
         setLastUpdated(new Date());
@@ -475,17 +494,30 @@ export function usePlayerDashboardData({
         })
         .catch(() => {});
 
-      if (selectedPlayer?.entityId) {
-        addAssistedCraftId(selectedPlayer.entityId, targetCraftId);
-      }
-
       const activePlayerId = playerDetails?.entityId || selectedPlayer?.entityId;
+      const activePlayerName = playerDetails?.username || selectedPlayer?.username;
       if (activePlayerId) {
-        void fetchCraftContributions(targetCraftId, activePlayerId, true);
+        void fetchCraftContributions(targetCraftId, activePlayerId, activePlayerName, true);
       }
     },
     [fetchCraftContributions, mergeItemMetadata, playerDetails, selectedPlayer]
   );
+
+  const handleClearCustomCraft = useCallback(() => {
+    setCustomCraft(null);
+    setCustomProgressPerAction(null);
+    if (crafts.length > 0 && selectedPlayer) {
+      const target = crafts[0];
+      selectedCraftIdRef.current = target.entityId;
+      setSelectedCraftIndex(0);
+      void fetchCraftContributions(target.entityId, selectedPlayer.entityId, selectedPlayer.username, false);
+    } else {
+      selectedCraftIdRef.current = null;
+      setSelectedCraftIndex(0);
+      setContributions([]);
+      setContributorPayloads([]);
+    }
+  }, [crafts, fetchCraftContributions, selectedPlayer]);
 
   const handleSelectOwnedCraftIndex = useCallback(
     (idx: number) => {
@@ -495,7 +527,7 @@ export function usePlayerDashboardData({
       setCustomCraft(null);
       setSelectedCraftIndex(idx);
       setCustomProgressPerAction(null);
-      void fetchCraftContributions(target.entityId, selectedPlayer.entityId, false);
+      void fetchCraftContributions(target.entityId, selectedPlayer.entityId, selectedPlayer.username, false);
     },
     [crafts, fetchCraftContributions, selectedPlayer]
   );
@@ -576,6 +608,7 @@ export function usePlayerDashboardData({
     handleManualRefresh,
     handleClearCache,
     handleSelectCustomCraft,
+    handleClearCustomCraft,
     handleSelectOwnedCraftIndex,
     handleReturnToOwnedCraft,
   };

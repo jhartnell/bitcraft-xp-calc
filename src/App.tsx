@@ -78,6 +78,7 @@ export const App: React.FC = () => {
     handleManualRefresh,
     handleClearCache,
     handleSelectCustomCraft,
+    handleClearCustomCraft,
     handleSelectOwnedCraftIndex,
     handleReturnToOwnedCraft,
   } = usePlayerDashboardData({
@@ -128,15 +129,21 @@ export const App: React.FC = () => {
     () =>
       contributions.find(
         (c) =>
-          c.contributorEntityId === selectedPlayer?.entityId ||
-          c.contributorUsername?.toLowerCase() === selectedPlayer?.username.toLowerCase()
+          (c.contributorEntityId === selectedPlayer?.entityId ||
+            c.contributorUsername?.toLowerCase() === selectedPlayer?.username.toLowerCase()) &&
+          (c.contributionCount > 0 || c.totalProgressContributed > 0)
       ),
     [contributions, selectedPlayer?.entityId, selectedPlayer?.username]
   );
 
+  const isActiveCraftHelper = Boolean(customCraft && activeUserContrib);
+
+  // Never attribute other players' progress on a previewed public craft to this character's live session XP
   const trackedPlayerProgress = activeUserContrib
     ? activeUserContrib.totalProgressContributed
-    : baseCalcResult?.completedProgress;
+    : customCraft
+      ? undefined
+      : baseCalcResult?.completedProgress;
 
   const { sessionStats, resetSession } = useSessionXpTracker(
     selectedPlayer?.entityId,
@@ -260,22 +267,45 @@ export const App: React.FC = () => {
             {activeCraft && calcResult ? (
               <div className="space-y-5">
                 {customCraft && (
-                  <div className="bg-indigo-950/60 border border-indigo-700/60 rounded-xl px-4 py-2.5 flex items-center justify-between text-xs text-indigo-200 shadow-md">
-                    <span className="flex items-center gap-1.5">
-                      <Info className="w-4 h-4 text-indigo-400" />
-                      Station: <strong>{customCraft.buildingName || 'Crafting Station'}</strong> (
+                  <div
+                    className={`rounded-xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs shadow-md border ${
+                      isActiveCraftHelper
+                        ? 'bg-indigo-950/60 border-indigo-700/60 text-indigo-200'
+                        : 'bg-teal-950/50 border-teal-700/60 text-teal-200'
+                    }`}
+                  >
+                    <span className="flex items-center gap-1.5 flex-wrap">
+                      <Info
+                        className={`w-4 h-4 shrink-0 ${
+                          isActiveCraftHelper ? 'text-indigo-400' : 'text-teal-400'
+                        }`}
+                      />
+                      <span className="font-semibold">
+                        {isActiveCraftHelper ? 'Helping on Shared Station:' : 'Analyzing Public Craft (Not Contributing):'}
+                      </span>
+                      <strong>{customCraft.buildingName || 'Crafting Station'}</strong> (
                       {customCraft.claimName || `Region ${customCraft.regionId}`}) • Owner:{' '}
                       <strong>{customCraft.ownerUsername || 'Public'}</strong>
                     </span>
-                    {crafts.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={handleReturnToOwnedCraft}
-                        className="text-indigo-300 hover:text-white underline cursor-pointer"
-                      >
-                        Return to my owned craft
-                      </button>
-                    )}
+                    <div className="flex items-center gap-3">
+                      {crafts.length > 0 ? (
+                        <button
+                          type="button"
+                          onClick={handleReturnToOwnedCraft}
+                          className="text-indigo-300 hover:text-white underline cursor-pointer"
+                        >
+                          Return to my owned craft
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={handleClearCustomCraft}
+                          className="text-teal-300 hover:text-white underline cursor-pointer"
+                        >
+                          Exit preview
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
 
@@ -285,6 +315,7 @@ export const App: React.FC = () => {
                   craftsList={crafts}
                   selectedIndex={selectedCraftIndex}
                   selectedCraftEntityId={activeCraft.entityId}
+                  isActiveCraftHelper={isActiveCraftHelper}
                   nearbyCrafts={nearbyCrafts}
                   onSelectNearbyCraft={handleSelectCustomCraft}
                   onSelectIndex={handleSelectOwnedCraftIndex}
