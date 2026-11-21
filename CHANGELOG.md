@@ -4,7 +4,7 @@ All notable changes to the **BitCraft Online XP Calculator** project are documen
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.9.0] - 2026-11-21
 
 ### Security
 - **Non-Root Least-Privilege Docker Runtime:** Switched runtime image to `nginxinc/nginx-unprivileged:1.27-alpine` listening on port `8080` as UID `101`, updated `docker-compose.yml` with `read_only: true`, `cap_drop: [ALL]`, `security_opt: [no-new-privileges:true]`, and tmpfs mounts, and removed unused extension files from the web Docker build stage.
