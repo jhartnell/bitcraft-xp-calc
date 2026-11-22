@@ -149,4 +149,22 @@ describe('diagnosticsCollector', () => {
     expect(md).toContain('```json');
     expect(JSON.parse(json).crash.message).toBe('Cannot read properties of undefined');
   });
+
+  it('compacts large bitcraft_assisted_crafts_* arrays and anonymizes compacted samples cleanly', () => {
+    const manyIds = Array.from({ length: 25 }, (_, i) => `5764607530000000${String(i).padStart(2, '0')}`);
+    localStorage.setItem('bitcraft_assisted_crafts_576460752768705987', JSON.stringify(manyIds));
+
+    const rawReport = buildDiagnosticsReport();
+    const rawEntry = rawReport.storage.localStorageKeys[
+      'bitcraft_assisted_crafts_576460752768705987'
+    ] as { count: number; sample: string[] };
+    expect(rawEntry.count).toBe(25);
+    expect(rawEntry.sample.length).toBe(7); // 3 head + '…' + 3 tail
+
+    const anonReport = buildDiagnosticsReport({ anonymize: true });
+    const serialized = formatDiagnosticsReport(anonReport, 'json');
+    expect(serialized).not.toContain('576460753000000000');
+    expect(serialized).not.toContain('576460753000000024');
+    expect(serialized).not.toContain('576460752768705987');
+  });
 });

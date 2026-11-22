@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { calculateCraftXp, calculateMultiUserCraftProjection } from './services/xpCalculator';
+import { PROFESSION_SPEED_STAT_IDS } from './services/toolMatching';
 import { isContributionByPlayer } from './services/bitcraftData';
 import {
   DashboardDiagnosticsSnapshot,
@@ -260,6 +261,13 @@ export const App: React.FC = () => {
               isPublic: activeCraft.isPublic,
               recipeId: activeCraft.recipeId,
               contributorsCount: contributions.length,
+              userContribution: activeUserContrib
+                ? {
+                    totalProgressContributed: activeUserContrib.totalProgressContributed,
+                    contributionCount: activeUserContrib.contributionCount,
+                    lastContributedAt: activeUserContrib.lastContributedAt,
+                  }
+                : null,
             }
           : null,
       },
@@ -270,7 +278,28 @@ export const App: React.FC = () => {
             currentLevel: calcResult.currentSkillLevel,
             isLevelInferred: calcResult.isSkillLevelInferred,
             progressPerAction: calcResult.progressPerAction,
+            isMeasuredProgressPerAction: calcResult.isMeasuredProgressPerAction,
+            effectivePower: calcResult.toolStatus.effectivePower,
+            levelPowerBonus: calcResult.toolStatus.levelPowerBonus,
             actionDurationSeconds: calcResult.secondsPerAction,
+            speedBreakdown: {
+              equipmentBonusPercent: calcResult.speedBreakdown.equipmentBonusPercent,
+              buffBonusPercent: calcResult.speedBreakdown.buffBonusPercent,
+              professionSkillBonusPercent: calcResult.speedBreakdown.professionSkillBonusPercent,
+              totalMultiplier: calcResult.speedBreakdown.totalMultiplier,
+            },
+            serverSpeedStats: stats?.values
+              ? {
+                  stat15CraftingSpeed:
+                    typeof stats.values[15] === 'number' ? stats.values[15] : undefined,
+                  profStatId: PROFESSION_SPEED_STAT_IDS[calcResult.skillId],
+                  profStatValue:
+                    PROFESSION_SPEED_STAT_IDS[calcResult.skillId] !== undefined &&
+                    typeof stats.values[PROFESSION_SPEED_STAT_IDS[calcResult.skillId]] === 'number'
+                      ? stats.values[PROFESSION_SPEED_STAT_IDS[calcResult.skillId]]
+                      : undefined,
+                }
+              : null,
             xpMultiplier: calcResult.xpMultiplier,
             xpPerHour: calcResult.xpPerHour,
             estimatedSecondsRemaining: calcResult.estimatedSecondsRemaining,
@@ -298,8 +327,10 @@ export const App: React.FC = () => {
     customCraft,
     isActiveCraftHelper,
     activeCraft,
+    activeUserContrib,
     contributions.length,
     calcResult,
+    stats,
     skillOverrides,
     foodBuffOverride,
     customProgressPerAction,

@@ -4,6 +4,18 @@ All notable changes to the **BitCraft Online XP Calculator** project are documen
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **Authoritative Tool Power ETA Accuracy (`contributionCount` Off-by-One):** Fixed `calculateCraftXp` (and `calculateMultiUserCraftProjection`) so authoritative tool power from `/players/{id}/tools` or enriched equipment + profession level power takes precedence over BitJita's historical `totalProgressContributed / contributionCount` ratio, eliminating the systematic off-by-one (`+1`) underestimation (e.g. `16.9` vs `17` effort/action) that made Time Remaining read slower than in-game. Historical contribution rate remains the fallback when tool power metadata is unavailable.
+- **Server Crafting Speed (`stats.values[15]`) Reconciliation:** Fixed `xpCalculator.ts` so server crafting speed stat `#15` is no longer discarded when only non-speed gear (e.g. stamina/power) is equipped, while subtracting active server buff speed to prevent double-counting.
+- **Faster Active Craft Poll Updates:** Prioritized fetching owned active craft contributions and merging owned craft metadata immediately in `usePlayerDashboardData` instead of waiting behind nearby station sweeps.
+
+### Changed
+- **Richer & More Compact Diagnostics Snapshots:** Added `speedBreakdown`, `effectivePower`, `isMeasuredProgressPerAction`, server speed stats (`stat15` & profession stat), and active `userContribution` to browser diagnostics, and compacted large `bitcraft_assisted_crafts_*` arrays and `sessionStorageKeys` lists for clean Discord/GitHub pasting.
+
+---
+
 ## [1.10.0] - 2026-11-21
 
 ### Added

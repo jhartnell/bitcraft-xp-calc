@@ -78,7 +78,7 @@ A high-performance, real-time web application to track active crafting progress,
 - **Real-Time Timestamps & Expiration:** Real-time age timers (`Fetched 4s ago`), TTL countdowns (`Expires in 16s` or `1h Static TTL`), and expired status tags.
 - **Server Data Health Anomaly Tracker:** Automatically logs null/empty SpacetimeDB arrays (e.g. `experience: null`), missing stats tables, rate limits, and network errors with itemized diagnostic cards explaining active fallbacks. Automatically clears anomalies and evicts cache entries when completed or purged (`HTTP 404`) crafts are retired.
 - **Granular Eviction & Retry:** 1-click individual endpoint cache eviction (`✕`) and single-URL retry buttons (`[ 🔄 Retry Endpoint ]`) alongside global cache flushing.
-- **Browser Diagnostics & Bug Report Exporter:** Click **Diagnostics** from the Cache Inspector popover, the page footer, or the crash recovery screen (`ErrorBoundary`) to preview, optionally anonymize character names/IDs, copy to clipboard (Markdown or raw JSON), or download a 100% local diagnostic snapshot containing app version, API health, allowlisted `bitcraft_*` storage, live craft calculation summary, and a bounded ring buffer of recent runtime/API events.
+- **Browser Diagnostics & Bug Report Exporter:** Click **Diagnostics** from the Cache Inspector popover, the page footer, or the crash recovery screen (`ErrorBoundary`) to preview, optionally anonymize character names/IDs, copy to clipboard (Markdown or raw JSON), or download a 100% local diagnostic snapshot containing app version, API health, compacted allowlisted `bitcraft_*` storage, live craft calculation/speed/power breakdowns, server speed stat telemetry, and a bounded ring buffer of recent runtime/API events.
 
 ---
 

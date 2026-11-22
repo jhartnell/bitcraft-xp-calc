@@ -211,11 +211,29 @@ export function usePlayerDashboardData({
         }
         playerExpSnapshotRef.current = currentExpMap;
 
-        // 2. Filter active (incomplete) owned crafts
+        // 2. Filter active (incomplete) owned crafts & immediately surface owned progress/contributions
         const activeCrafts = (craftsRes?.craftResults || []).filter(
           (c) => !c.completed && (c.progress ?? 0) < (c.totalActionsRequired || Infinity)
         );
         setCrafts(activeCrafts);
+        mergeItemMetadata(craftsRes?.items, craftsRes?.cargos);
+
+        // Prioritize fetching the active owned craft's contributions before nearby station sweeps
+        // so live progress & ETA aren't delayed behind idle nearby stations.
+        const currentSelectedId = selectedCraftIdRef.current;
+        const matchedOwnedCraft = currentSelectedId
+          ? activeCrafts.find((c) => c.entityId === currentSelectedId)
+          : activeCrafts[0];
+        const prefetchedContribCraftId = matchedOwnedCraft ? String(matchedOwnedCraft.entityId) : null;
+        if (prefetchedContribCraftId) {
+          void fetchCraftContributions(
+            prefetchedContribCraftId,
+            player.entityId,
+            player.username,
+            forceFresh
+          );
+          setLastUpdated(new Date());
+        }
 
         // 3. Resolve player coordinates and fetch candidate shared/nearby crafts
         const activeRegionId = detailsRes?.regionId || buffsRes?.regionId;
@@ -386,12 +404,14 @@ export function usePlayerDashboardData({
         setCustomCraft(resolution.customCraft);
 
         if (resolution.selectedCraftId) {
-          void fetchCraftContributions(
-            resolution.selectedCraftId,
-            player.entityId,
-            player.username,
-            forceFresh
-          );
+          if (resolution.selectedCraftId !== prefetchedContribCraftId) {
+            void fetchCraftContributions(
+              resolution.selectedCraftId,
+              player.entityId,
+              player.username,
+              forceFresh
+            );
+          }
         } else {
           setContributionsState({ craftId: null, list: [] });
           setContributorPayloadsState({ craftId: null, list: [] });
