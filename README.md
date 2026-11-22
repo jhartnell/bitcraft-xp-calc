@@ -197,7 +197,13 @@ Set `PUSH_IMAGE=false` to build and tag locally without pushing.
 ```bash
 npm run build:extension
 ```
-Load the unpacked extension in Chrome/Edge at `client-side-only/browser-extension/dist` (see [`client-side-only/README.md`](client-side-only/README.md)).
+Load the unpacked extension in Chrome/Edge at `client-side-only/browser-extension/dist` (see [`client-side-only/README.md`](client-side-only/README.md)), or download a pre-packaged `bitcraft-xp-calc-extension-vX.Y.Z.zip` (with `SHA256SUMS.txt`) from the [GitHub Releases](https://github.com/jhartnell/bitcraft-xp-calc/releases) page.
+
+### Automated CI/CD & GitHub Releases
+Pushing a semantic version tag (`v*.*.*`) triggers [`.github/workflows/docker-publish.yml`](.github/workflows/docker-publish.yml) with strict per-job least-privilege permissions (`permissions: {}` at workflow root):
+1. **`test` (`contents: read`):** Runs `npm run lint`, `npm run test:run`, `npm run build`, and `npm run build:extension`.
+2. **`docker` (`contents: read`, `packages: write`):** Builds and publishes multi-arch (`linux/amd64`, `linux/arm64`) non-root Nginx images to GHCR (`ghcr.io/jhartnell/bitcraft-xp-calc`).
+3. **`release` (`contents: write`, tag pushes only):** Extracts the matching `## [X.Y.Z]` section from [`CHANGELOG.md`](CHANGELOG.md) via [`scripts/extract-release-notes.mjs`](scripts/extract-release-notes.mjs) (falling back to GitHub's `--generate-notes`), packages `bitcraft-xp-calc-extension-vX.Y.Z.zip` with `SHA256SUMS.txt`, and publishes the GitHub Release using the built-in `gh` CLI (pre-releases detected automatically for tags containing `-`).
 
 ---
 

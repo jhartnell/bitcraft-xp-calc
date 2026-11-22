@@ -9,6 +9,7 @@ export default tseslint.config(
     ignores: [
       'dist',
       'client-side-only/browser-extension/dist',
+      'release-assets',
       'node_modules',
       'coverage',
     ],
@@ -42,6 +43,17 @@ export default tseslint.config(
       globals: {
         ...globals.serviceworker,
         chrome: 'readonly',
+      },
+    },
+  },
+  {
+    extends: [js.configs.recommended],
+    files: ['scripts/**/*.{js,mjs}'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'module',
+      globals: {
+        ...globals.node,
       },
     },
   }

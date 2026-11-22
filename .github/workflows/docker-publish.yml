@@ -1,4 +1,4 @@
-name: Build & Publish Docker Image
+name: Build, Publish Docker & Release
 
 on:
   push:
@@ -44,8 +44,10 @@ jobs:
       - name: Run Vitest Suite
         run: npm run test:run
 
-      - name: Verify TypeScript & Production Build
-        run: npm run build
+      - name: Verify TypeScript, Web & Extension Builds
+        run: |
+          npm run build
+          npm run build:extension
 
   docker:
     name: Build & Publish Multi-Arch Image to GHCR
@@ -96,3 +98,86 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  release:
+    name: Create GitHub Release & Extension Assets
+    needs: [test, docker]
+    if: github.event_name == 'push' && github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Browser Extension
+        run: npm run build:extension
+
+      - name: Package Browser Extension & SHA-256 Checksums
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid release tag format: $RELEASE_TAG" >&2
+            exit 1
+          fi
+          mkdir -p release-assets
+          ASSET_NAME="bitcraft-xp-calc-extension-${RELEASE_TAG}.zip"
+          (cd client-side-only/browser-extension/dist && zip -r -9 "${GITHUB_WORKSPACE}/release-assets/${ASSET_NAME}" .)
+          (cd release-assets && sha256sum "${ASSET_NAME}" > SHA256SUMS.txt)
+          ls -la release-assets
+
+      - name: Extract Release Notes from CHANGELOG.md
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          OUTPUT_PATH: release-assets/RELEASE_NOTES.md
+        run: node scripts/extract-release-notes.mjs
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          ASSET_PATH="release-assets/bitcraft-xp-calc-extension-${RELEASE_TAG}.zip"
+          CHECKSUMS_PATH="release-assets/SHA256SUMS.txt"
+          NOTES_PATH="release-assets/RELEASE_NOTES.md"
+
+          PRERELEASE_FLAG=()
+          if [[ "$RELEASE_TAG" == *-* ]]; then
+            PRERELEASE_FLAG+=(--prerelease)
+          fi
+
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            if [ -s "$NOTES_PATH" ]; then
+              gh release edit "$RELEASE_TAG" --title "$RELEASE_TAG" --notes-file "$NOTES_PATH" "${PRERELEASE_FLAG[@]}"
+            fi
+            gh release upload "$RELEASE_TAG" "$ASSET_PATH" "$CHECKSUMS_PATH" --clobber
+          else
+            if [ -s "$NOTES_PATH" ]; then
+              gh release create "$RELEASE_TAG" "$ASSET_PATH" "$CHECKSUMS_PATH" \
+                --verify-tag \
+                --title "$RELEASE_TAG" \
+                --notes-file "$NOTES_PATH" \
+                "${PRERELEASE_FLAG[@]}"
+            else
+              gh release create "$RELEASE_TAG" "$ASSET_PATH" "$CHECKSUMS_PATH" \
+                --verify-tag \
+                --title "$RELEASE_TAG" \
+                --generate-notes \
+                "${PRERELEASE_FLAG[@]}"
+            fi
+          fi

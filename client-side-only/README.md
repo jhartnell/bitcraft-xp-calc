@@ -47,6 +47,16 @@ client-side-only/
 
 ## 🛠️ How to Install (Chrome / Edge / Brave / Opera)
 
+### Option A: Download Pre-Built Zip from GitHub Releases (Recommended)
+1. Download `bitcraft-xp-calc-extension-vX.Y.Z.zip` and `SHA256SUMS.txt` from the [GitHub Releases](https://github.com/jhartnell/bitcraft-xp-calc/releases) page.
+2. Optionally verify the archive checksum:
+   ```bash
+   sha256sum -c SHA256SUMS.txt
+   ```
+3. Unzip the archive into a local folder.
+4. Open `chrome://extensions` (or `edge://extensions`), enable **Developer mode**, click **Load unpacked**, and select the unzipped folder.
+
+### Option B: Load Directly from Source Repository
 1. Open your browser and navigate to `chrome://extensions` (or `edge://extensions`).
 2. Enable **Developer mode** (toggle in the top-right corner).
 3. Click **Load unpacked**.
