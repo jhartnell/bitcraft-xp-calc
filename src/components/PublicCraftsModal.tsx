@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { CraftResult, ItemMetadata } from '../types/api';
 import { bitjitaApi } from '../services/apiClient';
+import { getAssistedCraftIds, toggleAssistedCraftId } from '../services/assistedCraftsStorage';
 import {
   SKILL_DEFINITIONS,
   SkillDefinition,
@@ -69,10 +70,7 @@ export const PublicCraftsModal: React.FC<PublicCraftsModalProps> = ({
   const [maxTier, setMaxTier] = useState(10);
   const [onlyAssistedFilter, setOnlyAssistedFilter] = useState(false);
   const [isFilterSetOpen, setIsFilterSetOpen] = useState(false);
-  const [assistedState, setAssistedState] = useState<{
-    playerId?: string;
-    ids: Set<string>;
-  } | null>(null);
+  const [assistedVersion, setAssistedVersion] = useState(0);
   const [expandedGroups, setExpandedGroups] = useState<Set<number | 'tracked'>>(
     new Set(['tracked'])
   );
@@ -90,25 +88,11 @@ export const PublicCraftsModal: React.FC<PublicCraftsModalProps> = ({
     [playerRegionId]
   );
 
-  // Derive persisted assisted craft IDs cleanly when player changes or modal re-opens
+  // Derive persisted assisted craft IDs cleanly when player changes, modal re-opens, or user toggles tracking
   const assistedCraftIds = useMemo(() => {
-    if (assistedState && assistedState.playerId === playerId) {
-      return assistedState.ids;
-    }
-    if (!playerId || !isOpen) return new Set<string>();
-    try {
-      const stored = localStorage.getItem(`bitcraft_assisted_crafts_${playerId}`);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) {
-          return new Set<string>(parsed.map(String));
-        }
-      }
-    } catch {
-      // ignore
-    }
-    return new Set<string>();
-  }, [assistedState, playerId, isOpen]);
+    if (!playerId || !isOpen || assistedVersion < 0) return new Set<string>();
+    return getAssistedCraftIds(playerId);
+  }, [playerId, isOpen, assistedVersion]);
 
   // Sync native <dialog> top-layer modal open/close state and Safari light-dismiss fallback
   useEffect(() => {
@@ -243,19 +227,8 @@ export const PublicCraftsModal: React.FC<PublicCraftsModalProps> = ({
 
   const handleToggleTrack = (craftId: string) => {
     if (!playerId) return;
-    try {
-      const key = `bitcraft_assisted_crafts_${playerId}`;
-      const next = new Set(assistedCraftIds);
-      if (next.has(craftId)) {
-        next.delete(craftId);
-      } else {
-        next.add(craftId);
-      }
-      setAssistedState({ playerId, ids: next });
-      localStorage.setItem(key, JSON.stringify(Array.from(next)));
-    } catch {
-      // ignore
-    }
+    toggleAssistedCraftId(playerId, craftId);
+    setAssistedVersion((v) => v + 1);
   };
 
   const isAssistedCraft = useCallback(

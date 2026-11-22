@@ -23,6 +23,30 @@ const MAX_CACHE_ENTRIES = 250;
 const MAX_RECIPE_XP_ENTRIES = 500;
 const REQUEST_TIMEOUT_MS = 15_000;
 
+export class ApiHttpError extends Error {
+  public readonly status: number;
+  public readonly statusText: string;
+  public readonly endpoint: string;
+
+  constructor(status: number, statusText: string, endpoint: string) {
+    super(`BitJita API error: ${status} ${statusText}`);
+    this.name = 'ApiHttpError';
+    this.status = status;
+    this.statusText = statusText;
+    this.endpoint = endpoint;
+  }
+}
+
+export function isHttpStatusError(err: unknown, status: number): boolean {
+  if (err instanceof ApiHttpError) {
+    return err.status === status;
+  }
+  if (err instanceof Error) {
+    return err.message.includes(`BitJita API error: ${status}`);
+  }
+  return false;
+}
+
 interface CacheEntry<T> {
   data: T;
   timestamp: number;
@@ -224,7 +248,7 @@ class PoliteApiClient {
       });
 
       if (!response.ok) {
-        throw new Error(`BitJita API error: ${response.status} ${response.statusText}`);
+        throw new ApiHttpError(response.status, response.statusText, endpoint);
       }
 
       const data = (await response.json()) as T;
@@ -246,10 +270,12 @@ class PoliteApiClient {
       return await requestPromise;
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
+      const statusCode = err instanceof ApiHttpError ? err.status : undefined;
       this.recordAnomaly({
         endpoint,
         method: 'GET',
-        type: errorMsg.includes('429') ? 'rate_limited' : 'http_error',
+        type: statusCode === 429 || errorMsg.includes('429') ? 'rate_limited' : 'http_error',
+        statusCode,
         message: errorMsg,
         impact: 'Request failed; fallback or cached data will be used',
       });
@@ -278,6 +304,28 @@ class PoliteApiClient {
       this.notifyStatus();
     }
     return deleted;
+  }
+
+  /**
+   * Evicts cached endpoints and clears 404/error anomalies for a completed or purged craft.
+   */
+  public retireCraft(craftId: string): void {
+    const safeId = encodeURIComponent(craftId);
+    const craftPrefix = `/crafts/${safeId}`;
+    let cacheChanged = false;
+    for (const key of Array.from(this.cache.keys())) {
+      if (key === craftPrefix || key.startsWith(`${craftPrefix}/`)) {
+        this.cache.delete(key);
+        cacheChanged = true;
+      }
+    }
+    const initialAnomalies = this.anomalies.length;
+    this.anomalies = this.anomalies.filter(
+      (a) => a.endpoint !== craftPrefix && !a.endpoint.startsWith(`${craftPrefix}/`)
+    );
+    if (cacheChanged || this.anomalies.length !== initialAnomalies) {
+      this.notifyStatus();
+    }
   }
 
   public getCachedEntries(): CachedEndpointInfo[] {
