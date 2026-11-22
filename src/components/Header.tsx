@@ -14,6 +14,7 @@ import { CacheInspectorPopover } from './CacheInspectorPopover';
 
 interface HeaderProps {
   onClearCache: () => void;
+  onOpenDiagnostics?: () => void;
 }
 
 const INITIAL_API_STATUS: ApiClientStatus = {
@@ -28,7 +29,7 @@ const INITIAL_API_STATUS: ApiClientStatus = {
   error: null,
 };
 
-export const Header: React.FC<HeaderProps> = ({ onClearCache }) => {
+export const Header: React.FC<HeaderProps> = ({ onClearCache, onOpenDiagnostics }) => {
   const [apiStatus, setApiStatus] = useState<ApiClientStatus>(INITIAL_API_STATUS);
 
   useEffect(() => {
@@ -71,7 +72,11 @@ export const Header: React.FC<HeaderProps> = ({ onClearCache }) => {
         {/* API Health, Cache Status & Tab Expansion */}
         <div className="flex items-center gap-2 sm:gap-3 bg-surface-subtle/80 px-3 py-1.5 rounded-lg border border-surface-border text-xs">
           {/* Caching Status & Popover */}
-          <CacheInspectorPopover apiStatus={apiStatus} onClearCache={onClearCache}>
+          <CacheInspectorPopover
+            apiStatus={apiStatus}
+            onClearCache={onClearCache}
+            onOpenDiagnostics={onOpenDiagnostics}
+          >
             <span
               className={`flex items-center gap-1.5 transition-colors cursor-pointer group px-1.5 py-0.5 rounded hover:bg-surface ${
                 apiStatus.anomalies && apiStatus.anomalies.length > 0

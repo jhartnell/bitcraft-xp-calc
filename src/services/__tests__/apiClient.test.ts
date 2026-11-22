@@ -32,6 +32,7 @@ describe('PoliteApiClient Cache & Inspector', () => {
 
     const entries = bitjitaApi.getCachedEntries();
     expect(entries.length).toBe(1);
+    expect(bitjitaApi.status.activeRequestsCount).toBe(0);
     expect(entries[0].endpoint).toBe('/players/p123');
     expect(entries[0].category).toBe('character');
     expect(entries[0].categoryLabel).toBe('Character & Equipment');

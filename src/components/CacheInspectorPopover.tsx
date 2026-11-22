@@ -10,6 +10,7 @@ import {
   RefreshCw,
   Info,
   CheckCircle2,
+  Bug,
 } from 'lucide-react';
 import { ApiClientStatus, CachedEndpointInfo } from '../types/calculator';
 import { useHoverPopoverState } from '../hooks/useHoverPopoverState';
@@ -18,6 +19,7 @@ import { bitjitaApi } from '../services/apiClient';
 interface CacheInspectorPopoverProps {
   apiStatus: ApiClientStatus;
   onClearCache: () => void;
+  onOpenDiagnostics?: () => void;
   children: React.ReactNode;
   className?: string;
 }
@@ -25,10 +27,11 @@ interface CacheInspectorPopoverProps {
 export const CacheInspectorPopover: React.FC<CacheInspectorPopoverProps> = ({
   apiStatus,
   onClearCache,
+  onOpenDiagnostics,
   children,
   className = '',
 }) => {
-  const { isOpen, handleMouseEnter, handleMouseLeave, toggle } = useHoverPopoverState(200);
+  const { isOpen, handleMouseEnter, handleMouseLeave, toggle, close } = useHoverPopoverState(200);
   const [selectedTab, setSelectedTab] = useState<'cache' | 'anomalies' | null>(null);
   const [filterText, setFilterText] = useState('');
   const [retryingEndpoint, setRetryingEndpoint] = useState<string | null>(null);
@@ -459,13 +462,29 @@ export const CacheInspectorPopover: React.FC<CacheInspectorPopoverProps> = ({
             </div>
           )}
 
-          {/* Footer Safeguards Info */}
-          <div className="border-t border-surface-border pt-2 flex items-center justify-between text-[10px] text-gray-500 font-mono">
+          {/* Footer Safeguards & Diagnostics Info */}
+          <div className="border-t border-surface-border pt-2 flex items-center justify-between gap-2 text-[10px] text-gray-500 font-mono">
             <span className="flex items-center gap-1 text-emerald-400/90">
               <ShieldCheck className="w-3 h-3 text-emerald-400" />
               <span>In-Flight Request Deduplication Active</span>
             </span>
-            <span>BitJita API Proxy</span>
+            {onOpenDiagnostics ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  close();
+                  onOpenDiagnostics();
+                }}
+                className="inline-flex items-center gap-1 text-emerald-300 hover:text-emerald-200 bg-emerald-950/70 hover:bg-emerald-900/70 border border-emerald-700/60 px-2 py-0.5 rounded font-sans font-medium transition-colors cursor-pointer shrink-0"
+                title="Open full diagnostics & copy bug report to clipboard"
+              >
+                <Bug className="w-3 h-3" />
+                <span>Copy Diagnostics</span>
+              </button>
+            ) : (
+              <span>BitJita API Proxy</span>
+            )}
           </div>
         </div>
       )}

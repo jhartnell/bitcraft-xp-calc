@@ -1,7 +1,11 @@
 import React from 'react';
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, Bug } from 'lucide-react';
 
-export const Footer: React.FC = () => {
+interface FooterProps {
+  onOpenDiagnostics?: () => void;
+}
+
+export const Footer: React.FC<FooterProps> = ({ onOpenDiagnostics }) => {
   const version = import.meta.env.VITE_APP_VERSION || '0.0.0';
 
   return (
@@ -15,6 +19,20 @@ export const Footer: React.FC = () => {
         </div>
 
         <div className="flex flex-wrap items-center justify-center gap-3 text-[11px] text-gray-400">
+          {onOpenDiagnostics && (
+            <>
+              <button
+                type="button"
+                onClick={onOpenDiagnostics}
+                className="inline-flex items-center gap-1 text-emerald-400 hover:text-emerald-300 transition-colors cursor-pointer"
+                title="Inspect and copy local browser diagnostics for troubleshooting"
+              >
+                <Bug className="w-3 h-3" />
+                <span>Diagnostics</span>
+              </button>
+              <span>•</span>
+            </>
+          )}
           <span>
             Powered by{' '}
             <a
