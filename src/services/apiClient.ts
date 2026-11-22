@@ -283,6 +283,7 @@ class PoliteApiClient {
       throw err;
     } finally {
       this.activeRequests.delete(endpoint);
+      this.notifyStatus();
     }
   }
 

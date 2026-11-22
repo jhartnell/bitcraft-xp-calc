@@ -65,9 +65,14 @@ describe('diagnosticsCollector', () => {
       JSON.stringify({ entityId: '576460752768705987', username: 'Ikuria' })
     );
     localStorage.setItem(
+      'bitcraft_xp_recent_players',
+      JSON.stringify([{ entityId: '576460752768705987', username: 'Ikuria', signedIn: true }])
+    );
+    localStorage.setItem(
       'bitcraft_assisted_crafts_576460752768705987',
       JSON.stringify(['1008806317066192960'])
     );
+    sessionStorage.setItem('bitcraft_session_xp_576460752768705987_21', '[]');
 
     bitjitaApi.recordAnomaly({
       endpoint: '/players/576460752768705987',

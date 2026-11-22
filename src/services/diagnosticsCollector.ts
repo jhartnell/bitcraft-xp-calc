@@ -114,6 +114,7 @@ export interface DiagnosticsReport {
       ttlSeconds: number;
       isExpired: boolean;
     }>;
+    cachedStaticMetadataCount: number;
   };
   storage: {
     localStorageKeys: Record<string, unknown>;
@@ -323,7 +324,10 @@ function anonymizeReport(report: DiagnosticsReport): DiagnosticsReport {
         entityId: redactor.maskId(p.entityId),
         username: redactor.maskName(p.username),
       };
-    } else if (key === 'bitcraft_recent_players' && Array.isArray(val)) {
+    } else if (
+      (key === 'bitcraft_xp_recent_players' || key === 'bitcraft_recent_players') &&
+      Array.isArray(val)
+    ) {
       anonymizedStorageKeys[maskedKey] = val.map((item) => {
         if (item && typeof item === 'object') {
           const p = item as { entityId?: string; username?: string };
@@ -361,7 +365,11 @@ function anonymizeReport(report: DiagnosticsReport): DiagnosticsReport {
     storage: {
       localStorageKeys: anonymizedStorageKeys,
       sessionStorageKeys: report.storage.sessionStorageKeys.map((k) =>
-        k.replace(/(bitcraft_session_xp_)(.+)$/, (_, prefix: string, rest: string) => `${prefix}${redactor.maskId(rest)}`)
+        k.replace(
+          /^(bitcraft_session_xp_)([^_]+)(.*)$/,
+          (_, prefix: string, entityId: string, suffix: string) =>
+            `${prefix}${redactor.maskId(entityId)}${suffix}`
+        )
       ),
     },
     recentEvents: report.recentEvents.map((ev) => ({
@@ -444,13 +452,19 @@ export function buildDiagnosticsReport(options?: {
         ...(a.impact ? { impact: a.impact } : {}),
         ageSeconds: Math.max(0, Math.floor((now - a.timestamp) / 1000)),
       })),
-      cachedEndpoints: cachedEntries.slice(0, 40).map((entry) => ({
-        endpoint: entry.endpoint,
-        category: entry.category,
-        ageSeconds: Math.max(0, Math.floor((now - entry.timestamp) / 1000)),
-        ttlSeconds: Math.round(entry.ttlMs / 1000),
-        isExpired: entry.isExpired,
-      })),
+      cachedEndpoints: cachedEntries
+        .filter((entry) => entry.category !== 'metadata' && entry.category !== 'catalog')
+        .slice(0, 30)
+        .map((entry) => ({
+          endpoint: entry.endpoint,
+          category: entry.category,
+          ageSeconds: Math.max(0, Math.floor((now - entry.timestamp) / 1000)),
+          ttlSeconds: Math.round(entry.ttlMs / 1000),
+          isExpired: entry.isExpired,
+        })),
+      cachedStaticMetadataCount: cachedEntries.filter(
+        (entry) => entry.category === 'metadata' || entry.category === 'catalog'
+      ).length,
     },
     storage: {
       localStorageKeys: readAllowlistedLocalStorage(),
@@ -496,7 +510,7 @@ export function formatDiagnosticsReport(
     `- **Generated:** ${report.generatedAt}${report.anonymized ? ' _(anonymized)_' : ''}`,
     `- **Character:** ${playerLabel}`,
     `- **Active Craft:** ${craftLabel}`,
-    `- **API Health:** ${report.apiHealth.anomalies.length} warning(s) • ${report.apiHealth.cachedEndpoints.length} cached endpoint(s) • backoff ${report.apiHealth.rateLimitBackoffMs}ms`,
+    `- **API Health:** ${report.apiHealth.anomalies.length} warning(s) • ${report.apiHealth.cachedEntriesCount} cached endpoint(s) • backoff ${report.apiHealth.rateLimitBackoffMs}ms`,
     `- **Events Logged:** ${report.recentEvents.length}${report.crash ? ' • **CRASH CAPTURED**' : ''}`,
     '',
     '```json',
