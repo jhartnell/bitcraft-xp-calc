@@ -4,6 +4,17 @@ All notable changes to the **BitCraft Online XP Calculator** project are documen
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.4] - 2026-11-22
+
+### Fixed
+- **Prevented Alt-Switch API Request Storms (Bounded LRU Assisted Crafts & Fetch Budget):** Enforced a hard LRU cap (`MAX_ASSISTED_CRAFTS_PER_PLAYER = 20`) in `src/services/assistedCraftsStorage.ts` and added a zero-network startup hygiene pass (`pruneOversizedAssistedCraftStores()` in `src/main.tsx`) to trim legacy oversized `bitcraft_assisted_crafts_*` arrays across all characters before polling begins.
+- **Per-Poll Verification Budget & HTTP `429` Circuit Breaker:** Capped background `GET /crafts/{id}` verification in `usePlayerDashboardData.ts` to at most `5` requests per poll (`MAX_ASSISTED_FETCHES_PER_POLL = 5`, prioritizing the currently selected craft first and newest tracked entries next), honored cache TTLs for non-selected tracked crafts, added an automatic HTTP `429` backoff circuit breaker, and stopped redundantly storing owned crafts in `bitcraft_assisted_crafts_*`.
+
+### Added
+- **1-Click Clear Tracked Crafts:** Added a `Clear Tracked (N)` button to `PublicCraftsModal` so players can clear saved tracked/assisted craft IDs for the active character in one click.
+
+---
+
 ## [1.10.3] - 2026-11-22
 
 ### Added

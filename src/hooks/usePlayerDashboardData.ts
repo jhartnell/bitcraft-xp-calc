@@ -31,6 +31,7 @@ interface UsePlayerDashboardDataParams {
 
 const EMPTY_CONTRIBUTIONS: CraftContribution[] = [];
 const EMPTY_PAYLOADS: ContributorDetailPayload[] = [];
+export const MAX_ASSISTED_FETCHES_PER_POLL = 5;
 
 export function usePlayerDashboardData({
   primaryPlayer,
@@ -134,14 +135,20 @@ export function usePlayerDashboardData({
   );
 
   const fetchCraftContributions = useCallback(
-    async (craftId: string, playerEntityId: string, playerUsername?: string, forceFresh = false) => {
+    async (
+      craftId: string,
+      playerEntityId: string,
+      playerUsername?: string,
+      forceFresh = false,
+      options?: { isOwnedCraft?: boolean }
+    ) => {
       const reqId = ++craftRequestIdRef.current;
       try {
         const cb = await bitjitaApi.getCraftContributions(craftId, forceFresh);
         if (craftRequestIdRef.current !== reqId) return [];
         setContributionsState({ craftId, list: cb });
-        // Only persist into assisted crafts if the player is actually a verified contributor
-        if (isPlayerVerifiedContributor(cb, playerEntityId, playerUsername)) {
+        // Only persist into assisted crafts for shared/non-owned crafts where the player is a verified contributor
+        if (!options?.isOwnedCraft && isPlayerVerifiedContributor(cb, playerEntityId, playerUsername)) {
           addAssistedCraftId(playerEntityId, craftId);
         }
         void loadContributorPayloads(craftId, cb, playerEntityId, reqId);
@@ -235,7 +242,8 @@ export function usePlayerDashboardData({
             prefetchedContribCraftId,
             player.entityId,
             player.username,
-            forceFresh
+            forceFresh,
+            { isOwnedCraft: true }
           );
           setLastUpdated(new Date());
         }
@@ -272,8 +280,13 @@ export function usePlayerDashboardData({
         }
 
         const staleCraftIds = new Set<string>();
+        const ownedCraftIds = new Set<string>();
         for (const c of craftsRes?.craftResults || []) {
-          if (c && !isCraftOngoing(c) && trackedAssistedIds.has(c.entityId)) {
+          if (!c) continue;
+          ownedCraftIds.add(c.entityId);
+          // Owned crafts are already fetched via /players/{id}/crafts?completed=all;
+          // remove any completed or redundantly stored owned craft from assisted storage.
+          if (trackedAssistedIds.has(c.entityId)) {
             staleCraftIds.add(c.entityId);
           }
         }
@@ -336,26 +349,47 @@ export function usePlayerDashboardData({
             !activeCrafts.some((c) => c.entityId === id)
         );
         if (missingAssistedIds.length > 0) {
-          const assistedResponses = await Promise.all(
-            missingAssistedIds.map(async (assistedId) => {
-              try {
-                const res = await bitjitaApi.getCraft(assistedId, forceFresh);
-                return { assistedId, res, notFound: false };
-              } catch (err) {
-                return { assistedId, res: null, notFound: isHttpStatusError(err, 404) };
-              }
-            })
-          );
-          if (loadRequestIdRef.current !== reqId) return;
-          for (const { assistedId, res, notFound } of assistedResponses) {
-            if (notFound || (res && (!res.craft || !isCraftOngoing(res.craft)))) {
-              staleCraftIds.add(assistedId);
-              continue;
+          // Prioritize the actively selected craft first, then the newest tracked IDs (tail of LRU set)
+          const prioritizedMissingIds: string[] = [];
+          if (currentSelectedId && missingAssistedIds.includes(currentSelectedId)) {
+            prioritizedMissingIds.push(currentSelectedId);
+          }
+          for (let i = missingAssistedIds.length - 1; i >= 0; i -= 1) {
+            const id = missingAssistedIds[i];
+            if (id !== currentSelectedId) {
+              prioritizedMissingIds.push(id);
             }
-            if (res?.craft) {
-              candidateMap.set(res.craft.entityId, res.craft);
-              if (res.items) collectedItems.push(...res.items);
-              if (res.cargos) collectedCargos.push(...res.cargos);
+          }
+
+          // Respect a strict per-poll fetch budget and HTTP 429 circuit breaker
+          const isRateLimited = bitjitaApi.status.rateLimitBackoffMs > 0;
+          const budgetedIds = isRateLimited
+            ? prioritizedMissingIds.filter((id) => id === currentSelectedId)
+            : prioritizedMissingIds.slice(0, MAX_ASSISTED_FETCHES_PER_POLL);
+
+          for (const assistedId of budgetedIds) {
+            if (loadRequestIdRef.current !== reqId) return;
+            // Abort remaining background checks immediately if a 429 triggered backoff mid-batch
+            if (assistedId !== currentSelectedId && bitjitaApi.status.rateLimitBackoffMs > 0) {
+              break;
+            }
+            const shouldForceThisCraft = assistedId === currentSelectedId ? forceFresh : false;
+            try {
+              const res = await bitjitaApi.getCraft(assistedId, shouldForceThisCraft);
+              if (loadRequestIdRef.current !== reqId) return;
+              if (res && (!res.craft || !isCraftOngoing(res.craft))) {
+                staleCraftIds.add(assistedId);
+                continue;
+              }
+              if (res?.craft) {
+                candidateMap.set(res.craft.entityId, res.craft);
+                if (res.items) collectedItems.push(...res.items);
+                if (res.cargos) collectedCargos.push(...res.cargos);
+              }
+            } catch (err) {
+              if (isHttpStatusError(err, 404)) {
+                staleCraftIds.add(assistedId);
+              }
             }
           }
         }
@@ -363,9 +397,16 @@ export function usePlayerDashboardData({
         if (staleCraftIds.size > 0) {
           removeAssistedCraftIds(player.entityId, staleCraftIds);
           for (const staleId of staleCraftIds) {
-            bitjitaApi.retireCraft(staleId);
+            // Only evict cache/anomalies when the craft is not currently an active owned craft
+            if (!activeCrafts.some((c) => c.entityId === staleId)) {
+              bitjitaApi.retireCraft(staleId);
+            }
           }
-          if (selectedCraftIdRef.current && staleCraftIds.has(selectedCraftIdRef.current)) {
+          if (
+            selectedCraftIdRef.current &&
+            staleCraftIds.has(selectedCraftIdRef.current) &&
+            !activeCrafts.some((c) => c.entityId === selectedCraftIdRef.current)
+          ) {
             selectedCraftIdRef.current = null;
           }
         }
@@ -428,7 +469,8 @@ export function usePlayerDashboardData({
               resolution.selectedCraftId,
               player.entityId,
               player.username,
-              forceFresh
+              forceFresh,
+              { isOwnedCraft: ownedCraftIds.has(resolution.selectedCraftId) }
             );
           }
         } else {
@@ -604,7 +646,13 @@ export function usePlayerDashboardData({
       const target = crafts[0];
       selectedCraftIdRef.current = target.entityId;
       setSelectedCraftIndex(0);
-      void fetchCraftContributions(target.entityId, selectedPlayer.entityId, selectedPlayer.username, false);
+      void fetchCraftContributions(
+        target.entityId,
+        selectedPlayer.entityId,
+        selectedPlayer.username,
+        false,
+        { isOwnedCraft: true }
+      );
     } else {
       selectedCraftIdRef.current = null;
       setSelectedCraftIndex(0);
@@ -621,7 +669,13 @@ export function usePlayerDashboardData({
       setCustomCraft(null);
       setSelectedCraftIndex(idx);
       setCustomProgressPerAction(null);
-      void fetchCraftContributions(target.entityId, selectedPlayer.entityId, selectedPlayer.username, false);
+      void fetchCraftContributions(
+        target.entityId,
+        selectedPlayer.entityId,
+        selectedPlayer.username,
+        false,
+        { isOwnedCraft: true }
+      );
     },
     [crafts, fetchCraftContributions, selectedPlayer]
   );

@@ -63,7 +63,7 @@ describe('Public Craft Analysis vs Verified Helping Lifecycle', () => {
       'fetch',
       vi.fn().mockImplementation((url: string) => {
         if (url.includes('/version.json')) {
-          return Promise.resolve({ ok: true, json: async () => ({ version: '1.10.3' }) });
+          return Promise.resolve({ ok: true, json: async () => ({ version: '1.10.4' }) });
         }
         if (url.endsWith(`/players/${ikuria.entityId}`)) {
           pollCount += 1;
@@ -247,7 +247,7 @@ describe('Public Craft Analysis vs Verified Helping Lifecycle', () => {
       'fetch',
       vi.fn().mockImplementation((url: string) => {
         if (url.includes('/version.json')) {
-          return Promise.resolve({ ok: true, json: async () => ({ version: '1.10.3' }) });
+          return Promise.resolve({ ok: true, json: async () => ({ version: '1.10.4' }) });
         }
         if (url.endsWith(`/players/${ikuria.entityId}`)) {
           return Promise.resolve({
@@ -360,7 +360,7 @@ describe('Public Craft Analysis vs Verified Helping Lifecycle', () => {
       'fetch',
       vi.fn().mockImplementation((url: string) => {
         if (url.includes('/version.json')) {
-          return Promise.resolve({ ok: true, json: async () => ({ version: '1.10.3' }) });
+          return Promise.resolve({ ok: true, json: async () => ({ version: '1.10.4' }) });
         }
         if (url.endsWith(`/players/${ikuria.entityId}`)) {
           return Promise.resolve({
@@ -436,7 +436,7 @@ describe('Public Craft Analysis vs Verified Helping Lifecycle', () => {
       'fetch',
       vi.fn().mockImplementation((url: string) => {
         if (url.includes('/version.json')) {
-          return Promise.resolve({ ok: true, json: async () => ({ version: '1.10.3' }) });
+          return Promise.resolve({ ok: true, json: async () => ({ version: '1.10.4' }) });
         }
         if (url.endsWith(`/players/${ikuria.entityId}`)) {
           return Promise.resolve({
@@ -509,5 +509,80 @@ describe('Public Craft Analysis vs Verified Helping Lifecycle', () => {
     });
 
     expect(completedCraftFetchCount).toBe(1);
+  });
+
+  it('bounds legacy oversized assisted craft lists and enforces the per-poll fetch budget to prevent request storms', async () => {
+    const ikuria = { entityId: '576460752768705987', username: 'Ikuria' };
+    localStorage.setItem('bitcraft_primary_player', JSON.stringify(ikuria));
+
+    // Seed 284 legacy tracked craft IDs (simulating pre-v1.9.1 alt history)
+    const legacyIds = Array.from({ length: 284 }, (_, i) => `legacy_craft_${i + 1}`);
+    localStorage.setItem(`bitcraft_assisted_crafts_${ikuria.entityId}`, JSON.stringify(legacyIds));
+
+    const fetchedCraftIds: string[] = [];
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string) => {
+        if (url.includes('/version.json')) {
+          return Promise.resolve({ ok: true, json: async () => ({ version: '1.10.4' }) });
+        }
+        if (url.endsWith(`/players/${ikuria.entityId}`)) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              player: { ...ikuria, regionId: 8, locationX: 60, locationZ: 31, experience: [{ skill_id: 2, quantity: 779107 }] },
+            }),
+          });
+        }
+        if (url.includes(`/players/${ikuria.entityId}/crafts`)) {
+          return Promise.resolve({ ok: true, json: async () => ({ craftResults: [], items: [], cargos: [], count: 0 }) });
+        }
+        if (url.includes('/equipment')) {
+          return Promise.resolve({ ok: true, json: async () => ({ equipment: [] }) });
+        }
+        if (url.includes('/buffs')) {
+          return Promise.resolve({ ok: true, json: async () => ({ buffs: [], count: 0, regionId: 8 }) });
+        }
+        if (url.includes('/stats')) {
+          return Promise.resolve({ ok: true, json: async () => ({ stats: { entityId: ikuria.entityId, values: [] } }) });
+        }
+        if (url.includes('/tools')) {
+          return Promise.resolve({ ok: true, json: async () => ({ tools: [] }) });
+        }
+        const craftMatch = url.match(/\/crafts\/(legacy_craft_\d+)$/);
+        if (craftMatch) {
+          fetchedCraftIds.push(craftMatch[1]);
+          return Promise.resolve({ ok: false, status: 404, statusText: 'Not Found' });
+        }
+        if (url.includes('/crafts?completed=false')) {
+          return Promise.resolve({ ok: true, json: async () => ({ craftResults: [], items: [], cargos: [] }) });
+        }
+        return Promise.resolve({ ok: true, json: async () => ({}) });
+      })
+    );
+
+    await act(async () => {
+      root.render(React.createElement(App));
+      await new Promise((r) => setTimeout(r, 60));
+    });
+
+    // 1. Only at most 5 GET /crafts/{id} requests fired in a single poll (prioritizing newest IDs)
+    expect(fetchedCraftIds.length).toBe(5);
+    expect(fetchedCraftIds).toEqual([
+      'legacy_craft_284',
+      'legacy_craft_283',
+      'legacy_craft_282',
+      'legacy_craft_281',
+      'legacy_craft_280',
+    ]);
+
+    // 2. Oversized 284-entry list was trimmed immediately to 20, and the 5 verified 404s were pruned -> 15 left
+    const remaining: string[] = JSON.parse(
+      localStorage.getItem(`bitcraft_assisted_crafts_${ikuria.entityId}`) || '[]'
+    );
+    expect(remaining.length).toBe(15);
+    expect(remaining[0]).toBe('legacy_craft_265');
+    expect(remaining[remaining.length - 1]).toBe('legacy_craft_279');
   });
 });
