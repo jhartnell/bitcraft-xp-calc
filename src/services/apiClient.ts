@@ -18,6 +18,7 @@ import {
 } from '../types/api';
 import { ApiClientStatus, CachedEndpointInfo, EndpointAnomaly } from '../types/calculator';
 import { resolveCraftCoordinates } from './bitcraftData';
+import { recordDiagnosticEvent } from './diagnosticsBuffer';
 
 const MAX_CACHE_ENTRIES = 250;
 const MAX_RECIPE_XP_ENTRIES = 500;
@@ -324,6 +325,16 @@ class PoliteApiClient {
       (a) => a.endpoint !== craftPrefix && !a.endpoint.startsWith(`${craftPrefix}/`)
     );
     if (cacheChanged || this.anomalies.length !== initialAnomalies) {
+      recordDiagnosticEvent({
+        level: 'info',
+        source: 'api',
+        message: 'Retired stale or completed craft from cache and anomalies',
+        details: {
+          endpoint: craftPrefix,
+          evictedCache: cacheChanged,
+          clearedAnomalies: initialAnomalies - this.anomalies.length,
+        },
+      });
       this.notifyStatus();
     }
   }
@@ -373,6 +384,17 @@ class PoliteApiClient {
       },
       ...this.anomalies.filter((a) => a.endpoint !== anomaly.endpoint),
     ].slice(0, 15);
+    recordDiagnosticEvent({
+      level: anomaly.type === 'http_error' || anomaly.type === 'rate_limited' ? 'error' : 'warn',
+      source: 'api',
+      message: anomaly.message,
+      details: {
+        endpoint: anomaly.endpoint,
+        type: anomaly.type,
+        statusCode: anomaly.statusCode,
+        impact: anomaly.impact,
+      },
+    });
     this.notifyStatus();
   }
 

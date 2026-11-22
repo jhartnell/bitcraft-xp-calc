@@ -1,6 +1,10 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { calculateCraftXp, calculateMultiUserCraftProjection } from './services/xpCalculator';
 import { isContributionByPlayer } from './services/bitcraftData';
+import {
+  DashboardDiagnosticsSnapshot,
+  setDiagnosticsSnapshotProvider,
+} from './services/diagnosticsCollector';
 import { Header } from './components/Header';
 import { PlayerSearch } from './components/PlayerSearch';
 import { RefreshControls } from './components/RefreshControls';
@@ -10,6 +14,7 @@ import { ModifiersPanel } from './components/ModifiersPanel';
 import { ContributorsPanel } from './components/ContributorsPanel';
 import { SkillList } from './components/SkillList';
 import { PublicCraftsModal } from './components/PublicCraftsModal';
+import { DiagnosticsModal } from './components/DiagnosticsModal';
 import { Footer } from './components/Footer';
 import { UpdateNotificationToast } from './components/UpdateNotificationToast';
 import { useVersionUpdateChecker } from './hooks/useVersionUpdateChecker';
@@ -23,6 +28,7 @@ const SAMPLE_PLAYER_NAMES = ['wiz', 'DOOM', 'Ameger', 'Hydrivett', 'Socrates'];
 
 export const App: React.FC = () => {
   const [isPublicModalOpen, setIsPublicModalOpen] = useState(false);
+  const [isDiagnosticsModalOpen, setIsDiagnosticsModalOpen] = useState(false);
 
   // Update Notification Checker
   const {
@@ -214,10 +220,105 @@ export const App: React.FC = () => {
       ).length
     : 0;
 
+  // Keep a live sanitized snapshot available for DiagnosticsModal & ErrorBoundary
+  const diagnosticsSnapshotRef = useRef<DashboardDiagnosticsSnapshot | null>(null);
+  useEffect(() => {
+    diagnosticsSnapshotRef.current = {
+      selectedPlayer: selectedPlayer
+        ? {
+            entityId: selectedPlayer.entityId,
+            username: selectedPlayer.username,
+            regionId: playerDetails?.regionId,
+            locationX: playerDetails?.locationX ?? playerDetails?.location?.locationX,
+            locationZ: playerDetails?.locationZ ?? playerDetails?.location?.locationZ,
+          }
+        : null,
+      polling: {
+        refreshIntervalSeconds: refreshInterval,
+        isPaused,
+        isLoading,
+        lastUpdated: lastUpdated ? lastUpdated.toISOString() : null,
+        error,
+      },
+      crafts: {
+        ownedActiveCount: crafts.length,
+        selectedCraftIndex,
+        nearbyCount: nearbyCrafts.length,
+        hasCustomCraft: Boolean(customCraft),
+        isActiveCraftHelper,
+        activeCraft: activeCraft
+          ? {
+              entityId: activeCraft.entityId,
+              buildingName: activeCraft.buildingName,
+              claimName: activeCraft.claimName,
+              regionId: activeCraft.regionId,
+              ownerEntityId: activeCraft.ownerEntityId,
+              ownerUsername: activeCraft.ownerUsername,
+              progress: activeCraft.progress,
+              totalActionsRequired: activeCraft.totalActionsRequired,
+              completed: activeCraft.completed,
+              isPublic: activeCraft.isPublic,
+              recipeId: activeCraft.recipeId,
+              contributorsCount: contributions.length,
+            }
+          : null,
+      },
+      calculation: calcResult
+        ? {
+            skillId: calcResult.skillId,
+            skillName: calcResult.skillName,
+            currentLevel: calcResult.currentSkillLevel,
+            isLevelInferred: calcResult.isSkillLevelInferred,
+            progressPerAction: calcResult.progressPerAction,
+            actionDurationSeconds: calcResult.secondsPerAction,
+            xpMultiplier: calcResult.xpMultiplier,
+            xpPerHour: calcResult.xpPerHour,
+            estimatedSecondsRemaining: calcResult.estimatedSecondsRemaining,
+            hasToolMatch: calcResult.toolStatus.isEquipped,
+            isToolMissing: !calcResult.toolStatus.isEquipped,
+          }
+        : null,
+      overrides: {
+        skillOverrideCount: Object.keys(skillOverrides).length,
+        hasFoodBuffOverride: Boolean(foodBuffOverride),
+        hasCustomProgressPerAction: customProgressPerAction !== null,
+      },
+    };
+  }, [
+    selectedPlayer,
+    playerDetails,
+    refreshInterval,
+    isPaused,
+    isLoading,
+    lastUpdated,
+    error,
+    crafts.length,
+    selectedCraftIndex,
+    nearbyCrafts.length,
+    customCraft,
+    isActiveCraftHelper,
+    activeCraft,
+    contributions.length,
+    calcResult,
+    skillOverrides,
+    foodBuffOverride,
+    customProgressPerAction,
+  ]);
+
+  useEffect(() => {
+    setDiagnosticsSnapshotProvider(() => diagnosticsSnapshotRef.current);
+    return () => {
+      setDiagnosticsSnapshotProvider(null);
+    };
+  }, []);
+
   return (
     <div className="min-h-screen bg-background text-gray-100 flex flex-col font-sans selection:bg-emerald-500 selection:text-white">
       {/* Top Navigation & Self-Contained API Status */}
-      <Header onClearCache={handleClearCache} />
+      <Header
+        onClearCache={handleClearCache}
+        onOpenDiagnostics={() => setIsDiagnosticsModalOpen(true)}
+      />
 
       {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
@@ -476,6 +577,12 @@ export const App: React.FC = () => {
         playerRegionId={playerDetails?.regionId}
       />
 
+      {/* Browser Diagnostics & Bug Report Modal */}
+      <DiagnosticsModal
+        isOpen={isDiagnosticsModalOpen}
+        onClose={() => setIsDiagnosticsModalOpen(false)}
+      />
+
       {/* Floating Update Notification Toast */}
       <UpdateNotificationToast
         hasUpdate={hasUpdate}
@@ -486,7 +593,7 @@ export const App: React.FC = () => {
       />
 
       {/* Embedded App Version & Footer */}
-      <Footer />
+      <Footer onOpenDiagnostics={() => setIsDiagnosticsModalOpen(true)} />
     </div>
   );
 };

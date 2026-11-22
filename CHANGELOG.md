@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [Unreleased]
 
 ### Added
+- **Browser Diagnostics & Bug Report Exporter:** Added a 100% local, privacy-safe diagnostics collector (`src/services/diagnosticsCollector.ts` + bounded ring buffer in `src/services/diagnosticsBuffer.ts`) and native `<dialog>` `DiagnosticsModal` accessible from the Cache Inspector popover, the page footer, and the `ErrorBoundary` crash screen (`Copy Crash Diagnostics`). Captures app version, browser environment, live player/craft/calculation state, BitJita API cache & anomaly health, strictly allowlisted `bitcraft_*` storage, and recent runtime/API/crash events, with 1-click Copy to Clipboard (Markdown or Raw JSON), Download `.json`, and optional character/ID anonymization.
 - **Automated GitHub Releases Pipeline:** Added a gated, least-privilege `release` job (`contents: write` only, running after `test` and `docker` succeed) to `.github/workflows/docker-publish.yml` using the preinstalled `gh` CLI (no third-party release actions). On every `v*.*.*` tag push, it extracts the matching release notes from `CHANGELOG.md` via `scripts/extract-release-notes.mjs` (falling back to `--generate-notes`), builds and zips the browser extension (`bitcraft-xp-calc-extension-vX.Y.Z.zip`), generates `SHA256SUMS.txt`, and publishes the GitHub Release.
 
 ---
