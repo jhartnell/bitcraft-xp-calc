@@ -244,11 +244,11 @@ export const PowerBreakdownPopover: React.FC<PowerBreakdownPopoverProps> = ({
                     <div className="text-[10px] text-gray-400">
                       {toolStatus.levelPowerBonus > 0 ? (
                         `Cumulative stat increase (+${toolStatus.levelPowerBonus} Power${
-                          toolStatus.levelSpeedBonus ? `, +${(toolStatus.levelSpeedBonus * 100).toFixed(0)}% Speed` : ''
+                          toolStatus.levelSpeedBonus ? `, +${toolStatus.levelSpeedBonus.toFixed(1)}% Speed` : ''
                         }${toolStatus.levelCritBonus ? `, +${(toolStatus.levelCritBonus * 100).toFixed(0)}% Crit` : ''})`
                       ) : (
                         `Level ${currentSkillLevel || 1} progression (+0 Power${
-                          toolStatus.levelSpeedBonus ? `, +${(toolStatus.levelSpeedBonus * 100).toFixed(0)}% Speed` : ''
+                          toolStatus.levelSpeedBonus ? `, +${toolStatus.levelSpeedBonus.toFixed(1)}% Speed` : ''
                         }${toolStatus.levelCritBonus ? `, +${(toolStatus.levelCritBonus * 100).toFixed(0)}% Crit` : ''} • +1 Power at Level 5)`
                       )}
                     </div>

@@ -79,6 +79,14 @@ export interface DashboardDiagnosticsSnapshot {
     estimatedSecondsRemaining: number;
     hasToolMatch: boolean;
     isToolMissing: boolean;
+    liveXpSync?: {
+      serverSkillXp: number;
+      serverSkillLevel: number;
+      unflushedCraftXp: number;
+      effectiveSkillXp: number;
+      isPriorCraftXpIncluded: boolean;
+      isServerXpLagging: boolean;
+    } | null;
   } | null;
   overrides: {
     skillOverrideCount: number;
@@ -409,11 +417,17 @@ function anonymizeReport(report: DiagnosticsReport): DiagnosticsReport {
     storage: {
       localStorageKeys: anonymizedStorageKeys,
       sessionStorageKeys: report.storage.sessionStorageKeys.map((k) =>
-        k.replace(
-          /^(bitcraft_session_xp_)([^_]+)(.*)$/,
-          (_, prefix: string, entityId: string, suffix: string) =>
-            `${prefix}${redactor.maskId(entityId)}${suffix}`
-        )
+        k
+          .replace(
+            /^(bitcraft_session_xp_)([^_]+)(.*)$/,
+            (_, prefix: string, entityId: string, suffix: string) =>
+              `${prefix}${redactor.maskId(entityId)}${suffix}`
+          )
+          .replace(
+            /^(bitcraft_live_xp_anchor_)([^_]+)_([^_]+)_(.+)$/,
+            (_, prefix: string, entityId: string, skillId: string, craftId: string) =>
+              `${prefix}${redactor.maskId(entityId)}_${skillId}_${redactor.maskId(craftId)}`
+          )
       ),
     },
     recentEvents: report.recentEvents.map((ev) => ({

@@ -468,11 +468,15 @@ export const ActiveCraftCard: React.FC<ActiveCraftCardProps> = ({
                         ? 'bg-amber-950/80 text-amber-300 border border-amber-700/60 hover:bg-amber-900/90'
                         : calc.isSkillLevelInferred
                         ? 'bg-amber-950/60 text-amber-300 border border-amber-700/50 hover:bg-amber-900/70'
+                        : calc.liveXpBridge && calc.liveXpBridge.unflushedCraftXp > 0
+                        ? 'bg-sky-950/80 text-sky-200 border border-sky-700/70 hover:bg-sky-900/80'
                         : 'bg-emerald-950/80 text-emerald-300 border border-emerald-800/60 hover:bg-emerald-900/90'
                     }`}
                     title={
                       calc.isSkillLevelInferred
                         ? 'BitJita experience data was unavailable for this player. Level is inferred based on your equipped tool and crafting station requirements. Click to enter your exact level.'
+                        : calc.liveXpBridge && calc.liveXpBridge.unflushedCraftXp > 0
+                        ? `Live-synced with +${calc.liveXpBridge.unflushedCraftXp.toLocaleString()} XP from this craft while BitJita snapshot is at Level ${calc.liveXpBridge.serverSkillLevel} (${calc.liveXpBridge.serverSkillXp.toLocaleString()} XP). Automatically re-anchors when BitJita flushes. Click to customize.`
                         : 'Click to customize your skill level'
                     }
                   >
@@ -482,6 +486,10 @@ export const ActiveCraftCard: React.FC<ActiveCraftCardProps> = ({
                     ) : calc.isSkillLevelInferred ? (
                       <span className="text-[9px] text-amber-400/90 font-normal bg-amber-900/50 px-1 rounded border border-amber-700/40 flex items-center gap-0.5">
                         Inferred ℹ️
+                      </span>
+                    ) : calc.liveXpBridge && calc.liveXpBridge.unflushedCraftXp > 0 ? (
+                      <span className="text-[9px] text-sky-300/90 font-normal bg-sky-900/50 px-1 rounded border border-sky-700/50">
+                        Live
                       </span>
                     ) : null}
                     <Edit2 className="w-2.5 h-2.5 opacity-60 hover:opacity-100 ml-0.5" />

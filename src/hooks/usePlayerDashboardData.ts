@@ -674,6 +674,7 @@ export function usePlayerDashboardData({
     activeCraftMetadata,
     nearbyCrafts,
     contributions,
+    contributionsCraftId: contributionsState.craftId,
     contributorPayloads,
     includedContributors,
     setIncludedContributors,

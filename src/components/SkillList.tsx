@@ -10,6 +10,7 @@ interface SkillListProps {
   highlightSkillId?: number;
   isInitiallyCollapsed?: boolean;
   skillOverrides?: SkillOverrideMap;
+  liveSkillXpOverride?: { skillId: number; xp: number } | null;
   onSetSkillLevel?: (skillId: number, level: number) => void;
   onClearSkillOverride?: (skillId: number) => void;
 }
@@ -19,6 +20,7 @@ export const SkillList: React.FC<SkillListProps> = ({
   highlightSkillId,
   isInitiallyCollapsed = false,
   skillOverrides = {},
+  liveSkillXpOverride = null,
   onSetSkillLevel,
   onClearSkillOverride,
 }) => {
@@ -48,7 +50,15 @@ export const SkillList: React.FC<SkillListProps> = ({
   const skillList = Object.values(SKILL_DEFINITIONS).filter((s) => s.id !== 1);
   const activeSkill = highlightSkillId ? SKILL_DEFINITIONS[highlightSkillId] : null;
   const activeOverride = highlightSkillId ? skillOverrides[highlightSkillId] : null;
-  const activeSkillExp = activeOverride?.xp ?? (activeOverride?.level ? calculateXpForLevel(activeOverride.level) : (highlightSkillId ? expMap.get(highlightSkillId) || 0 : 0));
+  const activeLiveXp =
+    highlightSkillId && liveSkillXpOverride && liveSkillXpOverride.skillId === highlightSkillId
+      ? liveSkillXpOverride.xp
+      : null;
+  const activeSkillExp =
+    activeOverride?.xp ??
+    (activeOverride?.level
+      ? calculateXpForLevel(activeOverride.level)
+      : (activeLiveXp ?? (highlightSkillId ? expMap.get(highlightSkillId) || 0 : 0)));
   const activeSkillProg = getXpProgressForLevel(activeSkillExp);
 
   const startEditing = (skillId: number, currentLevel: number) => {
@@ -131,7 +141,18 @@ export const SkillList: React.FC<SkillListProps> = ({
           const override = skillOverrides[skill.id];
           const hasOverride = Boolean(override);
           const rawServerXp = expMap.get(skill.id) || 0;
-          const currentXp = override?.xp ?? (override?.level ? calculateXpForLevel(override.level) : rawServerXp);
+          const isLiveBridged =
+            !hasOverride &&
+            liveSkillXpOverride !== null &&
+            liveSkillXpOverride.skillId === skill.id &&
+            liveSkillXpOverride.xp > rawServerXp;
+          const currentXp =
+            override?.xp ??
+            (override?.level
+              ? calculateXpForLevel(override.level)
+              : isLiveBridged && liveSkillXpOverride
+                ? liveSkillXpOverride.xp
+                : rawServerXp);
           const prog = getXpProgressForLevel(currentXp);
           const isHighlighted = highlightSkillId === skill.id;
           const isEditing = editingSkillId === skill.id;
