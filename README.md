@@ -47,6 +47,7 @@ A high-performance, real-time web application to track active crafting progress,
 
 ### 7. Multi-User Collaborative Crafting & Contributor Projections
 - **Dynamic Activity Detection:** Tracks live contributor recency (`🔥 Currently Crafting`, `Active Participant`, `Idle / Left`).
+- **Authoritative Helper Power & Unified Speed:** Enriches up to 5 active non-primary helpers with `/players/{id}/tools` and `/players/{id}` (with HTTP `429` circuit-breaker protection) to calculate exact tool + profession level power, filter cross-profession gear stats, ignore expired food buffs lingering in stale `/stats` (`stat15`), and apply `+1` station-initiation off-by-one correction on historical fallbacks.
 - **Compounded Team Speed:** Combines the effort-per-second rates of all active participants to compute collaborative station completion times.
 - **Time Saved Metrics:** Displays projected finish ETAs alongside solo duration baselines, estimated future hours saved, past work saved, and total project savings.
 - **XP Share Distribution:** Accurately distributes remaining craft effort and expected XP according to each participant's relative crafting speed and gear buffs.
@@ -145,10 +146,18 @@ npm run dev
 ```
 Open [http://localhost:5173](http://localhost:5173) in your browser.
 
-### Running Linter & Unit Tests
+### Running Linter, Version Check & Unit Tests
 ```bash
 npm run lint
+npm run version:check
 npm run test:run
+```
+
+### Bumping Project Version
+Keep `package.json`, `package-lock.json`, `client-side-only/browser-extension/manifest.json`, and `nginx.conf` synchronized in one command:
+```bash
+npm run version:bump -- patch --dry-run   # preview next patch version
+npm run version:bump -- patch             # apply patch | minor | major | X.Y.Z
 ```
 
 ### Production Web Build

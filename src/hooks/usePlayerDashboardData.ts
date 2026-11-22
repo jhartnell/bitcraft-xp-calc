@@ -32,6 +32,7 @@ interface UsePlayerDashboardDataParams {
 const EMPTY_CONTRIBUTIONS: CraftContribution[] = [];
 const EMPTY_PAYLOADS: ContributorDetailPayload[] = [];
 export const MAX_ASSISTED_FETCHES_PER_POLL = 5;
+export const MAX_ACTIVE_HELPER_DETAIL_FETCHES = 5;
 
 export function usePlayerDashboardData({
   primaryPlayer,
@@ -102,23 +103,48 @@ export function usePlayerDashboardData({
       primaryId: string,
       craftReqId: number
     ) => {
+      // Cap detailed helper enrichment to the top N most recently active non-primary helpers
+      // so large community stations with dozens of historical helpers never trigger request storms.
+      const nonPrimarySorted = contribs
+        .filter((cb) => cb.contributorEntityId !== primaryId)
+        .sort((a, b) => {
+          const tA = a.lastContributedAt ? new Date(a.lastContributedAt).getTime() : 0;
+          const tB = b.lastContributedAt ? new Date(b.lastContributedAt).getTime() : 0;
+          return tB - tA;
+        });
+      const enrichedHelperIds = new Set(
+        nonPrimarySorted
+          .slice(0, MAX_ACTIVE_HELPER_DETAIL_FETCHES)
+          .map((cb) => cb.contributorEntityId)
+      );
+
       const payloads = await Promise.all(
         contribs.map(async (cb): Promise<ContributorDetailPayload> => {
-          if (cb.contributorEntityId === primaryId) {
+          if (cb.contributorEntityId === primaryId || !enrichedHelperIds.has(cb.contributorEntityId)) {
             return { contribution: cb };
           }
           try {
-            const [equip, contributorBuffs, contributorStats] = await Promise.all([
-              bitjitaApi.getPlayerEquipment(cb.contributorEntityId).catch(() => null),
-              bitjitaApi.getPlayerBuffs(cb.contributorEntityId).catch(() => null),
-              bitjitaApi.getPlayerStats(cb.contributorEntityId).catch(() => null),
-            ]);
+            const isRateLimited = bitjitaApi.status.rateLimitBackoffMs > 0;
+            const [equip, contributorBuffs, contributorStats, contributorTools, contributorDetails] =
+              await Promise.all([
+                bitjitaApi.getPlayerEquipment(cb.contributorEntityId).catch(() => null),
+                bitjitaApi.getPlayerBuffs(cb.contributorEntityId).catch(() => null),
+                bitjitaApi.getPlayerStats(cb.contributorEntityId).catch(() => null),
+                isRateLimited
+                  ? Promise.resolve(null)
+                  : bitjitaApi.getPlayerTools(cb.contributorEntityId).catch(() => null),
+                isRateLimited
+                  ? Promise.resolve(null)
+                  : bitjitaApi.getPlayerDetails(cb.contributorEntityId).catch(() => null),
+              ]);
 
             return {
               contribution: cb,
+              playerDetails: contributorDetails || undefined,
               equipment: equip?.equipment || [],
               buffs: contributorBuffs?.buffs || [],
               stats: contributorStats || undefined,
+              tools: contributorTools?.tools || [],
             };
           } catch {
             return { contribution: cb };

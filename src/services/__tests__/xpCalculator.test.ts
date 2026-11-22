@@ -282,6 +282,133 @@ describe('Multi-User Collaborative Crafting Engine', () => {
     expect(ikuriaPart?.totalExpectedXp).toBeGreaterThan(ikuriaPart?.earnedXp || 0);
     expect(oldPart?.totalExpectedXp).toBe(oldPart?.earnedXp || 0);
   });
+
+  it('uses authoritative helper tool power, level power, and unified speed reconciliation (ignoring expired buff stat15 drift)', () => {
+    const smithingCraft: CraftResult = {
+      ...mockCraft,
+      entityId: 'craft_smith_collab',
+      ownerEntityId: 'p_owner',
+      ownerUsername: 'Betwixt',
+      buildingName: 'Sturdy Smithing Station',
+      levelRequirements: [{ level: 1, skill_id: 6, skillName: 'Smithing' }],
+      toolRequirements: [{ level: 1, power: 1, tool_type: 5, name: 'Hammer' }],
+      experiencePerProgress: [{ quantity: 1.6, skill_id: 6 }],
+    };
+
+    const ownerPlayer: PlayerDetails = {
+      entityId: 'p_owner',
+      username: 'Betwixt',
+      experience: [{ skill_id: 6, quantity: 111240 }], // Level 30 Smithing
+    };
+    const primaryCalc = calculateCraftXp(
+      smithingCraft,
+      ownerPlayer,
+      [],
+      [],
+      null,
+      [],
+      null,
+      null,
+      null,
+      [{ toolType: 5, power: 13, level: 3 }]
+    );
+
+    const nowIso = new Date().toISOString();
+    const helperStatsValues = Array(60).fill(0);
+    // Stale stat #15 still reflects an expired +4.1% food buff (1.089 vs 4.8% real equipment speed)
+    helperStatsValues[15] = 1.089;
+    helperStatsValues[25] = 1.025; // +2.5% Smithing speed
+
+    const multi = calculateMultiUserCraftProjection(
+      smithingCraft,
+      ownerPlayer,
+      primaryCalc,
+      [
+        {
+          contribution: {
+            id: 'cb_owner',
+            contributorEntityId: 'p_owner',
+            contributorUsername: 'Betwixt',
+            contributionCount: 1000,
+            totalProgressContributed: 16000,
+            lastContributedAt: nowIso,
+          },
+          isIncluded: true,
+        },
+        {
+          contribution: {
+            id: 'cb_helper',
+            contributorEntityId: 'p_helper',
+            contributorUsername: 'Ikuria',
+            // Historical ratio has +1 off-by-one (2001 / 101 = 19.8), but authoritative tool + level power is 23!
+            contributionCount: 101,
+            totalProgressContributed: 2001,
+            lastContributedAt: nowIso,
+          },
+          playerDetails: {
+            entityId: 'p_helper',
+            username: 'Ikuria',
+            experience: [{ skill_id: 6, quantity: 960000 }], // Level 50 Smithing -> +5 level power bonus
+          },
+          tools: [{ toolType: 5, power: 18, level: 5 }], // Elenvar Hammer (18 Power, T4)
+          equipment: [
+            {
+              primary: 'chest',
+              item: {
+                id: 5001,
+                name: 'Smith Apron',
+                tier: 4,
+                stats: [
+                  { id: 15, name: 'Crafting Speed', value: 0.048, is_pct: true },
+                  // Unrelated Forestry speed should be ignored for Smithing
+                  { id: 21, name: 'Forestry Speed', value: 0.25, is_pct: true },
+                ],
+              },
+            },
+          ],
+          buffs: [
+            {
+              buffId: 1,
+              buffName: 'Food Buffs',
+              description: 'Level 1 Action Speed',
+              status: 'expired',
+              timeRemaining: -655,
+              buffDuration: 1800,
+              buffStartTimestamp: Date.now() - 2455_000,
+              stats: [{ id: 15, name: 'Crafting Speed', value: 0.041, is_pct: true }],
+            },
+          ],
+          stats: { entityId: 'p_helper', values: helperStatsValues },
+          isIncluded: true,
+        },
+        {
+          contribution: {
+            id: 'cb_idle_fallback',
+            contributorEntityId: 'p_idle',
+            contributorUsername: 'FallbackHelper',
+            // No detailed payload, exact +1 initiation off-by-one (2261 / 133 = 17, reported as 134)
+            contributionCount: 134,
+            totalProgressContributed: 2261,
+            lastContributedAt: '2026-08-20T01:00:00Z',
+          },
+          isIncluded: false,
+        },
+      ],
+      5.0
+    );
+
+    const helper = multi.participants.find((p) => p.username === 'Ikuria');
+    expect(helper).toBeDefined();
+    // 18 tool power + 5 Level 50 Smithing bonus = 23 authoritative power
+    expect(helper!.progressPerAction).toBe(23);
+    expect(helper!.equippedToolName).toBe('Elenvar Hammer');
+    expect(helper!.equippedToolTier).toBe(4);
+    // Speed = +4.8% gear + 0% expired buff + 2.5% Smithing speed = +7.3% (NOT +11.4% from stale stat15!)
+    expect(helper!.craftingSpeedBonusPercent).toBe(7.3);
+
+    const fallbackHelper = multi.participants.find((p) => p.username === 'FallbackHelper');
+    expect(fallbackHelper!.progressPerAction).toBe(17);
+  });
 });
 
 describe('Bitcraft XP and Level Progression Curve', () => {
