@@ -1811,4 +1811,99 @@ describe('Level Milestone Timing & Multi-Level Forecast Engine', () => {
     expect(result.speedBreakdown.professionSkillBonusPercent).toBe(1.1);
     expect(result.totalCraftingSpeedMultiplier).toBeCloseTo(1.011, 3);
   });
+
+  it('advances an anchored mid-craft manual skill override live with new craft progress and yields when BitJita catches up', () => {
+    const smithingCraft: CraftResult = {
+      entityId: '576460753175176817',
+      buildingEntityId: 'b_smith',
+      buildingName: 'Sturdy Smithing Station',
+      ownerEntityId: '1224979099304183020',
+      ownerUsername: 'Betwixt',
+      regionId: 8,
+      progress: 94562,
+      recipeId: 103006,
+      craftCount: 2192,
+      actionsRequiredPerItem: 50,
+      totalActionsRequired: 109600,
+      completed: false,
+      craftedItem: [],
+      experiencePerProgress: [{ quantity: 1.6, skill_id: 6 }],
+      lockExpiration: '2026-11-22T22:00:00Z',
+    };
+
+    const player: PlayerDetails = {
+      entityId: '1224979099304183020',
+      username: 'Betwixt',
+      experience: [{ skill_id: 6, quantity: 115478 }], // Lagging at Level 30
+    };
+
+    // User entered Level 32 (129,460 XP) when their verified craft progress was 84,562
+    const overrides = {
+      6: {
+        level: 32,
+        updatedAt: Date.now(),
+        anchorCraftId: smithingCraft.entityId,
+        anchorUserProgress: 84562,
+      },
+    };
+
+    // After contributing +10,000 more effort (84,562 -> 94,562 = +16,000 XP), override advances to 145,460 XP (Level 33!)
+    const contribs: CraftContribution[] = [
+      {
+        id: 'cb_1',
+        contributorEntityId: player.entityId,
+        contributorUsername: 'Betwixt',
+        totalProgressContributed: 94562,
+        contributionCount: 5900,
+        lastContributedAt: new Date().toISOString(),
+      },
+    ];
+
+    const advancing = calculateCraftXp(
+      smithingCraft,
+      player,
+      [],
+      [],
+      null,
+      contribs,
+      null,
+      null,
+      null,
+      [],
+      overrides
+    );
+
+    expect(advancing.currentSkillXp).toBe(145460); // 129,460 + 16,000
+    expect(advancing.currentSkillLevel).toBe(33);
+    expect(advancing.isSkillLevelOverridden).toBe(true);
+    expect(advancing.liveXpBridge?.isManualOverrideAnchored).toBe(true);
+    expect(advancing.liveXpBridge?.overrideCraftDeltaXp).toBe(16000);
+    expect(advancing.liveXpBridge?.hasServerCaughtUpToOverride).toBe(false);
+
+    // Once BitJita catches up past 145,460 XP (e.g., 150,000 XP), yields cleanly to BitJita with zero double-counting
+    const caughtUpPlayer: PlayerDetails = {
+      ...player,
+      experience: [{ skill_id: 6, quantity: 150000 }],
+    };
+
+    const caughtUp = calculateCraftXp(
+      smithingCraft,
+      caughtUpPlayer,
+      [],
+      [],
+      null,
+      contribs,
+      null,
+      null,
+      null,
+      [],
+      overrides
+    );
+
+    expect(caughtUp.currentSkillXp).toBe(150000);
+    expect(caughtUp.currentSkillLevel).toBe(33);
+    expect(caughtUp.isSkillLevelOverridden).toBe(false);
+    expect(caughtUp.liveXpBridge?.hasServerCaughtUpToOverride).toBe(true);
+    expect(caughtUp.liveXpBridge?.unflushedCraftXp).toBe(0);
+  });
 });

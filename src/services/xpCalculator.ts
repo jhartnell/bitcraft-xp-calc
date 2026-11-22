@@ -81,6 +81,105 @@ export function resolvePlayerServerSkillXp(
   };
 }
 
+export function resolveCraftXpRate(
+  craft: CraftResult,
+  equipment: EquipmentSlot[] = [],
+  buffs: PlayerBuff[] = [],
+  stats: PlayerStatsData | null = null,
+  foodBuffOverride: FoodBuffOverride | null = null,
+  overrideBaseXp: number | null = null
+): {
+  skillId: number;
+  baseXpPerAction: number;
+  xpMultiplier: number;
+  effectiveXpPerAction: number;
+} {
+  const recipeExp =
+    craft.experiencePerProgress && craft.experiencePerProgress.length > 0
+      ? craft.experiencePerProgress
+      : bitjitaApi.getRecipeExperience(craft.recipeId);
+
+  const skillId = getCraftSkillId(craft, recipeExp) || 4;
+  const skillNameLower = (SKILL_DEFINITIONS[skillId]?.name || '').toLowerCase();
+
+  let baseXpPerAction = DEFAULT_SKILL_BASE_XP[skillId] || 1.6;
+  if (overrideBaseXp && overrideBaseXp > 0) {
+    baseXpPerAction = overrideBaseXp;
+  } else if (recipeExp && recipeExp.length > 0) {
+    const matched = recipeExp.find((ep) => ep.skill_id === skillId);
+    baseXpPerAction = matched ? matched.quantity : recipeExp[0].quantity;
+  }
+
+  let equipExpRateBonus = 0;
+  for (const slot of equipment) {
+    if (slot.item && slot.item.stats) {
+      for (const stat of slot.item.stats) {
+        const statNameLower = (stat.name || '').toLowerCase();
+        const belongsToOtherProfession = ALL_PROFESSION_NAMES.some(
+          (p) => p !== skillNameLower && statNameLower.includes(p)
+        );
+        if (belongsToOtherProfession) continue;
+        if (
+          stat.id === 50 ||
+          statNameLower.includes('experience rate') ||
+          (skillNameLower && statNameLower.includes(`${skillNameLower} exp`))
+        ) {
+          equipExpRateBonus += stat.value;
+        }
+      }
+    }
+  }
+
+  let serverBuffExpRateBonus = 0;
+  for (const buff of buffs) {
+    const isBuffActive = buff.status === 'active' || (buff.timeRemaining && buff.timeRemaining > 0);
+    if (!isBuffActive || !buff.stats) continue;
+    for (const st of buff.stats) {
+      if (st.id === 50 || st.name.toLowerCase().includes('experience rate')) {
+        serverBuffExpRateBonus += st.value;
+      }
+    }
+  }
+
+  let buffExpRateBonus = serverBuffExpRateBonus;
+  let appliedManualFoodXpBonus = 0;
+  if (foodBuffOverride && foodBuffOverride.enabled) {
+    const elapsedSecs = Math.max(0, (Date.now() - foodBuffOverride.startedAt) / 1000);
+    const remainingSecs = Math.max(0, Math.round(foodBuffOverride.durationSeconds - elapsedSecs));
+    if (remainingSecs > 0) {
+      const manualFoodXpBonus = foodBuffOverride.xpRateBonus || 0;
+      if (serverBuffExpRateBonus === 0 && manualFoodXpBonus !== 0) {
+        buffExpRateBonus += manualFoodXpBonus;
+        appliedManualFoodXpBonus = manualFoodXpBonus;
+      }
+    }
+  }
+
+  let xpMultiplier = 1.0;
+  if (stats && stats.values && typeof stats.values[50] === 'number' && stats.values[50] > 0) {
+    xpMultiplier = Math.max(0.1, Math.max(1.0, stats.values[50] / 100.0) + appliedManualFoodXpBonus);
+  } else {
+    xpMultiplier = Math.max(0.1, 1.0 + equipExpRateBonus + buffExpRateBonus);
+    for (const slot of equipment) {
+      if (slot.primary.includes('instrument') && slot.item) {
+        if (
+          slot.primary.includes(skillNameLower) ||
+          slot.item.name.toLowerCase().includes(skillNameLower)
+        ) {
+          xpMultiplier += 0.05;
+        }
+      }
+    }
+  }
+
+  return {
+    skillId,
+    baseXpPerAction,
+    xpMultiplier,
+    effectiveXpPerAction: baseXpPerAction * xpMultiplier,
+  };
+}
+
 export function calculateCraftXp(
   craft: CraftResult,
   player: PlayerDetails | null,
@@ -369,13 +468,14 @@ export function calculateCraftXp(
   const { hasServerExperience, serverSkillXp } = resolvePlayerServerSkillXp(player, skillId);
   let currentSkillXp = serverSkillXp;
   let hasManualOverride = false;
+  let manualOverrideBaseXp = 0;
 
   if (manualOverride) {
     if (typeof manualOverride.xp === 'number' && manualOverride.xp > 0) {
-      currentSkillXp = manualOverride.xp;
+      manualOverrideBaseXp = manualOverride.xp;
       hasManualOverride = true;
     } else if (typeof manualOverride.level === 'number' && manualOverride.level > 0) {
-      currentSkillXp = calculateXpForLevel(manualOverride.level);
+      manualOverrideBaseXp = calculateXpForLevel(manualOverride.level);
       hasManualOverride = true;
     }
   }
@@ -398,23 +498,78 @@ export function calculateCraftXp(
       ? 0
       : null;
 
-  const liveXpBridge = liveXpAnchor
-    ? computeLiveXpAdjustment({
-        anchor: liveXpAnchor,
-        serverSkillXp,
-        hasServerExperience,
-        hasManualOverride,
-        userProgress: verifiedUserProgress,
-        effectiveXpPerAction,
-      })
-    : null;
+  let liveXpBridge = null;
+  let isSkillLevelLiveBridged = false;
 
-  const isSkillLevelLiveBridged = Boolean(
-    !hasManualOverride && liveXpBridge && liveXpBridge.unflushedCraftXp > 0
-  );
+  if (hasManualOverride) {
+    const isAnchoredToThisCraft = Boolean(
+      manualOverride?.anchorCraftId === craft.entityId &&
+        typeof manualOverride.anchorUserProgress === 'number' &&
+        verifiedUserProgress !== null &&
+        effectiveXpPerAction > 0
+    );
 
-  if (isSkillLevelLiveBridged && liveXpBridge) {
-    currentSkillXp = liveXpBridge.effectiveSkillXp;
+    if (isAnchoredToThisCraft && verifiedUserProgress !== null && manualOverride?.anchorUserProgress !== undefined) {
+      const overrideDeltaProgress = Math.max(
+        0,
+        verifiedUserProgress - Math.max(0, manualOverride.anchorUserProgress)
+      );
+      const overrideCraftDeltaXp = Math.round(overrideDeltaProgress * effectiveXpPerAction);
+      const overrideLiveXp = manualOverrideBaseXp + overrideCraftDeltaXp;
+
+      if (hasServerExperience && serverSkillXp >= overrideLiveXp) {
+        // BitJita has caught up to or surpassed the anchored manual override: yield cleanly to server XP
+        currentSkillXp = serverSkillXp;
+        hasManualOverride = false;
+        liveXpBridge = {
+          serverSkillXp,
+          serverSkillLevel: getXpProgressForLevel(serverSkillXp).level,
+          unflushedCraftXp: 0,
+          effectiveSkillXp: serverSkillXp,
+          priorCraftProgress: 0,
+          priorCraftXp: 0,
+          isPriorCraftXpIncluded: false,
+          isServerXpLagging: false,
+          canIncludePriorCraftXp: false,
+          isManualOverrideAnchored: false,
+          overrideCraftDeltaXp: 0,
+          hasServerCaughtUpToOverride: true,
+        };
+      } else {
+        currentSkillXp = overrideLiveXp;
+        isSkillLevelLiveBridged = overrideCraftDeltaXp > 0;
+        liveXpBridge = {
+          serverSkillXp,
+          serverSkillLevel: getXpProgressForLevel(serverSkillXp).level,
+          unflushedCraftXp: hasServerExperience ? Math.max(0, overrideLiveXp - serverSkillXp) : overrideCraftDeltaXp,
+          effectiveSkillXp: overrideLiveXp,
+          priorCraftProgress: 0,
+          priorCraftXp: 0,
+          isPriorCraftXpIncluded: false,
+          isServerXpLagging: hasServerExperience && serverSkillXp < overrideLiveXp,
+          canIncludePriorCraftXp: false,
+          isManualOverrideAnchored: true,
+          overrideCraftDeltaXp,
+          hasServerCaughtUpToOverride: false,
+        };
+      }
+    } else {
+      currentSkillXp = manualOverrideBaseXp;
+    }
+  } else if (liveXpAnchor) {
+    liveXpBridge = computeLiveXpAdjustment({
+      anchor: liveXpAnchor,
+      serverSkillXp,
+      hasServerExperience,
+      hasManualOverride: false,
+      userProgress: verifiedUserProgress,
+      effectiveXpPerAction,
+    });
+
+    isSkillLevelLiveBridged = Boolean(liveXpBridge && liveXpBridge.unflushedCraftXp > 0);
+    if (isSkillLevelLiveBridged && liveXpBridge) {
+      currentSkillXp = liveXpBridge.effectiveSkillXp;
+    }
   }
 
   let currentLevelProgress = getXpProgressForLevel(currentSkillXp);

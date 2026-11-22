@@ -64,23 +64,26 @@ export function saveLiveXpAnchor(
 
 /**
  * Pure state-transition function that reconciles a persisted XP anchor against the latest
- * BitJita server XP and verified player craft contribution progress.
+ * BitJita server XP, verified player craft contribution progress, and XP per effort unit.
  *
- * - On cold start: anchors to (serverXp, userProgress) with includePriorCraftProgress = false.
- * - When serverXp increases (BitJita flushed): re-anchors immediately to (serverXp, userProgress),
- *   clears includePriorCraftProgress, and marks hasObservedServerSync = true so prior progress
- *   is never double-counted.
- * - When serverXp stays flat while userProgress advances: preserves the baseline and marks
- *   hasObservedLag = true so the unflushed craft delta bridges the gap.
+ * Key invariant (Monotonic XP Conservation across BitJita partial trickles):
+ * - BitJita frequently trickles `player.experience` upward in partial/delayed increments
+ *   that still lag thousands of XP behind live craft contributions.
+ * - We ONLY re-anchor and clear bridged XP when `serverXp >= expectedXpFromAnchor` (true full
+ *   catch-up or external XP gain). Partial trickles (`baselineServerXp < serverXp < expectedXp`)
+ *   keep the original anchor intact so the bridged level never crashes backward and `unflushedCraftXp`
+ *   smoothly drains toward 0 as BitJita catches up — with zero double-counting.
  */
 export function reconcileLiveXpAnchor(
   prev: LiveXpAnchor | null,
   serverXp: number,
   userProgress: number,
+  effectiveXpPerAction: number = 0,
   now: number = 0
 ): LiveXpAnchor {
   const safeServerXp = Math.max(0, Math.round(serverXp));
   const safeProgress = Math.max(0, userProgress);
+  const safeRate = effectiveXpPerAction > 0 && isFinite(effectiveXpPerAction) ? effectiveXpPerAction : 0;
 
   if (!prev) {
     return {
@@ -89,18 +92,6 @@ export function reconcileLiveXpAnchor(
       includePriorCraftProgress: false,
       hasObservedLag: false,
       hasObservedServerSync: false,
-      updatedAt: now,
-    };
-  }
-
-  // BitJita flushed server experience upward -> re-anchor immediately to avoid double-counting
-  if (safeServerXp > prev.baselineServerXp) {
-    return {
-      baselineServerXp: safeServerXp,
-      baselineUserProgress: safeProgress,
-      includePriorCraftProgress: false,
-      hasObservedLag: false,
-      hasObservedServerSync: true,
       updatedAt: now,
     };
   }
@@ -117,8 +108,41 @@ export function reconcileLiveXpAnchor(
     };
   }
 
-  // Server XP unchanged: track lag if craft progress advanced beyond the anchor
   const clampedBaselineProgress = Math.min(prev.baselineUserProgress, safeProgress);
+  const effectiveStartProgress = prev.includePriorCraftProgress ? 0 : clampedBaselineProgress;
+  const expectedXpFromAnchor =
+    safeRate > 0
+      ? prev.baselineServerXp +
+        Math.round(Math.max(0, safeProgress - effectiveStartProgress) * safeRate)
+      : prev.baselineServerXp;
+
+  // BitJita flushed server experience upward:
+  // Only re-anchor when server XP has truly caught up to (or surpassed) the expected XP from our anchor.
+  if (safeServerXp > prev.baselineServerXp) {
+    if (safeRate <= 0 || safeServerXp >= expectedXpFromAnchor) {
+      return {
+        baselineServerXp: safeServerXp,
+        baselineUserProgress: safeProgress,
+        includePriorCraftProgress: false,
+        hasObservedLag: false,
+        hasObservedServerSync: true,
+        updatedAt: now,
+      };
+    }
+
+    // Partial/delayed trickle: BitJita increased slightly but is still lagging behind live craft progress.
+    // Preserve the anchor so Current Level does not drop backward; unflushedCraftXp will shrink naturally.
+    return {
+      baselineServerXp: prev.baselineServerXp,
+      baselineUserProgress: clampedBaselineProgress,
+      includePriorCraftProgress: prev.includePriorCraftProgress,
+      hasObservedLag: true,
+      hasObservedServerSync: prev.hasObservedServerSync,
+      updatedAt: now,
+    };
+  }
+
+  // Server XP unchanged: track lag if craft progress advanced beyond the anchor
   const progressedBeyondBaseline = safeProgress > clampedBaselineProgress;
 
   return {
@@ -155,7 +179,7 @@ export interface ComputeLiveXpAdjustmentParams {
 /**
  * Computes the live-adjusted skill XP and UI reconciliation metadata for the active craft.
  * Re-reconciles against serverSkillXp synchronously so even on the exact render frame where
- * BitJita flushes new server XP, XP is never double-counted.
+ * BitJita flushes new server XP, XP is never double-counted or dropped backward on partial trickles.
  */
 export function computeLiveXpAdjustment({
   anchor,
@@ -171,7 +195,12 @@ export function computeLiveXpAdjustment({
 
   const safeServerXp = Math.max(0, Math.round(serverSkillXp));
   const safeProgress = Math.max(0, userProgress);
-  const effectiveAnchor = reconcileLiveXpAnchor(anchor, safeServerXp, safeProgress);
+  const effectiveAnchor = reconcileLiveXpAnchor(
+    anchor,
+    safeServerXp,
+    safeProgress,
+    effectiveXpPerAction
+  );
 
   const observedDeltaProgress = Math.max(0, safeProgress - effectiveAnchor.baselineUserProgress);
   const priorCraftProgress = effectiveAnchor.hasObservedServerSync
@@ -184,11 +213,13 @@ export function computeLiveXpAdjustment({
     effectiveAnchor.includePriorCraftProgress &&
     priorCraftProgress > 0;
 
-  const unflushedProgress = isPriorCraftXpIncluded ? safeProgress : observedDeltaProgress;
-  const unflushedCraftXp = Math.round(unflushedProgress * effectiveXpPerAction);
-  const effectiveSkillXp = safeServerXp + unflushedCraftXp;
+  const unflushedProgressFromAnchor = isPriorCraftXpIncluded ? safeProgress : observedDeltaProgress;
+  const expectedSkillXp =
+    effectiveAnchor.baselineServerXp + Math.round(unflushedProgressFromAnchor * effectiveXpPerAction);
+  const effectiveSkillXp = Math.max(safeServerXp, expectedSkillXp);
+  const unflushedCraftXp = Math.max(0, effectiveSkillXp - safeServerXp);
 
-  const isServerXpLagging = effectiveAnchor.hasObservedLag || observedDeltaProgress > 0;
+  const isServerXpLagging = effectiveAnchor.hasObservedLag || unflushedCraftXp > 0;
   const canIncludePriorCraftXp =
     !effectiveAnchor.hasObservedServerSync && priorCraftProgress > 0 && priorCraftXp > 0;
 

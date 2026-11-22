@@ -482,7 +482,9 @@ export const ActiveCraftCard: React.FC<ActiveCraftCardProps> = ({
                   >
                     <span>Lvl {calc.currentSkillLevel}</span>
                     {skillOverrides[calc.skillId] ? (
-                      <span className="text-[9px] text-amber-300/80 font-normal">(Custom)</span>
+                      <span className="text-[9px] text-amber-300/80 font-normal">
+                        {calc.liveXpBridge?.isManualOverrideAnchored ? '(Custom • Live)' : '(Custom)'}
+                      </span>
                     ) : calc.isSkillLevelInferred ? (
                       <span className="text-[9px] text-amber-400/90 font-normal bg-amber-900/50 px-1 rounded border border-amber-700/40 flex items-center gap-0.5">
                         Inferred ℹ️

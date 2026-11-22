@@ -74,6 +74,7 @@ export function usePlayerDashboardData({
   const selectedCraftIdRef = useRef<string | null>(null);
   const playerExpSnapshotRef = useRef<Map<number, number>>(new Map());
   const fetchedMissingMetaIdsRef = useRef<Set<string>>(new Set());
+  const lastNearbySweepKeyRef = useRef<string | null>(null);
 
   const mergeItemMetadata = useCallback((items?: ItemMetadata[], cargos?: ItemMetadata[]) => {
     if ((!items || items.length === 0) && (!cargos || cargos.length === 0)) return;
@@ -166,7 +167,11 @@ export function usePlayerDashboardData({
   );
 
   const loadPlayerData = useCallback(
-    async (player: PlayerSummary, forceFresh = false) => {
+    async (
+      player: PlayerSummary,
+      forceFresh = false,
+      options?: { forceNearbyRefresh?: boolean }
+    ) => {
       if (!player || !player.entityId) return;
 
       const reqId = ++loadRequestIdRef.current;
@@ -274,17 +279,31 @@ export function usePlayerDashboardData({
         }
 
         let nearList: NearbyCraftItem[] = [];
+        let nearFetchFailed = false;
         if (activeRegionId) {
+          const coordBucketX =
+            effectivePlayerX !== undefined ? Math.round(effectivePlayerX / 50) : 'none';
+          const coordBucketZ =
+            effectivePlayerZ !== undefined ? Math.round(effectivePlayerZ / 50) : 'none';
+          const sweepKey = `${player.entityId}:${activeRegionId}:${coordBucketX}:${coordBucketZ}`;
+          const playerMovedOrChangedRegion =
+            lastNearbySweepKeyRef.current !== null && lastNearbySweepKeyRef.current !== sweepKey;
+          const shouldForceFreshNearby = Boolean(
+            options?.forceNearbyRefresh || playerMovedOrChangedRegion
+          );
+          lastNearbySweepKeyRef.current = sweepKey;
+
           try {
             nearList = await bitjitaApi.getNearbyActiveCrafts(
               activeRegionId,
               effectivePlayerX,
               effectivePlayerZ,
               500,
-              forceFresh
+              shouldForceFreshNearby
             );
           } catch {
             nearList = [];
+            nearFetchFailed = true;
           }
         }
 
@@ -384,7 +403,7 @@ export function usePlayerDashboardData({
           });
 
           setNearbyCrafts(enhancedNearby);
-        } else {
+        } else if (!nearFetchFailed) {
           setNearbyCrafts([]);
         }
 
@@ -473,6 +492,7 @@ export function usePlayerDashboardData({
     (player: PlayerSummary) => {
       selectedCraftIdRef.current = null;
       playerExpSnapshotRef.current = new Map();
+      lastNearbySweepKeyRef.current = null;
       setPlayerDetails(null);
       setCrafts([]);
       setNearbyCrafts([]);
@@ -516,7 +536,7 @@ export function usePlayerDashboardData({
   const handleManualRefresh = useCallback(() => {
     if (selectedPlayer) {
       setPollAnchorAt(Date.now());
-      void loadPlayerData(selectedPlayer, true);
+      void loadPlayerData(selectedPlayer, true, { forceNearbyRefresh: true });
     }
   }, [selectedPlayer, loadPlayerData]);
 
@@ -524,7 +544,7 @@ export function usePlayerDashboardData({
     bitjitaApi.clearCache();
     fetchedMissingMetaIdsRef.current.clear();
     if (selectedPlayer) {
-      void loadPlayerData(selectedPlayer, true);
+      void loadPlayerData(selectedPlayer, true, { forceNearbyRefresh: true });
     }
   }, [selectedPlayer, loadPlayerData]);
 

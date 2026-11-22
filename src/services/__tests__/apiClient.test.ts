@@ -365,4 +365,78 @@ describe('PoliteApiClient Cache & Inspector', () => {
 
     vi.unstubAllGlobals();
   });
+
+  it('serves stale cached data on timeout when staleIfError is enabled and honors per-endpoint cooldown', async () => {
+    bitjitaApi.clearCache();
+    bitjitaApi.clearAnomalies();
+
+    let callCount = 0;
+    const mockFetch = vi.fn().mockImplementation(() => {
+      callCount += 1;
+      if (callCount === 1) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            craftResults: [
+              {
+                entityId: 'nearby_1',
+                regionId: 8,
+                claimLocationX: 100,
+                claimLocationZ: 100,
+                completed: false,
+              },
+            ],
+            items: [],
+            cargos: [],
+          }),
+        });
+      }
+      if (callCount === 2) {
+        return Promise.reject(new Error('signal timed out'));
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({
+          craftResults: [
+            {
+              entityId: 'nearby_fresh',
+              regionId: 8,
+              claimLocationX: 100,
+              claimLocationZ: 100,
+              completed: false,
+            },
+          ],
+          items: [],
+          cargos: [],
+        }),
+      });
+    });
+
+    vi.stubGlobal('fetch', mockFetch);
+
+    // 1. Seed cache cleanly
+    const initial = await bitjitaApi.getNearbyActiveCrafts(8, 100, 100, 500, true);
+    expect(initial.length).toBe(1);
+    expect(initial[0].craft.entityId).toBe('nearby_1');
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+
+    // 2. Forced refresh times out -> falls back to stale cache instead of throwing and records warn-level stale_fallback
+    const fallback = await bitjitaApi.getNearbyActiveCrafts(8, 100, 100, 500, true);
+    expect(fallback.length).toBe(1);
+    expect(fallback[0].craft.entityId).toBe('nearby_1');
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(bitjitaApi.getAnomalies()[0]?.type).toBe('stale_fallback');
+
+    // 3. Subsequent non-forced call during cooldown returns cached data without hitting network
+    const duringCooldown = await bitjitaApi.getNearbyActiveCrafts(8, 100, 100, 500, false);
+    expect(duringCooldown[0].craft.entityId).toBe('nearby_1');
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+
+    // 4. Subsequent forced refresh that succeeds clears the stale_fallback anomaly
+    const recovered = await bitjitaApi.getNearbyActiveCrafts(8, 100, 100, 500, true);
+    expect(recovered[0].craft.entityId).toBe('nearby_fresh');
+    expect(bitjitaApi.getAnomalies().length).toBe(0);
+
+    vi.unstubAllGlobals();
+  });
 });

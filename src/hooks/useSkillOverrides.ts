@@ -3,10 +3,15 @@ import { SkillOverrideMap } from '../types/calculator';
 
 const STORAGE_PREFIX = 'bitcraft_skill_overrides_';
 
+export interface SkillOverrideCraftAnchor {
+  craftId: string;
+  userProgress: number;
+}
+
 export interface UseSkillOverridesReturn {
   overrides: SkillOverrideMap;
-  setSkillLevel: (skillId: number, level: number) => void;
-  setSkillXp: (skillId: number, xp: number) => void;
+  setSkillLevel: (skillId: number, level: number, craftAnchor?: SkillOverrideCraftAnchor) => void;
+  setSkillXp: (skillId: number, xp: number, craftAnchor?: SkillOverrideCraftAnchor) => void;
   clearSkillOverride: (skillId: number) => void;
   clearAllSkillOverrides: () => void;
 }
@@ -51,14 +56,19 @@ export function useSkillOverrides(playerEntityId?: string | null): UseSkillOverr
   );
 
   const setSkillLevel = useCallback(
-    (skillId: number, level: number) => {
+    (skillId: number, level: number, craftAnchor?: SkillOverrideCraftAnchor) => {
       const clampedLevel = Math.max(1, Math.min(110, Math.round(level)));
       const next: SkillOverrideMap = {
         ...overrides,
         [skillId]: {
-          ...overrides[skillId],
           level: clampedLevel,
           updatedAt: Date.now(),
+          ...(craftAnchor
+            ? {
+                anchorCraftId: craftAnchor.craftId,
+                anchorUserProgress: Math.max(0, craftAnchor.userProgress),
+              }
+            : {}),
         },
       };
       saveOverrides(next);
@@ -67,14 +77,19 @@ export function useSkillOverrides(playerEntityId?: string | null): UseSkillOverr
   );
 
   const setSkillXp = useCallback(
-    (skillId: number, xp: number) => {
+    (skillId: number, xp: number, craftAnchor?: SkillOverrideCraftAnchor) => {
       const clampedXp = Math.max(0, Math.round(xp));
       const next: SkillOverrideMap = {
         ...overrides,
         [skillId]: {
-          ...overrides[skillId],
           xp: clampedXp,
           updatedAt: Date.now(),
+          ...(craftAnchor
+            ? {
+                anchorCraftId: craftAnchor.craftId,
+                anchorUserProgress: Math.max(0, craftAnchor.userProgress),
+              }
+            : {}),
         },
       };
       saveOverrides(next);
