@@ -2,11 +2,11 @@ import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import {
   calculateCraftXp,
   calculateMultiUserCraftProjection,
+  resolveCraftXpRate,
   resolvePlayerServerSkillXp,
 } from './services/xpCalculator';
 import { PROFESSION_SPEED_STAT_IDS } from './services/toolMatching';
-import { getCraftSkillId, isContributionByPlayer } from './services/bitcraftData';
-import { bitjitaApi } from './services/apiClient';
+import { isContributionByPlayer } from './services/bitcraftData';
 import {
   DashboardDiagnosticsSnapshot,
   setDiagnosticsSnapshotProvider,
@@ -121,15 +121,13 @@ export const App: React.FC = () => {
     [contributions, selectedPlayer?.entityId, selectedPlayer?.username]
   );
 
-  // Self-correcting live skill XP bridge (compensates for BitJita /players/{id} experience lag)
-  const activeCraftSkillId = useMemo(() => {
-    if (!activeCraft) return undefined;
-    const recipeExp =
-      activeCraft.experiencePerProgress && activeCraft.experiencePerProgress.length > 0
-        ? activeCraft.experiencePerProgress
-        : bitjitaApi.getRecipeExperience(activeCraft.recipeId);
-    return getCraftSkillId(activeCraft, recipeExp) || 4;
-  }, [activeCraft]);
+  // Self-correcting live skill XP bridge (compensates for BitJita /players/{id} experience lag & partial trickles)
+  const activeCraftXpRate = useMemo(() => {
+    if (!activeCraft) return null;
+    return resolveCraftXpRate(activeCraft, equipment, buffs, stats, foodBuffOverride);
+  }, [activeCraft, equipment, buffs, stats, foodBuffOverride]);
+
+  const activeCraftSkillId = activeCraftXpRate?.skillId;
 
   const activeServerSkillXp = useMemo(() => {
     if (!activeCraftSkillId) return null;
@@ -173,7 +171,28 @@ export const App: React.FC = () => {
     craftId: activeCraft?.entityId,
     serverSkillXp: activeServerSkillXp,
     userProgress: verifiedBridgeProgress,
+    effectiveXpPerAction: activeCraftXpRate?.effectiveXpPerAction ?? 0,
   });
+
+  // Anchor manual skill level overrides to the active craft's verified progress so mid-craft overrides
+  // continue advancing live as you craft and auto-clear once BitJita catches up past them.
+  const handleSetSkillLevel = useCallback(
+    (skillId: number, level: number) => {
+      if (
+        activeCraft &&
+        activeCraftSkillId === skillId &&
+        verifiedBridgeProgress !== null
+      ) {
+        setSkillLevel(skillId, level, {
+          craftId: activeCraft.entityId,
+          userProgress: verifiedBridgeProgress,
+        });
+      } else {
+        setSkillLevel(skillId, level);
+      }
+    },
+    [activeCraft, activeCraftSkillId, verifiedBridgeProgress, setSkillLevel]
+  );
 
   // Memoized XP & Modifiers calculation result
   const baseCalcResult = useMemo(() => {
@@ -205,6 +224,22 @@ export const App: React.FC = () => {
     skillOverrides,
     liveXpAnchor,
   ]);
+
+  // Automatically clear an anchored mid-craft manual override once BitJita's server XP catches up past it
+  useEffect(() => {
+    if (!baseCalcResult?.liveXpBridge?.hasServerCaughtUpToOverride) return;
+    const skillIdToClear = baseCalcResult.skillId;
+    if (!skillOverrides[skillIdToClear]?.anchorCraftId) return;
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) {
+        clearSkillOverride(skillIdToClear);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [baseCalcResult, skillOverrides, clearSkillOverride]);
 
   const isActiveCraftHelper = Boolean(customCraft && activeUserContrib);
 
@@ -530,7 +565,7 @@ export const App: React.FC = () => {
                   onOpenPublicModal={() => setIsPublicModalOpen(true)}
                   onResetSession={resetSession}
                   skillOverrides={skillOverrides}
-                  onSetSkillLevel={setSkillLevel}
+                  onSetSkillLevel={handleSetSkillLevel}
                   onClearSkillOverride={clearSkillOverride}
                 />
 
@@ -550,6 +585,7 @@ export const App: React.FC = () => {
                   calc={calcResult}
                   onResetSession={resetSession}
                   onToggleIncludePriorCraftXp={setIncludePriorCraftProgress}
+                  onClearSkillOverride={clearSkillOverride}
                 />
 
                 {/* Modifiers (Food buffs & Equipment) */}
@@ -631,14 +667,16 @@ export const App: React.FC = () => {
                 highlightSkillId={calcResult?.skillId}
                 skillOverrides={skillOverrides}
                 liveSkillXpOverride={
-                  calcResult?.liveXpBridge && calcResult.liveXpBridge.unflushedCraftXp > 0
+                  calcResult?.liveXpBridge &&
+                  (calcResult.liveXpBridge.unflushedCraftXp > 0 ||
+                    (calcResult.liveXpBridge.overrideCraftDeltaXp ?? 0) > 0)
                     ? {
                         skillId: calcResult.skillId,
                         xp: calcResult.liveXpBridge.effectiveSkillXp,
                       }
                     : null
                 }
-                onSetSkillLevel={setSkillLevel}
+                onSetSkillLevel={handleSetSkillLevel}
                 onClearSkillOverride={clearSkillOverride}
               />
             )}

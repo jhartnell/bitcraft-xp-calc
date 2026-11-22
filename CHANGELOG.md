@@ -4,6 +4,17 @@ All notable changes to the **BitCraft Online XP Calculator** project are documen
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.3] - 2026-11-22
+
+### Added
+- **Live-Advancing Mid-Craft Skill Overrides:** When you manually set your current skill level during an active craft where you have verified contributions, the override now anchors to `{ anchorCraftId, anchorUserProgress }` and continues advancing live as you contribute more effort (`Custom Level Active (Live Advancing)` strip + `(Custom • Live)` badge). Once BitJita's server XP catches up to or surpasses your live-advancing override, the override automatically yields and clears from `localStorage` so XP is never double-counted.
+
+### Fixed
+- **Monotonic Live XP Conservation Across Partial BitJita Trickles:** Fixed `liveXpBridge.ts` so delayed, partial upward trickles in BitJita's `/players/{id}` `experience` array no longer wipe bridged craft XP or drop Current Level backward. The anchor now preserves bridged progress and smoothly drains `unflushedCraftXp` toward `0`, only re-anchoring when BitJita truly catches up (`serverXp >= expectedXpFromAnchor`).
+- **Nearby Region Sweep Throttling & Stale-on-Error Fallback:** Raised `/crafts?completed=false&region_id=*` cache TTL from `20s` to `120s` with `staleIfError: true` and a `120s` per-endpoint timeout cooldown (`stale_fallback` logged at `warn` severity instead of `error`). Automatic 30-second polls now reuse the cached region list unless the player moves (>50 units), changes regions, or clicks manual Refresh, preventing repeated 15-second timeout stalls and `nearbyCount: 0` wipes when BitJita's uncached 1.25 MB region endpoint is slow.
+
+---
+
 ## [1.10.2] - 2026-11-22
 
 ### Added

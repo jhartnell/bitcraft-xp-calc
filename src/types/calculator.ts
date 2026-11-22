@@ -191,6 +191,12 @@ export interface LiveSkillXpBridgeInfo {
   isPriorCraftXpIncluded: boolean;
   isServerXpLagging: boolean;
   canIncludePriorCraftXp: boolean;
+  /** True when a manual skill override is anchored to the active craft and advancing live */
+  isManualOverrideAnchored?: boolean;
+  /** XP added from verified craft progress since the manual override was anchored */
+  overrideCraftDeltaXp?: number;
+  /** True when BitJita server XP has caught up to or surpassed an anchored manual override */
+  hasServerCaughtUpToOverride?: boolean;
 }
 
 export interface XpCalculationResult {
@@ -261,6 +267,8 @@ export interface SkillOverrideItem {
   level?: number;
   xp?: number;
   updatedAt?: number;
+  anchorCraftId?: string;
+  anchorUserProgress?: number;
 }
 
 export type SkillOverrideMap = Record<number, SkillOverrideItem>;
@@ -281,7 +289,7 @@ export interface EndpointAnomaly {
   endpoint: string;
   method: string;
   timestamp: number;
-  type: 'null_payload' | 'empty_data' | 'http_error' | 'rate_limited';
+  type: 'null_payload' | 'empty_data' | 'http_error' | 'rate_limited' | 'stale_fallback';
   statusCode?: number;
   message: string;
   impact?: string;

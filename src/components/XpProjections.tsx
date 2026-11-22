@@ -25,12 +25,14 @@ interface XpProjectionsProps {
   calc: XpCalculationResult;
   onResetSession?: () => void;
   onToggleIncludePriorCraftXp?: (include: boolean) => void;
+  onClearSkillOverride?: (skillId: number) => void;
 }
 
 export const XpProjections: React.FC<XpProjectionsProps> = ({
   calc,
   onResetSession,
   onToggleIncludePriorCraftXp,
+  onClearSkillOverride,
 }) => {
   const [isMilestonesExpanded, setIsMilestonesExpanded] = useState(false);
   const { levelForecast, liveXpBridge } = calc;
@@ -236,6 +238,46 @@ export const XpProjections: React.FC<XpProjectionsProps> = ({
           </div>
         )}
 
+        {/* Live-Advancing Manual Skill Override Notice */}
+        {!calc.isSkillLevelInferred &&
+          calc.isSkillLevelOverridden &&
+          liveXpBridge?.isManualOverrideAnchored && (
+            <div className="bg-amber-950/35 border border-amber-700/50 rounded-xl p-3 text-xs text-amber-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 shadow-inner">
+              <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                <RefreshCw className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                <div className="space-y-0.5 min-w-0">
+                  <div className="font-semibold text-amber-200 flex items-center gap-1.5 flex-wrap">
+                    <span>Custom Level Active (Live Advancing)</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-900/70 border border-amber-700/60 text-amber-200 font-mono">
+                      BitJita: Lvl {liveXpBridge.serverSkillLevel} ({formatXp(liveXpBridge.serverSkillXp)} XP)
+                    </span>
+                    {(liveXpBridge.overrideCraftDeltaXp ?? 0) > 0 && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-950/80 border border-emerald-700/60 text-emerald-300 font-mono">
+                        +{formatXp(liveXpBridge.overrideCraftDeltaXp ?? 0)} live craft XP
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-amber-200/85 leading-relaxed">
+                    Your custom level is anchored to this craft and advances live as you contribute more effort. It automatically resets to BitJita once server XP catches up past your level.
+                  </p>
+                </div>
+              </div>
+
+              {onClearSkillOverride && (
+                <div className="shrink-0 flex items-center">
+                  <button
+                    type="button"
+                    onClick={() => onClearSkillOverride(calc.skillId)}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium bg-surface/80 hover:bg-surface-border border border-amber-700/60 text-amber-200 transition-colors cursor-pointer"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>Reset to BitJita</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
         {/* Live XP Sync Bridge & Cold-Start Mid-Craft Reconciliation */}
         {!calc.isSkillLevelInferred &&
           !calc.isSkillLevelOverridden &&
@@ -273,7 +315,7 @@ export const XpProjections: React.FC<XpProjectionsProps> = ({
                         {liveXpBridge.unflushedCraftXp > 0
                           ? ` (live delta +${liveXpBridge.unflushedCraftXp.toLocaleString()} XP is already bridged).`
                           : '.'}{' '}
-                        Include it if BitJita hasn&apos;t synced this craft yet — it auto-clears the moment BitJita updates.
+                        Include it only if BitJita hasn&apos;t synced this craft yet (otherwise click your Level badge above to set your exact level) — it auto-clears once BitJita fully catches up.
                       </>
                     ) : (
                       <>

@@ -14,6 +14,7 @@ interface UseLiveSkillXpBridgeParams {
   craftId?: string;
   serverSkillXp: number | null;
   userProgress: number | null;
+  effectiveXpPerAction: number;
 }
 
 export interface UseLiveSkillXpBridgeReturn {
@@ -25,7 +26,7 @@ export interface UseLiveSkillXpBridgeReturn {
  * Tracks a self-correcting (serverXp, userProgress) baseline anchor per
  * (playerId, skillId, craftId) in sessionStorage so live craft progress keeps
  * Current Level, Level Power/Speed bonuses, and Projected Final Level accurate
- * even while BitJita's /players/{id} experience endpoint lags behind.
+ * even while BitJita's /players/{id} experience endpoint lags or partially trickles.
  */
 export function useLiveSkillXpBridge({
   playerId,
@@ -33,6 +34,7 @@ export function useLiveSkillXpBridge({
   craftId,
   serverSkillXp,
   userProgress,
+  effectiveXpPerAction,
 }: UseLiveSkillXpBridgeParams): UseLiveSkillXpBridgeReturn {
   const storageKey =
     playerId && skillId && craftId
@@ -53,13 +55,19 @@ export function useLiveSkillXpBridge({
     return loadLiveXpAnchor(playerId, skillId, craftId);
   }, [state, storageKey, playerId, skillId, craftId]);
 
-  // Synchronously reconcile against the latest server XP & user progress for render accuracy
+  // Synchronously reconcile against the latest server XP, user progress, and XP/effort rate
   const anchor = useMemo<LiveXpAnchor | null>(() => {
     if (!storageKey || serverSkillXp === null || userProgress === null) {
       return baseAnchor;
     }
-    return reconcileLiveXpAnchor(baseAnchor, serverSkillXp, userProgress, baseAnchor?.updatedAt ?? 0);
-  }, [baseAnchor, storageKey, serverSkillXp, userProgress]);
+    return reconcileLiveXpAnchor(
+      baseAnchor,
+      serverSkillXp,
+      userProgress,
+      effectiveXpPerAction,
+      baseAnchor?.updatedAt ?? 0
+    );
+  }, [baseAnchor, storageKey, serverSkillXp, userProgress, effectiveXpPerAction]);
 
   // Persist anchor updates asynchronously (avoids synchronous setState inside effects)
   useEffect(() => {
@@ -71,7 +79,13 @@ export function useLiveSkillXpBridge({
       state && state.key === storageKey
         ? state.anchor
         : loadLiveXpAnchor(playerId, skillId, craftId);
-    const next = reconcileLiveXpAnchor(existing, serverSkillXp, userProgress, Date.now());
+    const next = reconcileLiveXpAnchor(
+      existing,
+      serverSkillXp,
+      userProgress,
+      effectiveXpPerAction,
+      Date.now()
+    );
 
     if (anchorsEqual(existing, next)) {
       return;
@@ -89,7 +103,7 @@ export function useLiveSkillXpBridge({
     return () => {
       cancelled = true;
     };
-  }, [storageKey, playerId, skillId, craftId, serverSkillXp, userProgress, state]);
+  }, [storageKey, playerId, skillId, craftId, serverSkillXp, userProgress, effectiveXpPerAction, state]);
 
   const setIncludePriorCraftProgress = useCallback(
     (include: boolean) => {
@@ -101,6 +115,7 @@ export function useLiveSkillXpBridge({
         anchor,
         serverSkillXp,
         userProgress,
+        effectiveXpPerAction,
         Date.now()
       );
       if (current.hasObservedServerSync && include) {
@@ -115,7 +130,7 @@ export function useLiveSkillXpBridge({
       saveLiveXpAnchor(playerId, skillId, craftId, updated);
       setState({ key: storageKey, anchor: updated });
     },
-    [storageKey, playerId, skillId, craftId, serverSkillXp, userProgress, anchor]
+    [storageKey, playerId, skillId, craftId, serverSkillXp, userProgress, effectiveXpPerAction, anchor]
   );
 
   return {

@@ -54,6 +54,13 @@ interface CacheEntry<T> {
   ttlMs: number;
 }
 
+export interface FetchCacheOptions {
+  /** When true and a cached entry exists, return stale cached data instead of throwing on timeout/network/5xx errors */
+  staleIfError?: boolean;
+  /** Cooldown window (ms) after a timeout/error during which non-forced calls serve cached data immediately */
+  timeoutCooldownMs?: number;
+}
+
 export function isExtensionContext(): boolean {
   return (
     typeof window !== 'undefined' &&
@@ -73,6 +80,7 @@ function createTimeoutSignal(ms: number): AbortSignal | undefined {
 class PoliteApiClient {
   private cache = new Map<string, CacheEntry<unknown>>();
   private activeRequests = new Map<string, Promise<unknown>>();
+  private endpointCooldowns = new Map<string, number>();
   private requestQueue: Array<() => Promise<void>> = [];
   private isProcessingQueue = false;
   private minIntervalMs = 120; // 120ms minimum spacing between requests
@@ -103,6 +111,7 @@ class PoliteApiClient {
   public resetBackoff(): void {
     this.backoffMs = 0;
     this.lastRequestTime = 0;
+    this.endpointCooldowns.clear();
   }
 
   public subscribe(listener: (status: ApiClientStatus) => void): () => void {
@@ -221,13 +230,22 @@ class PoliteApiClient {
   public async fetchWithCache<T>(
     endpoint: string,
     ttlMs: number = 30000,
-    forceFresh: boolean = false
+    forceFresh: boolean = false,
+    options?: FetchCacheOptions
   ): Promise<T> {
     const cached = this.cache.get(endpoint);
     const now = Date.now();
 
     if (!forceFresh && cached && now - cached.timestamp < cached.ttlMs) {
       return cached.data as T;
+    }
+
+    // Honor per-endpoint timeout cooldown on non-forced requests when a cached fallback exists
+    if (!forceFresh && cached && options?.timeoutCooldownMs) {
+      const cooldownUntil = this.endpointCooldowns.get(endpoint) ?? 0;
+      if (now < cooldownUntil) {
+        return cached.data as T;
+      }
     }
 
     // Deduplicate in-flight requests for the exact same endpoint
@@ -259,8 +277,9 @@ class PoliteApiClient {
         timestamp: Date.now(),
         ttlMs,
       });
-      // Clear any prior network/rate-limit anomalies on successful fetch
-      this.clearAnomaliesForEndpoint(endpoint, ['http_error', 'rate_limited']);
+      this.endpointCooldowns.delete(endpoint);
+      // Clear any prior network/rate-limit/stale-fallback anomalies on successful fetch
+      this.clearAnomaliesForEndpoint(endpoint, ['http_error', 'rate_limited', 'stale_fallback']);
       this.notifyStatus();
       return data;
     });
@@ -272,6 +291,27 @@ class PoliteApiClient {
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       const statusCode = err instanceof ApiHttpError ? err.status : undefined;
+      const canServeStale =
+        Boolean(options?.staleIfError) &&
+        cached !== undefined &&
+        (statusCode === undefined || statusCode >= 500 || statusCode === 429);
+
+      if (options?.timeoutCooldownMs && (statusCode === undefined || statusCode >= 500)) {
+        this.endpointCooldowns.set(endpoint, Date.now() + options.timeoutCooldownMs);
+      }
+
+      if (canServeStale) {
+        this.recordAnomaly({
+          endpoint,
+          method: 'GET',
+          type: 'stale_fallback',
+          statusCode,
+          message: errorMsg,
+          impact: 'Serving cached data while upstream endpoint recovers',
+        });
+        return cached.data as T;
+      }
+
       this.recordAnomaly({
         endpoint,
         method: 'GET',
@@ -290,10 +330,16 @@ class PoliteApiClient {
   public clearCache(endpointPattern?: string): void {
     if (!endpointPattern) {
       this.cache.clear();
+      this.endpointCooldowns.clear();
     } else {
       for (const key of this.cache.keys()) {
         if (key.includes(endpointPattern)) {
           this.cache.delete(key);
+        }
+      }
+      for (const key of this.endpointCooldowns.keys()) {
+        if (key.includes(endpointPattern)) {
+          this.endpointCooldowns.delete(key);
         }
       }
     }
@@ -674,11 +720,16 @@ class PoliteApiClient {
     if (!regionId) return [];
 
     const safeRegion = encodeURIComponent(String(regionId));
+    // Region-wide active craft lists can exceed 1 MB with no upstream CDN caching;
+    // use a 120s TTL with stale-if-error + 120s timeout cooldown to avoid 15s queue stalls.
     const res = await this.fetchWithCache<{
       craftResults: CraftResult[];
       items?: ItemMetadata[];
       cargos?: ItemMetadata[];
-    }>(`/crafts?completed=false&region_id=${safeRegion}&limit=100`, 20000, forceFresh);
+    }>(`/crafts?completed=false&region_id=${safeRegion}&limit=100`, 120_000, forceFresh, {
+      staleIfError: true,
+      timeoutCooldownMs: 120_000,
+    });
 
     if (!res || !res.craftResults) return [];
 
