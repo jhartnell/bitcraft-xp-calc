@@ -4,7 +4,7 @@ All notable changes to the **BitCraft Online XP Calculator** project are documen
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.9.1] - 2026-11-21
 
 ### Fixed
 - **Automatic Pruning of Completed & Expired (`404`) Tracked Crafts:** In long-running browser sessions, crafts that complete and are later removed from BitJita's database are now automatically pruned from `localStorage` (`bitcraft_assisted_crafts_<entityId>`) whenever `/crafts/{id}` or `/crafts/{id}/contributions` returns HTTP `404` or when a craft is reported as completed (`!isCraftOngoing`). Transient server errors (`500`, `429`, network failures) do not prune tracked crafts.
