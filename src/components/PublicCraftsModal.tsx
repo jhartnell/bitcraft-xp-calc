@@ -11,10 +11,15 @@ import {
   ChevronDown,
   Sliders,
   ExternalLink,
+  Trash2,
 } from 'lucide-react';
 import { CraftResult, ItemMetadata } from '../types/api';
 import { bitjitaApi } from '../services/apiClient';
-import { getAssistedCraftIds, toggleAssistedCraftId } from '../services/assistedCraftsStorage';
+import {
+  clearAssistedCraftIds,
+  getAssistedCraftIds,
+  toggleAssistedCraftId,
+} from '../services/assistedCraftsStorage';
 import {
   SKILL_DEFINITIONS,
   SkillDefinition,
@@ -841,6 +846,22 @@ export const PublicCraftsModal: React.FC<PublicCraftsModalProps> = ({
               >
                 <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
                 <span>My Assisted ({totalAssistedCount})</span>
+              </button>
+            )}
+
+            {playerId && assistedCraftIds.size > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  clearAssistedCraftIds(playerId);
+                  setOnlyAssistedFilter(false);
+                  setAssistedVersion((v) => v + 1);
+                }}
+                title="Clear all saved tracked/assisted craft IDs for this character"
+                className="px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1 font-medium cursor-pointer bg-surface hover:bg-rose-950/60 border border-surface-border hover:border-rose-700/60 text-gray-400 hover:text-rose-300"
+              >
+                <Trash2 className="w-3 h-3" />
+                <span>Clear Tracked ({assistedCraftIds.size})</span>
               </button>
             )}
           </div>
