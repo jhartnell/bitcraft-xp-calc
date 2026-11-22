@@ -4,6 +4,16 @@ All notable changes to the **BitCraft Online XP Calculator** project are documen
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.5] - 2026-11-22
+
+### Added
+- **Version Bump & Consistency Helper (`scripts/bump-version.mjs`):** Added `npm run version:bump -- <patch|minor|major|X.Y.Z> [--dry-run]` to atomically synchronize `package.json`, `package-lock.json`, `client-side-only/browser-extension/manifest.json`, and `nginx.conf`, plus `npm run version:check` wired into GitHub Actions CI (`docker-publish.yml`) to catch version drift automatically. Updated `publicCraftAnalysis.test.tsx` to read the app version dynamically from `package.json`.
+
+### Fixed
+- **Authoritative Helper Power & Unified Speed Reconciliation (`multiUserProjection.ts`):** Enriched up to 5 most-recently-active non-primary helpers with `/players/{id}/tools` and `/players/{id}` (with HTTP `429` circuit-breaker protection) to calculate authoritative tool + gear + profession-level power and accurate profession tool badges, applied BitJita `+1` station-initiation off-by-one correction on historical fallback ratios, filtered out unrelated profession gear stats, and reconciled helper speed math with `xpCalculator.ts` so expired food buffs lingering in stale `/stats` (`stat15`) no longer inflate collaborative speed projections.
+
+---
+
 ## [1.10.4] - 2026-11-22
 
 ### Fixed

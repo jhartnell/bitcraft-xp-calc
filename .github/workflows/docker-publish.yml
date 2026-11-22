@@ -41,6 +41,9 @@ jobs:
       - name: Run ESLint
         run: npm run lint
 
+      - name: Verify Version Consistency
+        run: npm run version:check
+
       - name: Run Vitest Suite
         run: npm run test:run
 

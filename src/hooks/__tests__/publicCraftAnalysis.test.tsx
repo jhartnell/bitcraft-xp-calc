@@ -3,6 +3,9 @@ import React, { act } from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { App } from '../../App';
 import { bitjitaApi } from '../../services/apiClient';
+import packageJson from '../../../package.json';
+
+const APP_VERSION = packageJson.version;
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -63,7 +66,7 @@ describe('Public Craft Analysis vs Verified Helping Lifecycle', () => {
       'fetch',
       vi.fn().mockImplementation((url: string) => {
         if (url.includes('/version.json')) {
-          return Promise.resolve({ ok: true, json: async () => ({ version: '1.10.4' }) });
+          return Promise.resolve({ ok: true, json: async () => ({ version: APP_VERSION }) });
         }
         if (url.endsWith(`/players/${ikuria.entityId}`)) {
           pollCount += 1;
@@ -247,7 +250,7 @@ describe('Public Craft Analysis vs Verified Helping Lifecycle', () => {
       'fetch',
       vi.fn().mockImplementation((url: string) => {
         if (url.includes('/version.json')) {
-          return Promise.resolve({ ok: true, json: async () => ({ version: '1.10.4' }) });
+          return Promise.resolve({ ok: true, json: async () => ({ version: APP_VERSION }) });
         }
         if (url.endsWith(`/players/${ikuria.entityId}`)) {
           return Promise.resolve({
@@ -360,7 +363,7 @@ describe('Public Craft Analysis vs Verified Helping Lifecycle', () => {
       'fetch',
       vi.fn().mockImplementation((url: string) => {
         if (url.includes('/version.json')) {
-          return Promise.resolve({ ok: true, json: async () => ({ version: '1.10.4' }) });
+          return Promise.resolve({ ok: true, json: async () => ({ version: APP_VERSION }) });
         }
         if (url.endsWith(`/players/${ikuria.entityId}`)) {
           return Promise.resolve({
@@ -436,7 +439,7 @@ describe('Public Craft Analysis vs Verified Helping Lifecycle', () => {
       'fetch',
       vi.fn().mockImplementation((url: string) => {
         if (url.includes('/version.json')) {
-          return Promise.resolve({ ok: true, json: async () => ({ version: '1.10.4' }) });
+          return Promise.resolve({ ok: true, json: async () => ({ version: APP_VERSION }) });
         }
         if (url.endsWith(`/players/${ikuria.entityId}`)) {
           return Promise.resolve({
@@ -525,7 +528,7 @@ describe('Public Craft Analysis vs Verified Helping Lifecycle', () => {
       'fetch',
       vi.fn().mockImplementation((url: string) => {
         if (url.includes('/version.json')) {
-          return Promise.resolve({ ok: true, json: async () => ({ version: '1.10.4' }) });
+          return Promise.resolve({ ok: true, json: async () => ({ version: APP_VERSION }) });
         }
         if (url.endsWith(`/players/${ikuria.entityId}`)) {
           return Promise.resolve({
