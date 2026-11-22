@@ -4,6 +4,13 @@ All notable changes to the **BitCraft Online XP Calculator** project are documen
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Automated GitHub Releases Pipeline:** Added a gated, least-privilege `release` job (`contents: write` only, running after `test` and `docker` succeed) to `.github/workflows/docker-publish.yml` using the preinstalled `gh` CLI (no third-party release actions). On every `v*.*.*` tag push, it extracts the matching release notes from `CHANGELOG.md` via `scripts/extract-release-notes.mjs` (falling back to `--generate-notes`), builds and zips the browser extension (`bitcraft-xp-calc-extension-vX.Y.Z.zip`), generates `SHA256SUMS.txt`, and publishes the GitHub Release.
+
+---
+
 ## [1.9.1] - 2026-11-21
 
 ### Fixed

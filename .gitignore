@@ -14,8 +14,9 @@ dist-ssr
 client-side-only/browser-extension/dist
 *.local
 
-# Generated build manifests
+# Generated build manifests & local release packaging
 public/version.json
+release-assets
 
 # Editor directories and files
 .vscode/*
