@@ -65,9 +65,11 @@ export function calculateMultiUserCraftProjection(
     // Inclusion toggle: manual user override if set, otherwise follow dynamic activity
     const isIncludedInProjection = payload.isIncluded !== undefined ? payload.isIncluded : isActive;
 
-    // Progress per action
+    // Progress per action (use primaryCalc's authoritative effort/action for primary player)
     let ppa = 20;
-    if (cb.contributionCount > 0 && cb.totalProgressContributed > 0) {
+    if (isPrimary) {
+      ppa = primaryCalc.progressPerAction;
+    } else if (cb.contributionCount > 0 && cb.totalProgressContributed > 0) {
       ppa = Math.round((cb.totalProgressContributed / cb.contributionCount) * 10) / 10;
     }
 

@@ -46,6 +46,11 @@ export interface DashboardDiagnosticsSnapshot {
       isPublic?: boolean;
       recipeId?: number;
       contributorsCount: number;
+      userContribution?: {
+        totalProgressContributed: number;
+        contributionCount: number;
+        lastContributedAt?: string;
+      } | null;
     } | null;
   };
   calculation: {
@@ -54,7 +59,21 @@ export interface DashboardDiagnosticsSnapshot {
     currentLevel: number;
     isLevelInferred?: boolean;
     progressPerAction: number;
+    isMeasuredProgressPerAction: boolean;
+    effectivePower: number;
+    levelPowerBonus?: number;
     actionDurationSeconds: number;
+    speedBreakdown: {
+      equipmentBonusPercent: number;
+      buffBonusPercent: number;
+      professionSkillBonusPercent: number;
+      totalMultiplier: number;
+    };
+    serverSpeedStats?: {
+      stat15CraftingSpeed?: number;
+      profStatId?: number;
+      profStatValue?: number;
+    } | null;
     xpMultiplier: number;
     xpPerHour: number;
     estimatedSecondsRemaining: number;
@@ -173,6 +192,16 @@ export function installGlobalDiagnosticListeners(): void {
   });
 }
 
+function compactStorageValue(key: string, value: unknown): unknown {
+  if (key.startsWith('bitcraft_assisted_crafts_') && Array.isArray(value) && value.length > 10) {
+    return {
+      count: value.length,
+      sample: [...value.slice(0, 3), '…', ...value.slice(-3)],
+    };
+  }
+  return value;
+}
+
 function readAllowlistedLocalStorage(): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   if (typeof localStorage === 'undefined') return result;
@@ -190,7 +219,7 @@ function readAllowlistedLocalStorage(): Record<string, unknown> {
       const raw = localStorage.getItem(key);
       if (raw === null) continue;
       try {
-        result[key] = JSON.parse(raw);
+        result[key] = compactStorageValue(key, JSON.parse(raw));
       } catch {
         result[key] = raw;
       }
@@ -212,7 +241,11 @@ function readAllowlistedSessionStorageKeys(): string[] {
         keys.push(k);
       }
     }
-    return keys.sort();
+    keys.sort();
+    if (keys.length > 12) {
+      return [...keys.slice(0, 6), `… (${keys.length - 10} more)`, ...keys.slice(-4)];
+    }
+    return keys;
   } catch {
     return [];
   }
@@ -340,6 +373,17 @@ function anonymizeReport(report: DiagnosticsReport): DiagnosticsReport {
       });
     } else if (key.startsWith('bitcraft_assisted_crafts_') && Array.isArray(val)) {
       anonymizedStorageKeys[maskedKey] = val.map((id) => redactor.maskId(String(id)));
+    } else if (
+      key.startsWith('bitcraft_assisted_crafts_') &&
+      val &&
+      typeof val === 'object' &&
+      Array.isArray((val as { sample?: unknown[] }).sample)
+    ) {
+      const compacted = val as { count: number; sample: string[] };
+      anonymizedStorageKeys[maskedKey] = {
+        count: compacted.count,
+        sample: compacted.sample.map((entry) => (entry === '…' ? '…' : redactor.maskId(String(entry)))),
+      };
     } else {
       anonymizedStorageKeys[maskedKey] = val;
     }

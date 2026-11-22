@@ -301,11 +301,28 @@ export function calculateCraftXp(
   };
 
   // 6. Progress Per Physical Action
+  // Authoritative tool power (from /players/{id}/tools or enriched equipment item stats)
+  // takes precedence over BitJita's historical totalProgressContributed / contributionCount,
+  // because BitJita's contributionCount includes an off-by-one (+1) station initiation entry
+  // that systematically underestimates effort/action (e.g. 2261/134 = 16.9 instead of 17).
+  const hasAuthoritativeToolPower = Boolean(
+    equippedTool &&
+      equippedTool.id !== 'active_tool' &&
+      ((equippedTool.toolStats &&
+        typeof equippedTool.toolStats.power === 'number' &&
+        equippedTool.toolStats.power > 0) ||
+        equippedTool.stats?.some(
+          (st) => st.id === 2 || (st.name || '').toLowerCase().includes('power')
+        ))
+  );
+
   let progressPerAction = 20;
   let isMeasuredProgressPerAction = false;
 
   if (overrideProgressPerAction && overrideProgressPerAction > 0) {
     progressPerAction = overrideProgressPerAction;
+  } else if (hasAuthoritativeToolPower) {
+    progressPerAction = Math.max(1, effectivePower);
   } else {
     if (player && contributions.length > 0) {
       const userContrib = contributions.find(
@@ -387,6 +404,7 @@ export function calculateCraftXp(
   }
 
   // Inject user active food buff override if enabled and valid
+  const serverBuffCraftingSpeedBonus = buffCraftingSpeedBonus;
   let buffExpRateBonus = serverBuffExpRateBonus;
   let appliedManualFoodXpBonus = 0;
 
@@ -440,11 +458,14 @@ export function calculateCraftXp(
     professionSkillSpeedBonus = levelSpeedBonus;
   }
 
+  // Only bypass server stat #15 when equipment items actually contribute crafting speed;
+  // wearing non-speed gear (e.g. stamina/power) must not discard server stat #15.
+  // Subtract serverBuffCraftingSpeedBonus so active server buffs are never double-counted.
   const effectiveEquipmentSpeedBonus =
-    equipmentModifiers.length > 0 || equipCraftingSpeedBonus > 0
+    equipCraftingSpeedBonus > 0
       ? equipCraftingSpeedBonus
       : stats && stats.values && typeof stats.values[15] === 'number' && stats.values[15] > 0
-        ? stats.values[15] - 1.0
+        ? Math.max(0, stats.values[15] - 1.0 - serverBuffCraftingSpeedBonus)
         : 0;
 
   const calculatedSum =

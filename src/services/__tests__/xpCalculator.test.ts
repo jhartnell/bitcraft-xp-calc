@@ -1531,4 +1531,144 @@ describe('Level Milestone Timing & Multi-Level Forecast Engine', () => {
     expect(helper.craftingSpeedBonusPercent).toBe(70);
     expect(helper.xpMultiplier).toBeCloseTo(1.1, 4);
   });
+
+  it('prefers authoritative tool power over off-by-one BitJita contributionCount (Betwixt Carpentry 1m 44s ground truth)', () => {
+    const betwixtCraft: CraftResult = {
+      entityId: '576460753155802094',
+      buildingEntityId: 'bld_carpentry',
+      ownerEntityId: '1224979099304183020',
+      ownerUsername: 'Betwixt',
+      buildingName: 'Ancient Carpentry Station',
+      regionId: 8,
+      progress: 2261,
+      recipeId: 102000,
+      craftCount: 100,
+      actionsRequiredPerItem: 35,
+      totalActionsRequired: 3500,
+      craftedItem: [{ item_id: 1, quantity: 1, item_type: 'item', durability: 0 }],
+      levelRequirements: [{ level: 40, skill_id: 3 }],
+      toolRequirements: [{ level: 2, power: 1, tool_type: 2, name: 'Saw' }],
+      experiencePerProgress: [{ quantity: 2.08, skill_id: 3 }],
+      lockExpiration: '2026-11-22T09:00:00Z',
+      completed: false,
+    };
+
+    const betwixtPlayer: PlayerDetails = {
+      entityId: '1224979099304183020',
+      username: 'Betwixt',
+      experience: [{ skill_id: 3, quantity: calculateXpForLevel(48) + 1000 }], // Level 48 (+5 power)
+    };
+
+    const betwixtTools = [{ toolType: 2, power: 12, level: 3 }]; // 12 Saw + 5 skill = 17 power
+    const betwixtBuffs: PlayerBuff[] = [
+      {
+        buffId: 1,
+        buffName: 'Food Buff',
+        description: 'Carpentry Food',
+        status: 'active',
+        timeRemaining: 1200,
+        buffDuration: 1800,
+        buffStartTimestamp: Date.now(),
+        stats: [{ id: 15, name: 'Crafting Speed', value: 0.089, is_pct: true }],
+      },
+    ];
+    const betwixtStatsValues = Array(60).fill(0);
+    betwixtStatsValues[22] = 1.024; // +2.4% Carpentry Speed
+
+    // BitJita reports 134 contributions (133 real actions * 17 = 2261, plus 1 initiation event -> 16.9 avg)
+    const betwixtContribs: CraftContribution[] = [
+      {
+        id: 'cb_betwixt',
+        contributorEntityId: betwixtPlayer.entityId,
+        contributorUsername: 'Betwixt',
+        totalProgressContributed: 2261,
+        contributionCount: 134,
+        lastContributedAt: new Date().toISOString(),
+      },
+    ];
+
+    const result = calculateCraftXp(
+      betwixtCraft,
+      betwixtPlayer,
+      [],
+      betwixtBuffs,
+      { entityId: betwixtPlayer.entityId, values: betwixtStatsValues },
+      betwixtContribs,
+      null,
+      null,
+      null,
+      betwixtTools
+    );
+
+    expect(result.toolStatus.effectivePower).toBe(17);
+    expect(result.progressPerAction).toBe(17);
+    expect(result.isMeasuredProgressPerAction).toBe(false);
+    expect(result.physicalActionsRemaining).toBe(73); // ceil(1239 / 17)
+    expect(formatTimeSeconds(result.estimatedSecondsRemaining)).toBe('1m 44s');
+  });
+
+  it('does not discard server Crafting Speed stat #15 when only non-speed equipment is worn', () => {
+    const craft: CraftResult = {
+      entityId: 'c_stat15',
+      buildingEntityId: 'b_1',
+      ownerEntityId: 'p_1',
+      regionId: 8,
+      progress: 0,
+      recipeId: 100,
+      craftCount: 10,
+      actionsRequiredPerItem: 100,
+      totalActionsRequired: 1000,
+      craftedItem: [{ item_id: 1, quantity: 1, item_type: 'item', durability: 0 }],
+      experiencePerProgress: [{ quantity: 2.0, skill_id: 13 }],
+      lockExpiration: '2026-11-22T09:00:00Z',
+      completed: false,
+    };
+    const player: PlayerDetails = {
+      entityId: 'p_1',
+      username: 'Tester',
+      experience: [{ skill_id: 13, quantity: 50000 }],
+    };
+    // Equipment only grants Stamina (no crafting speed stat)
+    const staminaOnlyGear: EquipmentSlot[] = [
+      {
+        primary: 'chest',
+        item: {
+          id: 5001,
+          name: 'Traveler Vest',
+          tier: 2,
+          stats: [{ id: 1, name: 'Stamina', value: 25, is_pct: false }],
+        },
+      },
+    ];
+    const buffs: PlayerBuff[] = [
+      {
+        buffId: 1,
+        buffName: 'Food',
+        description: 'Food Speed',
+        status: 'active',
+        timeRemaining: 1200,
+        buffDuration: 1800,
+        buffStartTimestamp: Date.now(),
+        stats: [{ id: 15, name: 'Crafting Speed', value: 0.05, is_pct: true }],
+      },
+    ];
+    // Server stat #15 = 1.15 (+5% from active food buff + 10% from passive/claim bonus)
+    const statsValues = Array(60).fill(0);
+    statsValues[15] = 1.15;
+
+    const result = calculateCraftXp(
+      craft,
+      player,
+      staminaOnlyGear,
+      buffs,
+      { entityId: 'p_1', values: statsValues },
+      [],
+      20
+    );
+
+    // Effective equipment/passive speed = 1.15 - 1.0 - 0.05 = 0.10 (+10%), plus 0.05 buff = 1.15x total (no double count)
+    expect(result.speedBreakdown.equipmentBonusPercent).toBe(10);
+    expect(result.speedBreakdown.buffBonusPercent).toBe(5);
+    expect(result.totalCraftingSpeedMultiplier).toBeCloseTo(1.15, 3);
+  });
 });
