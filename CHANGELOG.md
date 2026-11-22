@@ -4,7 +4,7 @@ All notable changes to the **BitCraft Online XP Calculator** project are documen
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.10.1] - 2026-11-22
 
 ### Fixed
 - **Authoritative Tool Power ETA Accuracy (`contributionCount` Off-by-One):** Fixed `calculateCraftXp` (and `calculateMultiUserCraftProjection`) so authoritative tool power from `/players/{id}/tools` or enriched equipment + profession level power takes precedence over BitJita's historical `totalProgressContributed / contributionCount` ratio, eliminating the systematic off-by-one (`+1`) underestimation (e.g. `16.9` vs `17` effort/action) that made Time Remaining read slower than in-game. Historical contribution rate remains the fallback when tool power metadata is unavailable.
