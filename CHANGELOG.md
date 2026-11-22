@@ -4,6 +4,17 @@ All notable changes to the **BitCraft Online XP Calculator** project are documen
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.2] - 2026-11-22
+
+### Added
+- **Self-Correcting Live XP Sync Bridge & Mid-Craft Reconciliation:** Added a per-`(player, skill, craft)` baseline anchor (`src/services/liveXpBridge.ts`, `src/hooks/useLiveSkillXpBridge.ts`) stored in `sessionStorage` (`bitcraft_live_xp_anchor_*`) that bridges observed verified craft contributions onto BitJita's `/players/{id}` experience snapshot whenever BitJita lags behind active crafting. Current Level, Level Progress Bar, Milestones, Level Power/Speed bonuses, Character Skills Overview, and Projected Final Level now stay live instead of freezing or drifting downward, and automatically re-anchor the instant BitJita flushes updated server XP so XP is never double-counted. For cold-start mid-craft loads, `XpProjections` provides a 1-click **"Include prior craft XP"** / **"Revert prior craft XP"** toggle that also auto-clears upon BitJita sync.
+- **Live XP Sync Diagnostics Telemetry:** Added `calculation.liveXpSync` (`serverSkillXp`, `serverSkillLevel`, `unflushedCraftXp`, `effectiveSkillXp`, `isPriorCraftXpIncluded`, `isServerXpLagging`) to browser diagnostics and added redaction support for `bitcraft_live_xp_anchor_*` sessionStorage keys when anonymization is enabled.
+
+### Fixed
+- **Profession Level Speed Bonus Scaling (`PROFESSION_LEVEL_STAT_TABLE`):** Fixed `xpCalculator.ts` to scale `levelSpeedBonus` from percentage points (`1.1` = `+1.1%` = `0.011`) and to honor the higher profession level speed bonus when live-bridged or manually overridden levels exceed BitJita's lagging `/stats` snapshot. Also fixed `PowerBreakdownPopover` to format profession level speed bonuses as `+X.X% Speed` instead of multiplying by `100`.
+
+---
+
 ## [1.10.1] - 2026-11-22
 
 ### Fixed

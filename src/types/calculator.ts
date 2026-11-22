@@ -172,6 +172,27 @@ export interface SessionRateStats {
   history: SessionRatePoint[];
 }
 
+export interface LiveXpAnchor {
+  baselineServerXp: number;
+  baselineUserProgress: number;
+  includePriorCraftProgress: boolean;
+  hasObservedLag: boolean;
+  hasObservedServerSync: boolean;
+  updatedAt: number;
+}
+
+export interface LiveSkillXpBridgeInfo {
+  serverSkillXp: number;
+  serverSkillLevel: number;
+  unflushedCraftXp: number;
+  effectiveSkillXp: number;
+  priorCraftProgress: number;
+  priorCraftXp: number;
+  isPriorCraftXpIncluded: boolean;
+  isServerXpLagging: boolean;
+  canIncludePriorCraftXp: boolean;
+}
+
 export interface XpCalculationResult {
   skillId: number;
   skillName: string;
@@ -213,6 +234,7 @@ export interface XpCalculationResult {
   levelsGained: number;
   isSkillLevelInferred?: boolean;
   isSkillLevelOverridden?: boolean;
+  liveXpBridge?: LiveSkillXpBridgeInfo | null;
   
   baseActionDurationSeconds: number;
   secondsPerAction: number;

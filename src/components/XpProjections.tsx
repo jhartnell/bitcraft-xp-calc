@@ -13,6 +13,8 @@ import {
   ChevronDown,
   ChevronUp,
   AlertTriangle,
+  RefreshCw,
+  RotateCcw,
 } from 'lucide-react';
 import { XpCalculationResult } from '../types/calculator';
 import { formatXp, formatTimeSeconds } from '../services/bitcraftData';
@@ -22,11 +24,16 @@ import { ProgressBarWithTicks } from './ProgressBarWithTicks';
 interface XpProjectionsProps {
   calc: XpCalculationResult;
   onResetSession?: () => void;
+  onToggleIncludePriorCraftXp?: (include: boolean) => void;
 }
 
-export const XpProjections: React.FC<XpProjectionsProps> = ({ calc, onResetSession }) => {
+export const XpProjections: React.FC<XpProjectionsProps> = ({
+  calc,
+  onResetSession,
+  onToggleIncludePriorCraftXp,
+}) => {
   const [isMilestonesExpanded, setIsMilestonesExpanded] = useState(false);
-  const { levelForecast } = calc;
+  const { levelForecast, liveXpBridge } = calc;
 
   return (
     <div className="space-y-4">
@@ -228,6 +235,80 @@ export const XpProjections: React.FC<XpProjectionsProps> = ({ calc, onResetSessi
             </div>
           </div>
         )}
+
+        {/* Live XP Sync Bridge & Cold-Start Mid-Craft Reconciliation */}
+        {!calc.isSkillLevelInferred &&
+          !calc.isSkillLevelOverridden &&
+          liveXpBridge &&
+          (liveXpBridge.unflushedCraftXp > 0 || liveXpBridge.canIncludePriorCraftXp) && (
+            <div className="bg-sky-950/40 border border-sky-700/50 rounded-xl p-3 text-xs text-sky-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 shadow-inner">
+              <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                <RefreshCw className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
+                <div className="space-y-0.5 min-w-0">
+                  <div className="font-semibold text-sky-200 flex items-center gap-1.5 flex-wrap">
+                    <span>
+                      {liveXpBridge.unflushedCraftXp > 0
+                        ? 'Live XP Sync Active'
+                        : liveXpBridge.isServerXpLagging
+                          ? 'BitJita XP Sync Lag Detected'
+                          : 'Mid-Craft XP Snapshot Notice'}
+                    </span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-900/80 border border-sky-700/60 text-sky-200 font-mono">
+                      BitJita: Lvl {liveXpBridge.serverSkillLevel} ({formatXp(liveXpBridge.serverSkillXp)} XP)
+                    </span>
+                    {liveXpBridge.unflushedCraftXp > 0 && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-950/80 border border-emerald-700/60 text-emerald-300 font-mono">
+                        +{formatXp(liveXpBridge.unflushedCraftXp)} live craft XP
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-sky-200/85 leading-relaxed">
+                    {liveXpBridge.isPriorCraftXpIncluded ? (
+                      <>
+                        Bridging <strong>+{liveXpBridge.unflushedCraftXp.toLocaleString()} XP</strong> from your verified craft contributions onto BitJita&apos;s delayed character snapshot. Automatically re-anchors once BitJita flushes so XP is never double-counted.
+                      </>
+                    ) : liveXpBridge.canIncludePriorCraftXp ? (
+                      <>
+                        BitJita&apos;s character XP may lag behind active crafting. You already earned <strong>+{liveXpBridge.priorCraftXp.toLocaleString()} XP</strong> on this craft before this tab opened
+                        {liveXpBridge.unflushedCraftXp > 0
+                          ? ` (live delta +${liveXpBridge.unflushedCraftXp.toLocaleString()} XP is already bridged).`
+                          : '.'}{' '}
+                        Include it if BitJita hasn&apos;t synced this craft yet — it auto-clears the moment BitJita updates.
+                      </>
+                    ) : (
+                      <>
+                        Automatically adding <strong>+{liveXpBridge.unflushedCraftXp.toLocaleString()} XP</strong> earned since this session started while BitJita&apos;s character XP catches up. Re-anchors automatically on sync.
+                      </>
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              {onToggleIncludePriorCraftXp && liveXpBridge.canIncludePriorCraftXp && (
+                <div className="shrink-0 flex items-center">
+                  {liveXpBridge.isPriorCraftXpIncluded ? (
+                    <button
+                      type="button"
+                      onClick={() => onToggleIncludePriorCraftXp(false)}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium bg-surface/80 hover:bg-surface-border border border-sky-700/60 text-sky-200 transition-colors cursor-pointer"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      <span>Revert prior craft XP</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => onToggleIncludePriorCraftXp(true)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-sky-600 hover:bg-sky-500 text-white shadow-sm transition-colors cursor-pointer"
+                    >
+                      <Sparkles className="w-3 h-3" />
+                      <span>Include prior craft XP (+{formatXp(liveXpBridge.priorCraftXp)})</span>
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
         {/* Detailed XP Progress Bars */}
         <div className="space-y-3 pt-2">

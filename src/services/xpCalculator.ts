@@ -18,6 +18,7 @@ import {
   SpeedBreakdownInfo,
   SpeedContributorItem,
   SkillOverrideMap,
+  LiveXpAnchor,
 } from '../types/calculator';
 import {
   SKILL_DEFINITIONS,
@@ -38,11 +39,47 @@ import {
   resolveEquippedTool,
 } from './toolMatching';
 import { calculateLevelProgressForecast } from './levelForecast';
+import { computeLiveXpAdjustment } from './liveXpBridge';
 
 export {
   calculateMultiUserCraftProjection,
   type ContributorDetailPayload,
 } from './multiUserProjection';
+
+export function resolvePlayerServerSkillXp(
+  player: PlayerDetails | null,
+  skillId: number
+): { hasServerExperience: boolean; serverSkillXp: number } {
+  if (
+    !player ||
+    !player.experience ||
+    !Array.isArray(player.experience) ||
+    player.experience.length === 0
+  ) {
+    return { hasServerExperience: false, serverSkillXp: 0 };
+  }
+
+  const expObj = player.experience.find(
+    (e) =>
+      e.skill_id === skillId ||
+      (e as unknown as Record<string, unknown>).skillId === skillId ||
+      (e as unknown as Record<string, unknown>).id === skillId
+  );
+
+  if (!expObj) {
+    return { hasServerExperience: true, serverSkillXp: 0 };
+  }
+
+  const rawQty =
+    expObj.quantity ??
+    (expObj as unknown as Record<string, unknown>).experience ??
+    (expObj as unknown as Record<string, unknown>).xp ??
+    0;
+  return {
+    hasServerExperience: true,
+    serverSkillXp: typeof rawQty === 'number' ? rawQty : Number(rawQty) || 0,
+  };
+}
 
 export function calculateCraftXp(
   craft: CraftResult,
@@ -55,7 +92,8 @@ export function calculateCraftXp(
   overrideBaseXp: number | null = null,
   foodBuffOverride: FoodBuffOverride | null = null,
   playerTools: PlayerToolEntry[] = [],
-  skillOverrides: SkillOverrideMap | null = null
+  skillOverrides: SkillOverrideMap | null = null,
+  liveXpAnchor: LiveXpAnchor | null = null
 ): XpCalculationResult {
   // 1. Identify primary skill for the craft
   const recipeExp =
@@ -72,46 +110,6 @@ export function calculateCraftXp(
     icon: '✨',
     color: '#10b981',
   };
-
-  // Current Player Level Progress for the Craft's Skill
-  const manualOverride = skillOverrides?.[skillId];
-  let currentSkillXp = 0;
-  let hasManualOverride = false;
-
-  if (manualOverride) {
-    if (typeof manualOverride.xp === 'number' && manualOverride.xp > 0) {
-      currentSkillXp = manualOverride.xp;
-      hasManualOverride = true;
-    } else if (typeof manualOverride.level === 'number' && manualOverride.level > 0) {
-      currentSkillXp = calculateXpForLevel(manualOverride.level);
-      hasManualOverride = true;
-    }
-  }
-
-  if (
-    !hasManualOverride &&
-    player &&
-    player.experience &&
-    Array.isArray(player.experience) &&
-    player.experience.length > 0
-  ) {
-    const expObj = player.experience.find(
-      (e) =>
-        e.skill_id === skillId ||
-        (e as unknown as Record<string, unknown>).skillId === skillId ||
-        (e as unknown as Record<string, unknown>).id === skillId
-    );
-    if (expObj) {
-      const rawQty =
-        expObj.quantity ??
-        (expObj as unknown as Record<string, unknown>).experience ??
-        (expObj as unknown as Record<string, unknown>).xp ??
-        0;
-      currentSkillXp = typeof rawQty === 'number' ? rawQty : Number(rawQty) || 0;
-    }
-  }
-
-  let currentLevelProgress = getXpProgressForLevel(currentSkillXp);
 
   // 2. Base XP per progress unit
   let baseXpPerAction = DEFAULT_SKILL_BASE_XP[skillId] || 1.6;
@@ -158,29 +156,6 @@ export function calculateCraftXp(
     contributions,
     playerTools,
   });
-
-  // Smart Level Floor: Higher of Craft Level Requirement vs. Equipped Tool Tier Level Requirement
-  let isSkillLevelInferred = false;
-  const isSkillLevelOverridden = hasManualOverride;
-
-  if (
-    !hasManualOverride &&
-    (!player?.experience || player.experience.length === 0 || currentLevelProgress.level <= 1)
-  ) {
-    const craftReqLevel =
-      craft.levelRequirements?.find((r) => r.skill_id === skillId)?.level ||
-      craft.levelRequirements?.[0]?.level ||
-      1;
-    const toolReqLevel = getTierRequiredLevel(equippedTool?.tier);
-    const smartFloorLevel = Math.max(1, craftReqLevel, toolReqLevel);
-    if (smartFloorLevel > currentLevelProgress.level) {
-      currentSkillXp = calculateXpForLevel(smartFloorLevel);
-      currentLevelProgress = getXpProgressForLevel(currentSkillXp);
-      isSkillLevelInferred = true;
-    } else if (!player?.experience || player.experience.length === 0) {
-      isSkillLevelInferred = true;
-    }
-  }
 
   // 5. Equipment Modifiers
   const equipmentModifiers: EquipmentModifier[] = [];
@@ -276,82 +251,7 @@ export function calculateCraftXp(
     }
   }
 
-  // Cumulative Profession Level Stat Increases
-  const professionLevelStats = getProfessionLevelStats(skillId, currentLevelProgress.level);
-  const levelPowerBonus = professionLevelStats.power;
-  const levelSpeedBonus = professionLevelStats.speed;
-  const levelCritBonus = professionLevelStats.crit;
-
-  const baseToolPower = equippedTool ? getItemPower(equippedTool) : 1;
-  const effectivePower = baseToolPower + totalExtraPowerFromGear + levelPowerBonus;
-
-  const toolStatus: ToolStatusInfo = {
-    requiredToolName: reqToolName,
-    requiredToolType: reqToolType,
-    requiredToolLevel: reqToolLevel,
-    requiredToolPower: reqToolPower,
-    equippedTool,
-    isEquipped,
-    meetsLevelReq: equippedTool ? (equippedTool.tier || 1) >= reqToolLevel : false,
-    meetsPowerReq: effectivePower >= reqToolPower,
-    effectivePower,
-    levelPowerBonus,
-    levelSpeedBonus,
-    levelCritBonus,
-  };
-
-  // 6. Progress Per Physical Action
-  // Authoritative tool power (from /players/{id}/tools or enriched equipment item stats)
-  // takes precedence over BitJita's historical totalProgressContributed / contributionCount,
-  // because BitJita's contributionCount includes an off-by-one (+1) station initiation entry
-  // that systematically underestimates effort/action (e.g. 2261/134 = 16.9 instead of 17).
-  const hasAuthoritativeToolPower = Boolean(
-    equippedTool &&
-      equippedTool.id !== 'active_tool' &&
-      ((equippedTool.toolStats &&
-        typeof equippedTool.toolStats.power === 'number' &&
-        equippedTool.toolStats.power > 0) ||
-        equippedTool.stats?.some(
-          (st) => st.id === 2 || (st.name || '').toLowerCase().includes('power')
-        ))
-  );
-
-  let progressPerAction = 20;
-  let isMeasuredProgressPerAction = false;
-
-  if (overrideProgressPerAction && overrideProgressPerAction > 0) {
-    progressPerAction = overrideProgressPerAction;
-  } else if (hasAuthoritativeToolPower) {
-    progressPerAction = Math.max(1, effectivePower);
-  } else {
-    if (player && contributions.length > 0) {
-      const userContrib = contributions.find(
-        (c) =>
-          c.contributorEntityId === player.entityId ||
-          c.contributorUsername?.toLowerCase() === player.username.toLowerCase()
-      );
-      if (
-        userContrib &&
-        userContrib.contributionCount > 0 &&
-        userContrib.totalProgressContributed > 0
-      ) {
-        progressPerAction =
-          Math.round((userContrib.totalProgressContributed / userContrib.contributionCount) * 10) /
-          10;
-        isMeasuredProgressPerAction = true;
-      }
-    }
-
-    if (!isMeasuredProgressPerAction) {
-      progressPerAction = Math.max(1, effectivePower);
-    }
-  }
-
-  const physicalActionsTotal = Math.ceil(totalProgressRequired / progressPerAction);
-  const physicalActionsRemaining = Math.ceil(remainingProgress / progressPerAction);
-  const physicalActionsCompleted = Math.max(0, physicalActionsTotal - physicalActionsRemaining);
-
-  // 7. Active Buff & Debuff Modifiers
+  // 6. Active Buff & Debuff Modifiers
   const activeBuffModifiers: ActiveBuffModifier[] = [];
   let buffCraftingSpeedBonus = 0;
   let buffStaminaRegenBonus = 0;
@@ -444,7 +344,175 @@ export function calculateCraftXp(
     }
   }
 
-  // 8. Total Crafting Speed Multiplier
+  // 7. XP Multiplier (Server authoritative or equipment + buffs, preventing double-counting)
+  let xpMultiplier = 1.0;
+  if (stats && stats.values && typeof stats.values[50] === 'number' && stats.values[50] > 0) {
+    xpMultiplier = Math.max(0.1, Math.max(1.0, stats.values[50] / 100.0) + appliedManualFoodXpBonus);
+  } else {
+    xpMultiplier = Math.max(0.1, 1.0 + equipExpRateBonus + buffExpRateBonus);
+    for (const slot of equipment) {
+      if (slot.primary.includes('instrument') && slot.item) {
+        if (
+          slot.primary.includes(skillNameLower) ||
+          slot.item.name.toLowerCase().includes(skillNameLower)
+        ) {
+          xpMultiplier += 0.05;
+        }
+      }
+    }
+  }
+
+  const effectiveXpPerAction = baseXpPerAction * xpMultiplier;
+
+  // 8. Current Player Level Progress & Self-Correcting Live XP Bridge
+  const manualOverride = skillOverrides?.[skillId];
+  const { hasServerExperience, serverSkillXp } = resolvePlayerServerSkillXp(player, skillId);
+  let currentSkillXp = serverSkillXp;
+  let hasManualOverride = false;
+
+  if (manualOverride) {
+    if (typeof manualOverride.xp === 'number' && manualOverride.xp > 0) {
+      currentSkillXp = manualOverride.xp;
+      hasManualOverride = true;
+    } else if (typeof manualOverride.level === 'number' && manualOverride.level > 0) {
+      currentSkillXp = calculateXpForLevel(manualOverride.level);
+      hasManualOverride = true;
+    }
+  }
+
+  const userContrib =
+    player && contributions.length > 0
+      ? contributions.find(
+          (c) =>
+            c.contributorEntityId === player.entityId ||
+            c.contributorUsername?.toLowerCase() === player.username.toLowerCase()
+        )
+      : undefined;
+
+  const verifiedUserProgress = userContrib
+    ? Math.max(0, userContrib.totalProgressContributed)
+    : contributions.length === 0 &&
+        player &&
+        craft.ownerEntityId === player.entityId &&
+        completedProgress === 0
+      ? 0
+      : null;
+
+  const liveXpBridge = liveXpAnchor
+    ? computeLiveXpAdjustment({
+        anchor: liveXpAnchor,
+        serverSkillXp,
+        hasServerExperience,
+        hasManualOverride,
+        userProgress: verifiedUserProgress,
+        effectiveXpPerAction,
+      })
+    : null;
+
+  const isSkillLevelLiveBridged = Boolean(
+    !hasManualOverride && liveXpBridge && liveXpBridge.unflushedCraftXp > 0
+  );
+
+  if (isSkillLevelLiveBridged && liveXpBridge) {
+    currentSkillXp = liveXpBridge.effectiveSkillXp;
+  }
+
+  let currentLevelProgress = getXpProgressForLevel(currentSkillXp);
+
+  // Smart Level Floor: Higher of Craft Level Requirement vs. Equipped Tool Tier Level Requirement
+  let isSkillLevelInferred = false;
+  const isSkillLevelOverridden = hasManualOverride;
+
+  if (
+    !hasManualOverride &&
+    (!hasServerExperience || currentLevelProgress.level <= 1)
+  ) {
+    const craftReqLevel =
+      craft.levelRequirements?.find((r) => r.skill_id === skillId)?.level ||
+      craft.levelRequirements?.[0]?.level ||
+      1;
+    const toolReqLevel = getTierRequiredLevel(equippedTool?.tier);
+    const smartFloorLevel = Math.max(1, craftReqLevel, toolReqLevel);
+    if (smartFloorLevel > currentLevelProgress.level) {
+      currentSkillXp = calculateXpForLevel(smartFloorLevel);
+      currentLevelProgress = getXpProgressForLevel(currentSkillXp);
+      isSkillLevelInferred = true;
+    } else if (!hasServerExperience) {
+      isSkillLevelInferred = true;
+    }
+  }
+
+  // Cumulative Profession Level Stat Increases
+  const professionLevelStats = getProfessionLevelStats(skillId, currentLevelProgress.level);
+  const levelPowerBonus = professionLevelStats.power;
+  const levelSpeedBonus = professionLevelStats.speed;
+  const levelCritBonus = professionLevelStats.crit;
+
+  const baseToolPower = equippedTool ? getItemPower(equippedTool) : 1;
+  const effectivePower = baseToolPower + totalExtraPowerFromGear + levelPowerBonus;
+
+  const toolStatus: ToolStatusInfo = {
+    requiredToolName: reqToolName,
+    requiredToolType: reqToolType,
+    requiredToolLevel: reqToolLevel,
+    requiredToolPower: reqToolPower,
+    equippedTool,
+    isEquipped,
+    meetsLevelReq: equippedTool ? (equippedTool.tier || 1) >= reqToolLevel : false,
+    meetsPowerReq: effectivePower >= reqToolPower,
+    effectivePower,
+    levelPowerBonus,
+    levelSpeedBonus,
+    levelCritBonus,
+  };
+
+  // 9. Progress Per Physical Action
+  // Authoritative tool power (from /players/{id}/tools or enriched equipment item stats)
+  // takes precedence over BitJita's historical totalProgressContributed / contributionCount,
+  // because BitJita's contributionCount includes an off-by-one (+1) station initiation entry
+  // that systematically underestimates effort/action (e.g. 2261/134 = 16.9 instead of 17).
+  const hasAuthoritativeToolPower = Boolean(
+    equippedTool &&
+      equippedTool.id !== 'active_tool' &&
+      ((equippedTool.toolStats &&
+        typeof equippedTool.toolStats.power === 'number' &&
+        equippedTool.toolStats.power > 0) ||
+        equippedTool.stats?.some(
+          (st) => st.id === 2 || (st.name || '').toLowerCase().includes('power')
+        ))
+  );
+
+  let progressPerAction = 20;
+  let isMeasuredProgressPerAction = false;
+
+  if (overrideProgressPerAction && overrideProgressPerAction > 0) {
+    progressPerAction = overrideProgressPerAction;
+  } else if (hasAuthoritativeToolPower) {
+    progressPerAction = Math.max(1, effectivePower);
+  } else {
+    if (
+      userContrib &&
+      userContrib.contributionCount > 0 &&
+      userContrib.totalProgressContributed > 0
+    ) {
+      progressPerAction =
+        Math.round((userContrib.totalProgressContributed / userContrib.contributionCount) * 10) /
+        10;
+      isMeasuredProgressPerAction = true;
+    }
+
+    if (!isMeasuredProgressPerAction) {
+      progressPerAction = Math.max(1, effectivePower);
+    }
+  }
+
+  const physicalActionsTotal = Math.ceil(totalProgressRequired / progressPerAction);
+  const physicalActionsRemaining = Math.ceil(remainingProgress / progressPerAction);
+  const physicalActionsCompleted = Math.max(0, physicalActionsTotal - physicalActionsRemaining);
+
+  // 10. Total Crafting Speed Multiplier
+  // PROFESSION_LEVEL_STAT_TABLE stores speed in percentage points (e.g., 1.1 = +1.1% = 0.011 multiplier delta).
+  const levelSpeedBonusDecimal = levelSpeedBonus / 100;
   let professionSkillSpeedBonus = 0;
   if (
     profStatId &&
@@ -453,9 +521,13 @@ export function calculateCraftXp(
     typeof stats.values[profStatId] === 'number' &&
     stats.values[profStatId] > 0
   ) {
-    professionSkillSpeedBonus = stats.values[profStatId] - 1.0;
-  } else if (levelSpeedBonus > 0) {
-    professionSkillSpeedBonus = levelSpeedBonus;
+    const serverProfSpeedBonus = stats.values[profStatId] - 1.0;
+    professionSkillSpeedBonus =
+      isSkillLevelLiveBridged || isSkillLevelOverridden
+        ? Math.max(serverProfSpeedBonus, levelSpeedBonusDecimal)
+        : serverProfSpeedBonus;
+  } else if (levelSpeedBonusDecimal > 0) {
+    professionSkillSpeedBonus = levelSpeedBonusDecimal;
   }
 
   // Only bypass server stat #15 when equipment items actually contribute crafting speed;
@@ -477,7 +549,7 @@ export function calculateCraftXp(
   const secondsPerAction = BASE_ACTION_DURATION_SECONDS / totalCraftingSpeedMultiplier;
   const effectiveActionsPerSecond = 1.0 / secondsPerAction;
 
-  // 8.1 Detailed Speed Contributor Breakdown
+  // 10.1 Detailed Speed Contributor Breakdown
   const equipmentItemsWithSpeed = equipmentModifiers
     .filter((e) => e.craftingSpeedBonus > 0)
     .map((e) => ({
@@ -559,35 +631,16 @@ export function calculateCraftXp(
     contributors: speedContributors,
   };
 
-  // 9. XP Multiplier (Server authoritative or equipment + buffs, preventing double-counting)
-  let xpMultiplier = 1.0;
-  if (stats && stats.values && typeof stats.values[50] === 'number' && stats.values[50] > 0) {
-    xpMultiplier = Math.max(0.1, Math.max(1.0, stats.values[50] / 100.0) + appliedManualFoodXpBonus);
-  } else {
-    xpMultiplier = Math.max(0.1, 1.0 + equipExpRateBonus + buffExpRateBonus);
-    for (const slot of equipment) {
-      if (slot.primary.includes('instrument') && slot.item) {
-        if (
-          slot.primary.includes(skillNameLower) ||
-          slot.item.name.toLowerCase().includes(skillNameLower)
-        ) {
-          xpMultiplier += 0.05;
-        }
-      }
-    }
-  }
-
-  const effectiveXpPerAction = baseXpPerAction * xpMultiplier;
+  // 11. Craft XP Totals & Projected Player Level Progress
   const totalCraftXp = Math.round(totalProgressRequired * effectiveXpPerAction);
   const earnedXp = Math.round(completedProgress * effectiveXpPerAction);
   const remainingXp = Math.max(0, totalCraftXp - earnedXp);
 
-  // 10. Projected Player Level Progress
   const projectedSkillXp = currentSkillXp + remainingXp;
   const projectedLevelProgress = getXpProgressForLevel(projectedSkillXp);
   const levelsGained = Math.max(0, projectedLevelProgress.level - currentLevelProgress.level);
 
-  // 11. Rates and Completion Forecast
+  // 12. Rates and Completion Forecast
   const effortPerHour = effectiveActionsPerSecond * progressPerAction * 3600;
   const xpPerHour = Math.round(effortPerHour * effectiveXpPerAction);
 
@@ -641,6 +694,7 @@ export function calculateCraftXp(
     levelsGained,
     isSkillLevelInferred,
     isSkillLevelOverridden,
+    liveXpBridge,
 
     baseActionDurationSeconds: BASE_ACTION_DURATION_SECONDS,
     secondsPerAction,

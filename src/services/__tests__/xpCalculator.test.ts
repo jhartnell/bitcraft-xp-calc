@@ -1671,4 +1671,144 @@ describe('Level Milestone Timing & Multi-Level Forecast Engine', () => {
     expect(result.speedBreakdown.buffBonusPercent).toBe(5);
     expect(result.totalCraftingSpeedMultiplier).toBeCloseTo(1.15, 3);
   });
+
+  it('advances current level, level power, profession speed, and keeps projected level stable when BitJita experience lags behind live craft contributions', () => {
+    // Reproduces Betwixt's live Sturdy Smithing Station scenario:
+    // BitJita /players/{id} frozen at 10,078 XP (Level 11) and /stats frozen at stat[25] = 1.005 (+0.5%),
+    // while Betwixt has already contributed 21,178 / 109,600 effort at 1.6 XP/effort (+33,885 XP -> Level 22).
+    const smithingCraft: CraftResult = {
+      entityId: '576460753175176817',
+      buildingEntityId: '576460753096248254',
+      buildingName: 'Sturdy Smithing Station',
+      ownerEntityId: '1224979099304183020',
+      ownerUsername: 'Betwixt',
+      regionId: 8,
+      progress: 21178,
+      recipeId: 103006,
+      craftCount: 2192,
+      actionsRequiredPerItem: 50,
+      totalActionsRequired: 109600,
+      completed: false,
+      craftedItem: [{ item_id: 1040003, quantity: 1, item_type: 'item', durability: 0 }],
+      levelRequirements: [{ level: 1, skill_id: 6 }],
+      toolRequirements: [{ level: 1, power: 1, tool_type: 5, name: 'Hammer' }],
+      experiencePerProgress: [{ quantity: 1.6, skill_id: 6 }],
+      lockExpiration: '2026-11-22T19:20:00Z',
+    };
+
+    const betwixtPlayer: PlayerDetails = {
+      entityId: '1224979099304183020',
+      username: 'Betwixt',
+      experience: [{ skill_id: 6, quantity: 10078 }], // Level 11 snapshot
+    };
+
+    const betwixtTools = [{ toolType: 5, power: 13, level: 3 }]; // Pyrelite Hammer (13 Power)
+    const betwixtStatsValues = Array(60).fill(0);
+    betwixtStatsValues[15] = 1.048; // +4.8% crafting speed
+    betwixtStatsValues[25] = 1.005; // Stale Level 11 Smithing speed (+0.5%)
+
+    const betwixtContribs: CraftContribution[] = [
+      {
+        id: 'cb_smith',
+        contributorEntityId: betwixtPlayer.entityId,
+        contributorUsername: 'Betwixt',
+        totalProgressContributed: 21178,
+        contributionCount: 1431,
+        lastContributedAt: new Date().toISOString(),
+      },
+    ];
+
+    // Anchor from craft start (0 progress, 10,078 server XP)
+    const anchorFromStart = {
+      baselineServerXp: 10078,
+      baselineUserProgress: 0,
+      includePriorCraftProgress: false,
+      hasObservedLag: true,
+      hasObservedServerSync: false,
+      updatedAt: 1000,
+    };
+
+    const liveResult = calculateCraftXp(
+      smithingCraft,
+      betwixtPlayer,
+      [],
+      [],
+      { entityId: betwixtPlayer.entityId, values: betwixtStatsValues },
+      betwixtContribs,
+      null,
+      null,
+      null,
+      betwixtTools,
+      null,
+      anchorFromStart
+    );
+
+    // Current level advances from 11 -> 22, power advances from 14 -> 15 (+2 Level 22 bonus),
+    // speed updates from +0.5% -> +1.1%, and projected final level stays at Level 35 (185,438 XP)
+    // instead of shrinking down to Level 33 as remaining craft progress decreases.
+    expect(liveResult.currentSkillLevel).toBe(22);
+    expect(liveResult.currentSkillXp).toBe(43963);
+    expect(liveResult.toolStatus.levelPowerBonus).toBe(2);
+    expect(liveResult.toolStatus.effectivePower).toBe(15);
+    expect(liveResult.progressPerAction).toBe(15);
+    expect(liveResult.speedBreakdown.professionSkillBonusPercent).toBe(1.1);
+    expect(liveResult.projectedSkillXp).toBe(185438);
+    expect(liveResult.projectedSkillLevel).toBe(35);
+    expect(liveResult.liveXpBridge?.unflushedCraftXp).toBe(33885);
+
+    // Once BitJita flushes server experience to 43,963, result remains identical with zero double-counting
+    const flushedPlayer: PlayerDetails = {
+      ...betwixtPlayer,
+      experience: [{ skill_id: 6, quantity: 43963 }],
+    };
+    const flushedResult = calculateCraftXp(
+      smithingCraft,
+      flushedPlayer,
+      [],
+      [],
+      { entityId: betwixtPlayer.entityId, values: betwixtStatsValues },
+      betwixtContribs,
+      null,
+      null,
+      null,
+      betwixtTools,
+      null,
+      anchorFromStart
+    );
+
+    expect(flushedResult.currentSkillLevel).toBe(22);
+    expect(flushedResult.currentSkillXp).toBe(43963);
+    expect(flushedResult.projectedSkillXp).toBe(185438);
+    expect(flushedResult.projectedSkillLevel).toBe(35);
+    expect(flushedResult.liveXpBridge?.unflushedCraftXp).toBe(0);
+  });
+
+  it('scales PROFESSION_LEVEL_STAT_TABLE speed bonus as percentage points when server stats are absent', () => {
+    const craft: CraftResult = {
+      entityId: 'c_speed_scale',
+      buildingEntityId: 'b_1',
+      ownerEntityId: 'p_1',
+      regionId: 8,
+      progress: 0,
+      recipeId: 103006,
+      craftCount: 10,
+      actionsRequiredPerItem: 50,
+      totalActionsRequired: 500,
+      completed: false,
+      craftedItem: [],
+      experiencePerProgress: [{ quantity: 1.6, skill_id: 6 }],
+      lockExpiration: '2026-11-22T19:20:00Z',
+    };
+    const player: PlayerDetails = {
+      entityId: 'p_1',
+      username: 'Smith',
+      experience: [{ skill_id: 6, quantity: 43000 }], // Level 22 -> speed: 1.1 (+1.1%, NOT +110%)
+    };
+
+    const result = calculateCraftXp(craft, player, [], [], null, []);
+    expect(result.currentSkillLevel).toBe(22);
+    expect(result.toolStatus.levelSpeedBonus).toBe(1.1);
+    expect(result.speedBreakdown.professionSkillBonusPercent).toBe(1.1);
+    expect(result.totalCraftingSpeedMultiplier).toBeCloseTo(1.011, 3);
+  });
 });

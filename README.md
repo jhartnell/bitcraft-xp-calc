@@ -19,6 +19,7 @@ A high-performance, real-time web application to track active crafting progress,
 
 ### 3. Dynamic Level Progression & Milestone Roadmaps
 - **Calibrated Level Curve:** Matches BitCraft's in-game exponential progression curve ($\text{delta}(L) = 500 + 520.26 \times (1.115732^{L-1} - 1)$) with exact lifetime cumulative tracking across Levels 1–110.
+- **Self-Correcting Live XP Sync Bridge:** Compensates for BitJita `/api/players/{id}` experience lag while actively crafting by tracking a per-`(player, skill, craft)` anchor in `sessionStorage` (`bitcraft_live_xp_anchor_*`). Observed craft contribution deltas automatically advance Current Level, Level Power/Speed bonuses, and keep Projected Final Level stable instead of shrinking — then re-anchor automatically the moment BitJita flushes updated server XP so XP is never double-counted. For cold-start mid-craft page loads, offers an explicit 1-click **"Include prior craft XP"** toggle (with instant revert and automatic reset on BitJita sync).
 - **Immediate Next Level Countdown:** Computes exact time to ding (e.g. `Level 80 in ~1m 45s`).
 - **Interactive Milestone Roadmap:** Clickable milestone pill that expands to show intermediate level milestones, craft completion % markers, and XP needed when gaining multiple levels on large crafts.
 - Dual progress bars illustrating current skill level progression % vs. projected outcome upon craft completion.
@@ -31,7 +32,7 @@ A high-performance, real-time web application to track active crafting progress,
 
 ### 5. Profession Level Stat Increases & Overrides
 - **Authoritative CSV Stat Ingestion:** Ingests cumulative stat progressions across all levels 1 to 110 for all 12 crafting and gathering professions (Forestry, Carpentry, Masonry, Mining, Smithing, Scholar, Leatherworking, Hunting, Tailoring, Farming, Fishing, Foraging).
-- **Cumulative Power, Speed, and Crit Bonuses:** Applies cumulative level power increases (+1 Power every 10 levels up to level 95, and +1 Power per level from 101 to 110) and speed increases (+0.1 speed per even level, up to +500% at level 100).
+- **Cumulative Power, Speed, and Crit Bonuses:** Applies cumulative level power increases (+1 Power every 10 levels up to level 95, and +1 Power per level from 101 to 110) and speed increases (+0.1% speed per even level, up to +5.0% at level 100).
 - **Adventuring Skill Exclusion:** Excludes non-profession / adventuring abilities (Cooking, Construction, Taming, Slayer, Merchanting, Sailing, Hexite Gathering) from receiving level stat bonuses.
 - **Smart Baseline Level Floor:** When server experience data is unpopulated, infers the skill level using the higher requirement between the station craft level and the equipped tool's tier.
 - **Inferred Level Transparency:** Highlights when skill levels are estimated from equipment/station requirements and notes that milestone projections measure from baseline XP.

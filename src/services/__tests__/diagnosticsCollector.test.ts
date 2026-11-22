@@ -73,6 +73,10 @@ describe('diagnosticsCollector', () => {
       JSON.stringify(['1008806317066192960'])
     );
     sessionStorage.setItem('bitcraft_session_xp_576460752768705987_21', '[]');
+    sessionStorage.setItem(
+      'bitcraft_live_xp_anchor_576460752768705987_6_1008806317066192960',
+      '{"baselineServerXp":10078,"baselineUserProgress":0}'
+    );
 
     bitjitaApi.recordAnomaly({
       endpoint: '/players/576460752768705987',
